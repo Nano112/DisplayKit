@@ -1,0 +1,162 @@
+package io.schemat.displaykit.fabric
+
+import io.schemat.displaykit.DisplayKit
+import io.schemat.displaykit.animation.AnimationTicker
+import io.schemat.displaykit.fabric.glass.FabricGlassTrigger
+import io.schemat.displaykit.fabric.input.FabricTextInput
+import io.schemat.displaykit.fabric.interaction.FabricInteractionHandler
+import io.schemat.displaykit.fabric.pack.FabricPackIntegration
+import io.schemat.displaykit.fabric.packet.FabricPacketSender
+import io.schemat.displaykit.fabric.player.FabricPlayerRef
+import io.schemat.displaykit.fabric.scheduler.FabricScheduler
+import io.schemat.displaykit.fabric.state.BlockStateResolver
+import io.schemat.displaykit.pack.PackConfig
+import io.schemat.displaykit.platform.TaskHandle
+import io.schemat.displaykit.render.GlassTrigger
+import io.schemat.displaykit.ui.InteractionRouter
+import net.fabricmc.api.ModInitializer
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
+import net.minecraft.server.MinecraftServer
+import org.slf4j.LoggerFactory
+import java.util.logging.Logger
+
+class FabricDisplayKit : ModInitializer {
+
+    companion object {
+        const val MOD_ID = "displaykit"
+        private val LOGGER = LoggerFactory.getLogger(MOD_ID)
+
+        lateinit var instance: FabricDisplayKit
+            private set
+
+        // Static so mods can set this before DisplayKit's entrypoint runs
+        var enableResourcePack: Boolean = false
+        var sharedPackConfig: PackConfig = PackConfig()
+    }
+
+    var server: MinecraftServer? = null
+        private set
+
+    private var scheduler: FabricScheduler? = null
+    private var interactionHandler: FabricInteractionHandler? = null
+    private var animationTickTask: TaskHandle? = null
+    var textInput: FabricTextInput? = null
+        private set
+
+    // Instance accessors delegate to companion for backwards compat
+    var packConfig: PackConfig
+        get() = sharedPackConfig
+        set(value) { sharedPackConfig = value }
+
+    override fun onInitialize() {
+        instance = this
+        LOGGER.info("[DisplayKit] Initializing DisplayKit Fabric module...")
+
+        ServerLifecycleEvents.SERVER_STARTING.register { server ->
+            this.server = server
+            BlockStateResolver.init(server)
+
+            val logger = Logger.getLogger(MOD_ID)
+            val fabricScheduler = FabricScheduler(server)
+            val packetSender = FabricPacketSender(server)
+            val fabricTextInput = FabricTextInput()
+
+            scheduler = fabricScheduler
+            textInput = fabricTextInput
+
+            val platform = FabricPlatformProvider(
+                server = server,
+                logger = logger,
+                scheduler = fabricScheduler,
+                packetSender = packetSender,
+                textInput = fabricTextInput
+            )
+
+            DisplayKit.init(platform)
+
+            interactionHandler = FabricInteractionHandler(server)
+            interactionHandler?.register()
+
+            // Initialize resource pack system
+            if (enableResourcePack) {
+                FabricPackIntegration.initialize(server, packConfig)
+            }
+
+            // Initialize glass trigger system (for glassmorphism post-processing)
+            if (enableResourcePack) {
+                FabricGlassTrigger.initialize(server)
+            }
+
+            // Start animation ticker (runs every tick)
+            animationTickTask = fabricScheduler.scheduleRepeating(1L, 1L, Runnable {
+                AnimationTicker.tick()
+            })
+
+            LOGGER.info("[DisplayKit] Initialized on Fabric")
+        }
+
+        ServerLifecycleEvents.SERVER_STOPPED.register {
+            // Stop animation ticker
+            animationTickTask?.cancel()
+            animationTickTask = null
+            AnimationTicker.clear()
+
+            // Shutdown glass trigger system
+            if (enableResourcePack) {
+                FabricGlassTrigger.shutdown()
+            }
+
+            // Shutdown resource pack system
+            if (enableResourcePack) {
+                FabricPackIntegration.shutdown()
+            }
+
+            DisplayKit.shutdown()
+            scheduler?.shutdown()
+            scheduler = null
+            interactionHandler = null
+            textInput = null
+            this.server = null
+        }
+
+        // Send resource pack to players on join
+        ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
+            if (enableResourcePack) {
+                FabricPackIntegration.onPlayerJoin(handler.player)
+            }
+        }
+
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+            textInput?.cancelInput(handler.player.uuid)
+            InteractionRouter.cleanupPlayer(handler.player.uuid)
+            // Clean up glass triggers for disconnecting player
+            GlassTrigger.releaseAll(handler.player.uuid)
+            if (enableResourcePack) {
+                FabricPackIntegration.onPlayerLeave(handler.player.uuid)
+            }
+        }
+    }
+
+    fun getPlayerRef(uuid: java.util.UUID): FabricPlayerRef? {
+        val server = this.server ?: return null
+        val player = server.playerList.getPlayer(uuid) ?: return null
+        return FabricPlayerRef(player)
+    }
+
+    /**
+     * Get the pack integration for direct access.
+     */
+    fun getPackIntegration(): FabricPackIntegration? {
+        return if (enableResourcePack) FabricPackIntegration else null
+    }
+
+    /**
+     * Rebuild and redistribute the resource pack.
+     */
+    fun rebuildPack() {
+        if (enableResourcePack) {
+            FabricPackIntegration.rebuildPack()
+        }
+    }
+}

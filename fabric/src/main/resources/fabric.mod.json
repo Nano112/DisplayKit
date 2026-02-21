@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "displaykit",
+  "version": "${version}",
+  "name": "DisplayKit",
+  "description": "A packet-based floating UI library for Minecraft",
+  "authors": [
+    "Schemat.io"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/displaykit/icon.png",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      {
+        "adapter": "kotlin",
+        "value": "io.schemat.displaykit.fabric.FabricDisplayKit"
+      }
+    ]
+  },
+  "mixins": [
+    "displaykit.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=21",
+    "fabric-api": "*",
+    "fabric-language-kotlin": "*"
+  }
+}
