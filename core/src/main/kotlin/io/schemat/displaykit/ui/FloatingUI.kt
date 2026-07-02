@@ -45,6 +45,13 @@ class FloatingUI @JvmOverloads constructor(
     private var isDestroyed = false
     private var tickTask: TaskHandle? = null
 
+    /**
+     * Optional per-tick callback for consumers that poll live data (e.g. I/O
+     * readouts). Invoked at the end of the UI's own tick, after hover updates;
+     * do rate limiting on the consumer side.
+     */
+    var onTick: (() -> Unit)? = null
+
     // UI bounds for click-through detection (set via setBounds)
     var boundsWidth: Double = 0.0
         private set
@@ -228,6 +235,8 @@ class FloatingUI @JvmOverloads constructor(
                 slider.update()
             }
         }
+
+        onTick?.invoke()
     }
 
     private fun updateHoverStates() {
