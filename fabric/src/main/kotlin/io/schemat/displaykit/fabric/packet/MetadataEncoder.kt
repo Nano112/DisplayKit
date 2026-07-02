@@ -42,6 +42,7 @@ import org.joml.Vector3f
  */
 object MetadataEncoder {
 
+    private const val ID_SHARED_FLAGS = 0        // base Entity flags; 0x40 = glowing
     private const val ID_START_INTERPOLATION = 8
     private const val ID_INTERPOLATION_DURATION = 9
     private const val ID_TRANSLATION = 11
@@ -128,6 +129,11 @@ object MetadataEncoder {
             ID_VIEW_RANGE, EntityDataSerializers.FLOAT, entity.viewRange
         ))
 
+        if (entity.glowing) {
+            entries.add(SynchedEntityData.DataValue(
+                ID_SHARED_FLAGS, EntityDataSerializers.BYTE, 0x40.toByte()
+            ))
+        }
         if (entity.glowColorOverride != null) {
             entries.add(SynchedEntityData.DataValue(
                 ID_GLOW_COLOR_OVERRIDE, EntityDataSerializers.INT, entity.glowColorOverride!!.toARGB()
@@ -165,6 +171,11 @@ object MetadataEncoder {
             ID_VIEW_RANGE, EntityDataSerializers.FLOAT, entity.viewRange
         ))
 
+        if (entity.glowing) {
+            entries.add(SynchedEntityData.DataValue(
+                ID_SHARED_FLAGS, EntityDataSerializers.BYTE, 0x40.toByte()
+            ))
+        }
         if (entity.glowColorOverride != null) {
             entries.add(SynchedEntityData.DataValue(
                 ID_GLOW_COLOR_OVERRIDE, EntityDataSerializers.INT, entity.glowColorOverride!!.toARGB()
@@ -223,6 +234,11 @@ object MetadataEncoder {
             ID_VIEW_RANGE, EntityDataSerializers.FLOAT, entity.viewRange
         ))
 
+        if (entity.glowing) {
+            entries.add(SynchedEntityData.DataValue(
+                ID_SHARED_FLAGS, EntityDataSerializers.BYTE, 0x40.toByte()
+            ))
+        }
         if (entity.glowColorOverride != null) {
             entries.add(SynchedEntityData.DataValue(
                 ID_GLOW_COLOR_OVERRIDE, EntityDataSerializers.INT, entity.glowColorOverride!!.toARGB()

@@ -38,6 +38,14 @@ abstract class VirtualEntity(
     var glowColorOverride: DkColor? = null
         set(value) { field = value; dirty = true }
 
+    /**
+     * Entity-level GLOWING shared flag (outline shader). Required for
+     * [glowColorOverride] to actually show — the override only picks the
+     * outline color.
+     */
+    var glowing: Boolean = false
+        set(value) { field = value; dirty = true }
+
     var interpolationDuration: Int = 0
         set(value) { field = value; dirty = true }
 
