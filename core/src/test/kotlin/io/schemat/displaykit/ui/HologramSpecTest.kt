@@ -32,8 +32,14 @@ class HologramSpecTest {
     private fun platform(): PlatformProvider {
         // Only packetSender is exercised by Hologram.
         return object : PlatformProvider {
-            override val packetSender = NoopSender()
-            override val scheduler get() = throw UnsupportedOperationException("not used by Hologram")
+            override val logger: java.util.logging.Logger = java.util.logging.Logger.getLogger("test")
+            override val packetSender: PacketSender = NoopSender()
+            override val scheduler: io.schemat.displaykit.platform.Scheduler
+                get() = throw UnsupportedOperationException("not used by Hologram")
+            override val textInput: io.schemat.displaykit.platform.TextInput
+                get() = throw UnsupportedOperationException("not used by Hologram")
+            override fun getPlayer(uuid: UUID) = null
+            override fun getOnlinePlayers(): Collection<io.schemat.displaykit.platform.PlayerRef> = emptyList()
         }
     }
 
