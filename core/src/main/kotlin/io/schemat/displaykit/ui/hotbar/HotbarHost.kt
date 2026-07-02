@@ -9,6 +9,17 @@ package io.schemat.displaykit.ui.hotbar
  */
 interface HotbarHost {
     fun push(slots: List<HotbarSlot>)
+
+    /** Push with an identifying page id, queryable via [currentPageId]. */
+    fun push(slots: List<HotbarSlot>, pageId: String?) = push(slots)
+
+    /**
+     * Id of the current (top) page as given at push time, or null for the
+     * root / id-less pages. Lets controllers rebuild a specific page in
+     * response to external context changes (e.g. aim-dependent filtering).
+     */
+    val currentPageId: String? get() = null
+
     fun pop()
 
     /** Replace the current level's slots in place (e.g. live relabel). */

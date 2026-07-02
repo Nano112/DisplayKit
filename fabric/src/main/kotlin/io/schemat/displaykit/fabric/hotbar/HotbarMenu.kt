@@ -94,6 +94,23 @@ object HotbarMenu {
         sessions.remove(player.uuid)?.restore()
     }
 
+    /**
+     * Press the currently selected button. External click arbiters (e.g. a
+     * world overlay whose interaction entities swallow the click before our
+     * callbacks see it) route "this click means press" decisions here.
+     */
+    fun pressSelected(uuid: UUID) {
+        sessions[uuid]?.pressSelected()
+    }
+
+    /**
+     * Move the selection highlight WITHOUT firing [HotbarSlot.onScrollTo] —
+     * for arbiters that rebuild a page and manage their own selection state.
+     */
+    fun selectSlot(uuid: UUID, index: Int) {
+        sessions[uuid]?.selectSilently(index.coerceIn(0, 8))
+    }
+
     // ── Event wiring (idempotent; call once from mod init) ─────────────────
 
     fun register() {
@@ -112,8 +129,14 @@ object HotbarMenu {
             }
             InteractionResult.PASS
         }
-        UseEntityCallback.EVENT.register { player, _, hand, _, _ ->
-            if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
+        // Clicks on Interaction entities belong to DisplayKit's UI routing
+        // (world overlays, panels) — those arbiters call pressSelected(uuid)
+        // themselves when the click should mean "press". Handling them here
+        // too would double-fire every ground/UI click.
+        UseEntityCallback.EVENT.register { player, _, hand, entity, _ ->
+            if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND &&
+                entity !is net.minecraft.world.entity.Interaction
+            ) {
                 sessions[player.uuid]?.let { it.pressSelected(); return@register InteractionResult.SUCCESS }
             }
             InteractionResult.PASS
@@ -124,8 +147,10 @@ object HotbarMenu {
             }
             InteractionResult.PASS
         }
-        AttackEntityCallback.EVENT.register { player, _, hand, _, _ ->
-            if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
+        AttackEntityCallback.EVENT.register { player, _, hand, entity, _ ->
+            if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND &&
+                entity !is net.minecraft.world.entity.Interaction
+            ) {
                 sessions[player.uuid]?.let { it.pressSelected(); return@register InteractionResult.SUCCESS }
             }
             InteractionResult.PASS
@@ -160,7 +185,7 @@ object HotbarMenu {
     private const val SLOT_NEXT = 7
     private const val SLOT_EXIT = 8
 
-    private class Level(var slots: List<HotbarSlot>, var page: Int = 0)
+    private class Level(var slots: List<HotbarSlot>, var page: Int = 0, val pageId: String? = null)
 
     private sealed class Cell {
         class Button(val slot: HotbarSlot) : Cell()
@@ -187,6 +212,12 @@ object HotbarMenu {
         // ── HotbarHost ──
 
         override fun push(slots: List<HotbarSlot>) { stack.addLast(Level(slots)); render() }
+
+        override fun push(slots: List<HotbarSlot>, pageId: String?) {
+            stack.addLast(Level(slots, pageId = pageId)); render()
+        }
+
+        override val currentPageId: String? get() = stack.lastOrNull()?.pageId
 
         override fun pop() {
             if (stack.size <= 1) { HotbarMenu.close(player); return }
@@ -367,6 +398,12 @@ object HotbarMenu {
         }
 
         private fun selectedSlot(): Int = player.inventory.selectedSlot
+
+        /** Move the highlight without firing onScrollTo (see [HotbarMenu.selectSlot]). */
+        fun selectSilently(index: Int) {
+            lastSelected = index
+            setSelectedSlot(player, index)
+        }
     }
 
     // ── Selected-slot access (isolated: mapping-sensitive) ─────────────────
