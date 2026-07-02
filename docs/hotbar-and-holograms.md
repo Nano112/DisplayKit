@@ -1,3 +1,13 @@
+> **Update:** the floating `VirtualHotbar` strip described below is
+> **deprecated**. Use `io.schemat.displaykit.fabric.hotbar.HotbarMenu` — a menu
+> state over the player's REAL inventory hotbar: slots 1-9 become clickable
+> button items (originals stashed to disk and restored on close/death/
+> disconnect/crash-rejoin). Right-click presses the selected button; scrolling
+> fires `HotbarSlot.onScrollTo` for live previews; button items are inert and
+> self-healing. Slot 9 is always Exit/Back; >8 entries paginate with arrows at
+> slots 7/8. `HotbarSlot`/`HotbarHost` are shared between both hosts, so menus
+> written against `HotbarHost` run on either.
+
 # DisplayKit: VirtualHotbar & Hologram
 
 Two primitives for tool-driven building UX (added for hardwired's place/move/

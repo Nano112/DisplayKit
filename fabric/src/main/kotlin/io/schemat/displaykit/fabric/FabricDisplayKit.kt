@@ -53,6 +53,8 @@ class FabricDisplayKit : ModInitializer {
         instance = this
         LOGGER.info("[DisplayKit] Initializing DisplayKit Fabric module...")
 
+        io.schemat.displaykit.fabric.hotbar.HotbarMenu.register()
+
         ServerLifecycleEvents.SERVER_STARTING.register { server ->
             this.server = server
             BlockStateResolver.init(server)
