@@ -12,10 +12,14 @@ import org.joml.Matrix4f
 import org.joml.Vector4f
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArraySet
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 
-class FloatingUI(
+class FloatingUI @JvmOverloads constructor(
     val platform: PlatformProvider,
     val owner: PlayerRef,
     center: Vec3d,
@@ -25,7 +29,16 @@ class FloatingUI(
     var debugMode: Boolean = false,
     private val positionProvider: (() -> Vec3d)? = null,
     val billboard: Boolean = false,
-    private val customUp: Vec3d? = null
+    private val customUp: Vec3d? = null,
+    /**
+     * Pinned-but-rotating mode: the UI stays at [center] but its whole basis
+     * yaws (around [up]) to face the nearest player, all elements rotating
+     * coherently as one rigid panel — unlike [billboard], which rotates each
+     * display entity around its own origin and fans multi-element layouts apart.
+     */
+    private val autoFace: Boolean = false,
+    /** Players farther than this from [center] don't attract the panel. */
+    private val autoFaceRange: Double = 12.0
 ) {
     private val elements = mutableListOf<UIElement>()
     private var ticksAlive = 0
@@ -46,10 +59,27 @@ class FloatingUI(
     var center: Vec3d = center
         private set
 
-    // UI coordinate system
-    val right: Vec3d
+    // UI coordinate system. With autoFace the basis yaws around `up` at
+    // runtime; `baseRight`/`baseForward` hold the yaw-zero orientation.
+    var right: Vec3d
+        private set
     val up: Vec3d
-    val forward: Vec3d
+    var forward: Vec3d
+        private set
+    private val baseRight: Vec3d
+    private val baseForward: Vec3d
+
+    // Auto-face state: rotation (radians) around `up` relative to the base basis
+    private var currentYaw = 0.0
+    private val rotationSnapshots = HashMap<Int, RotationSnapshot>()
+
+    private class RotationSnapshot(
+        val entity: VirtualEntity,
+        /** Position relative to center, expressed at yaw 0. */
+        var relPos: Vec3d,
+        /** Entity transformation, expressed at yaw 0. */
+        var transformation: Matrix4f
+    )
 
     init {
         val upVec = customUp ?: Vec3d.UP
@@ -63,6 +93,8 @@ class FloatingUI(
         right = horizontalFacing.cross(upVec).normalize()
         up = upVec
         forward = horizontalFacing
+        baseRight = right
+        baseForward = forward
     }
 
     var transformMatrix: Matrix4f = calculateTransformMatrix()
@@ -111,6 +143,7 @@ class FloatingUI(
             entity.billboard = io.schemat.displaykit.render.Billboard.VERTICAL
         }
         allEntities.add(entity)
+        if (autoFace) captureRotationSnapshot(entity)
         val uuids = viewers.toSet()
         platform.packetSender.spawnEntity(entity, uuids)
         platform.packetSender.updateMetadata(entity, uuids)
@@ -118,11 +151,13 @@ class FloatingUI(
 
     internal fun despawnEntity(entity: VirtualEntity) {
         allEntities.remove(entity)
+        rotationSnapshots.remove(entity.entityId)
         platform.packetSender.destroyEntities(listOf(entity.entityId), viewers.toSet())
     }
 
     internal fun despawnEntities(entities: List<VirtualEntity>) {
         allEntities.removeAll(entities.toSet())
+        entities.forEach { rotationSnapshots.remove(it.entityId) }
         val ids = entities.map { it.entityId }
         if (ids.isNotEmpty()) {
             platform.packetSender.destroyEntities(ids, viewers.toSet())
@@ -130,11 +165,23 @@ class FloatingUI(
     }
 
     internal fun updateEntity(entity: VirtualEntity) {
+        // Element-driven pose change (slider drag, tab highlight, ...): the
+        // element computed it in the CURRENT rotated basis, so re-normalize
+        // its yaw-zero snapshot before the next auto-face update.
+        if (autoFace) captureRotationSnapshot(entity)
         platform.packetSender.updateMetadata(entity, viewers.toSet())
     }
 
     internal fun teleportEntity(entity: VirtualEntity) {
+        if (autoFace) captureRotationSnapshot(entity)
         platform.packetSender.teleportEntity(entity, viewers.toSet())
+    }
+
+    /** Records the entity's pose normalized back to yaw 0. */
+    private fun captureRotationSnapshot(entity: VirtualEntity) {
+        val relPos = rotateAroundUp(entity.position - center, -currentYaw)
+        val transform = yawMatrix(-currentYaw).mul(entity.transformation.joml)
+        rotationSnapshots[entity.entityId] = RotationSnapshot(entity, relPos, transform)
     }
 
     // --- Tick loop ---
@@ -168,6 +215,10 @@ class FloatingUI(
         if (distance > maxDistance || ticksAlive > timeoutTicks || !owner.isOnline()) {
             destroy()
             return
+        }
+
+        if (autoFace && ticksAlive % AUTO_FACE_INTERVAL == 0) {
+            updateAutoFace()
         }
 
         updateHoverStates()
@@ -212,6 +263,73 @@ class FloatingUI(
                 element.onHoverChanged()
             }
         }
+    }
+
+    // --- Auto-facing ---
+
+    private fun updateAutoFace() {
+        // Face the nearest player in range (falls back to the owner if in range)
+        val candidates = platform.getOnlinePlayers().ifEmpty { listOf(owner) }
+        val nearest = candidates.minByOrNull { it.eyePosition().distanceSquared(center) } ?: return
+        val toViewer = nearest.eyePosition() - center
+        if (toViewer.length() > autoFaceRange) return
+
+        // Panel content faces along -forward, so forward should point from the
+        // viewer through the panel: desired forward = center - viewer, projected
+        // onto the plane perpendicular to up.
+        val toCenter = toViewer * -1.0
+        val horizontal = toCenter - up * toCenter.dot(up)
+        if (horizontal.lengthSquared() < 1.0e-6) return // directly above/below
+        val desired = horizontal.normalize()
+
+        val targetYaw = signedAngleAroundUp(baseForward, desired)
+        var delta = wrapAngle(targetYaw - currentYaw)
+        if (abs(delta) < YAW_EPSILON) return
+        if (abs(delta) > YAW_SNAP) delta *= YAW_LERP // smooth big swings, snap the tail
+        currentYaw = wrapAngle(currentYaw + delta)
+        applyYaw()
+    }
+
+    /** Re-derives the basis and re-poses every entity for [currentYaw]. */
+    private fun applyYaw() {
+        right = rotateAroundUp(baseRight, currentYaw)
+        forward = rotateAroundUp(baseForward, currentYaw)
+        transformMatrix = calculateTransformMatrix()
+
+        val rot = yawMatrix(currentYaw)
+        val uuids = viewers.toSet()
+        for (snapshot in rotationSnapshots.values) {
+            val entity = snapshot.entity
+            entity.position = center + rotateAroundUp(snapshot.relPos, currentYaw)
+            platform.packetSender.teleportEntity(entity, uuids)
+            // Billboarded entities rotate client-side; only rigid transforms follow the panel
+            if (entity.billboard == Billboard.FIXED) {
+                entity.transformation = Mat4f(Matrix4f(rot).mul(snapshot.transformation))
+                platform.packetSender.updateMetadata(entity, uuids)
+            }
+        }
+    }
+
+    private fun rotateAroundUp(v: Vec3d, angle: Double): Vec3d {
+        // Rodrigues rotation around the (unit) up axis
+        val c = cos(angle)
+        val s = sin(angle)
+        val cross = up.cross(v)
+        val dot = up.dot(v)
+        return v * c + cross * s + up * (dot * (1.0 - c))
+    }
+
+    private fun yawMatrix(angle: Double): Matrix4f =
+        Matrix4f().rotate(angle.toFloat(), up.x.toFloat(), up.y.toFloat(), up.z.toFloat())
+
+    private fun signedAngleAroundUp(from: Vec3d, to: Vec3d): Double =
+        atan2(from.cross(to).dot(up), from.dot(to))
+
+    private fun wrapAngle(a: Double): Double {
+        var r = a
+        while (r > PI) r -= 2 * PI
+        while (r < -PI) r += 2 * PI
+        return r
     }
 
     // --- Coordinate system ---
@@ -660,6 +778,11 @@ class FloatingUI(
     fun isDestroyed() = isDestroyed
 
     companion object {
+        private const val AUTO_FACE_INTERVAL = 2   // ticks between yaw updates
+        private const val YAW_EPSILON = 0.01       // ~0.6°: below this, don't touch entities
+        private const val YAW_SNAP = 0.03          // below this, jump straight to target
+        private const val YAW_LERP = 0.35          // exponential approach factor
+
         fun create(
             platform: PlatformProvider,
             owner: PlayerRef,
