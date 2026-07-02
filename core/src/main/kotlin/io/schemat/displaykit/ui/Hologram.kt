@@ -81,6 +81,31 @@ class Hologram(private val platform: PlatformProvider) {
         return this
     }
 
+    /**
+     * Wireframe edges of a box: 12 thin tinted ghosts along the edges of the
+     * volume with min corner [local] and size [size]. Gives a large volume
+     * cuboid crisp definition without filling the view.
+     */
+    fun outline(local: Vec3d, size: Vec3f, thickness: Float = 0.1f): Hologram {
+        val t = thickness
+        val w = size.x
+        val h = size.y
+        val d = size.z
+        // 4 verticals
+        for ((dx, dz) in listOf(0f to 0f, w - t to 0f, 0f to d - t, w - t to d - t)) {
+            cuboid(local + Vec3d(dx.toDouble(), 0.0, dz.toDouble()), Vec3f(t, h, t))
+        }
+        // 4 along X (bottom + top)
+        for ((dy, dz) in listOf(0f to 0f, 0f to d - t, h - t to 0f, h - t to d - t)) {
+            cuboid(local + Vec3d(0.0, dy.toDouble(), dz.toDouble()), Vec3f(w, t, t))
+        }
+        // 4 along Z (bottom + top)
+        for ((dx, dy) in listOf(0f to 0f, w - t to 0f, 0f to h - t, w - t to h - t)) {
+            cuboid(local + Vec3d(dx.toDouble(), dy.toDouble(), 0.0), Vec3f(t, t, d))
+        }
+        return this
+    }
+
     /** Min/max corners of all specs in local space (markers use their visual extent). */
     fun localBounds(): Pair<Vec3d, Vec3d>? {
         if (specs.isEmpty()) return null
