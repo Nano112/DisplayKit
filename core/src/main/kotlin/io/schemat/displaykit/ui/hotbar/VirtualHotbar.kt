@@ -8,15 +8,19 @@ import io.schemat.displaykit.ui.FloatingUI
 import io.schemat.displaykit.ui.InteractionRouter
 
 /**
- * One slot of a [VirtualHotbar]. [onSelect] receives the hotbar so it can
- * push a submenu, mutate slots, or hide the strip.
+ * One slot of a hotbar-style menu. [onSelect] receives the [HotbarHost] so it
+ * can push a submenu, mutate slots, or close the menu. [onScrollTo] fires when
+ * the player's held-slot selection lands on this slot (real-inventory
+ * `HotbarMenu` only — the floating strip has no scroll selection); use it for
+ * live previews while browsing.
  */
 class HotbarSlot(
     val id: String,
     val label: String,
     val icon: BlockStateRef = BlockStateRef.STONE,
     val enabled: Boolean = true,
-    val onSelect: (VirtualHotbar) -> Unit = {}
+    val onScrollTo: ((HotbarHost) -> Unit)? = null,
+    val onSelect: (HotbarHost) -> Unit = {}
 )
 
 /**
@@ -44,6 +48,11 @@ class HotbarSlot(
  * One instance per player is the intended usage — call [destroy] before
  * replacing.
  */
+@Deprecated(
+    "Prefer io.schemat.displaykit.fabric.hotbar.HotbarMenu — a menu state over " +
+        "the player's REAL inventory hotbar (slots 1-9 become clickable buttons). " +
+        "The floating strip proved hard to use in practice."
+)
 class VirtualHotbar @JvmOverloads constructor(
     private val platform: PlatformProvider,
     private val owner: PlayerRef,
@@ -54,7 +63,7 @@ class VirtualHotbar @JvmOverloads constructor(
     private val heightOffset: Double = -1.05,
     private val maxVisible: Int = 9,
     private val idleTimeoutTicks: Int = 20 * 60
-) {
+) : HotbarHost {
 
     private class Level(var slots: List<HotbarSlot>, var page: Int = 0)
 
@@ -109,24 +118,31 @@ class VirtualHotbar @JvmOverloads constructor(
 
     // --- Navigation ---
 
-    fun push(slots: List<HotbarSlot>) {
+    override fun push(slots: List<HotbarSlot>) {
         stack.addLast(Level(slots))
         touch(); rebuild()
     }
 
-    fun pop() {
+    override fun pop() {
         if (stack.size <= 1) { hide(); return }
         stack.removeLast()
         touch(); rebuild()
     }
 
     /** Replace the current level's slots in place (e.g. live relabel). */
-    fun replaceCurrent(slots: List<HotbarSlot>) {
+    override fun replaceCurrent(slots: List<HotbarSlot>) {
         val level = stack.lastOrNull() ?: return
         level.slots = slots
         level.page = level.page.coerceAtLeast(0)
         touch(); rebuild()
     }
+
+    override fun popToRoot() {
+        while (stack.size > 1) stack.removeLast()
+        touch(); rebuild()
+    }
+
+    override fun close() = destroy()
 
     private fun page(delta: Int) {
         val level = stack.lastOrNull() ?: return
