@@ -64,7 +64,7 @@ class PackServer(
      * Get the URL where the pack is served.
      */
     fun getPackUrl(): String {
-        return "http://${config.bindAddress}:${config.port}/pack.zip"
+        return "http://${config.publicAddress}:${config.port}/pack.zip"
     }
 
     /**

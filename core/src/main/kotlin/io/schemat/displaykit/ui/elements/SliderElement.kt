@@ -16,6 +16,9 @@ class SliderElement(
     val step: Float = 1f,
     val showValue: Boolean = true,
     val label: String? = null,
+    val trackHeight: Float = 0.1f,
+    val handleWidth: Float = 0.15f,
+    val handleHeight: Float = 0.15f,
     val onValueChange: (Float) -> Unit = {}
 ) : UIElement(
     ui = ui, localOffset = localOffset,
@@ -27,9 +30,6 @@ class SliderElement(
     private var labelDisplay: VirtualTextDisplay? = null
     private var valueDisplay: VirtualTextDisplay? = null
     private var isDragging = false
-
-    private val trackHeight = 0.1f
-    private val handleSize = 0.15f
 
     init {
         this.onClick = {
@@ -62,8 +62,8 @@ class SliderElement(
             blockState = BlockStateRef.LIGHT_BLUE_CONCRETE
             brightness = Brightness.FULL
             transformation = ui.buildUIElementMatrix(
-                localOffsetX = -handleSize / 2, localOffsetY = -handleSize / 2, localOffsetZ = -0.01f,
-                scaleX = handleSize, scaleY = handleSize, scaleZ = handleSize
+                localOffsetX = -handleWidth / 2, localOffsetY = -handleHeight / 2, localOffsetZ = -0.01f,
+                scaleX = handleWidth, scaleY = handleHeight, scaleZ = 0.04f
             )
         }
         handlePanel = handle

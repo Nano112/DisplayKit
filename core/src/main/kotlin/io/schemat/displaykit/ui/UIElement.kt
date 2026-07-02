@@ -5,7 +5,7 @@ import io.schemat.displaykit.render.VirtualEntity
 
 abstract class UIElement(
     val ui: FloatingUI,
-    val localOffset: Vec3d,
+    var localOffset: Vec3d,
     val isInteractive: Boolean = false,
     val hitboxSize: Double = 0.3,
     val hitboxWidth: Double = 0.0,

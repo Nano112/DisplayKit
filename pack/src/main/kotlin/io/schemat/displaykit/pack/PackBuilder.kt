@@ -120,14 +120,29 @@ class PackBuilder(
     }
 
     private fun addPackMeta(zos: ZipOutputStream) {
-        val mcmeta = """
+        val format = config.packFormat
+        val mcmeta = if (format > 64) {
+            """
             {
               "pack": {
-                "pack_format": ${config.packFormat},
+                "pack_format": $format,
+                "min_format": 1,
+                "max_format": $format,
+                "supported_formats": {"min_inclusive": 1, "max_inclusive": $format},
                 "description": "${config.packDescription}"
               }
             }
-        """.trimIndent()
+            """.trimIndent()
+        } else {
+            """
+            {
+              "pack": {
+                "pack_format": $format,
+                "description": "${config.packDescription}"
+              }
+            }
+            """.trimIndent()
+        }
 
         zos.putNextEntry(ZipEntry("pack.mcmeta"))
         zos.write(mcmeta.toByteArray(StandardCharsets.UTF_8))

@@ -51,4 +51,12 @@ class InteractivePanelElement(
             }
         }
     }
+
+    fun relocate(newOffsetX: Double, newOffsetY: Double, newOffsetZ: Double) {
+        localOffset = Vec3d(newOffsetX, newOffsetY, newOffsetZ)
+        blockDisplay?.let { display ->
+            display.position = ui.calculatePosition(newOffsetX, newOffsetY, newOffsetZ)
+            teleportEntity(display)
+        }
+    }
 }

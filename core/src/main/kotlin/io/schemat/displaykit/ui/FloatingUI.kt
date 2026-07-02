@@ -552,13 +552,17 @@ class FloatingUI(
         offsetRight: Double, offsetUp: Double, offsetForward: Double = 0.0,
         width: Float = 2.0f, minValue: Float = 0f, maxValue: Float = 100f,
         value: Float = 50f, step: Float = 1f, showValue: Boolean = true,
-        label: String? = null, onValueChange: (Float) -> Unit = {}
+        label: String? = null, trackHeight: Float = 0.1f,
+        handleWidth: Float = 0.15f, handleHeight: Float = 0.15f,
+        onValueChange: (Float) -> Unit = {}
     ): SliderElement {
         val element = SliderElement(
             ui = this, localOffset = Vec3d(offsetRight, offsetUp, offsetForward),
             width = width, minValue = minValue, maxValue = maxValue,
             value = value, step = step, showValue = showValue,
-            label = label, onValueChange = onValueChange
+            label = label, trackHeight = trackHeight,
+            handleWidth = handleWidth, handleHeight = handleHeight,
+            onValueChange = onValueChange
         )
         element.spawn()
         elements.add(element)

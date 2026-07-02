@@ -89,6 +89,22 @@ object MetadataEncoder {
         ))
     }
 
+    /**
+     * Encode only transform + interpolation fields (6 entries instead of 10+).
+     * Used during animation where blockState, brightness, viewRange etc. are unchanged.
+     */
+    fun encodeTransformOnly(entity: VirtualEntity): List<SynchedEntityData.DataValue<*>> {
+        val entries = mutableListOf<SynchedEntityData.DataValue<*>>()
+        entries.add(SynchedEntityData.DataValue(
+            ID_START_INTERPOLATION, EntityDataSerializers.INT, entity.startInterpolation
+        ))
+        entries.add(SynchedEntityData.DataValue(
+            ID_INTERPOLATION_DURATION, EntityDataSerializers.INT, entity.interpolationDuration
+        ))
+        encodeTransformation(entity, entries)
+        return entries
+    }
+
     fun encodeBlockDisplay(entity: VirtualBlockDisplay): List<SynchedEntityData.DataValue<*>> {
         val entries = mutableListOf<SynchedEntityData.DataValue<*>>()
 

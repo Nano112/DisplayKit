@@ -1,11 +1,18 @@
 package io.schemat.displaykit.fabric.packet
 
+import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.platform.PacketSender
 import io.schemat.displaykit.render.*
+import io.netty.buffer.Unpooled
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket
+import net.minecraft.network.protocol.game.ClientboundBundlePacket
+import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket
 import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket
+import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket
 import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
@@ -107,6 +114,126 @@ class FabricPacketSender(
 
         for (player in players) {
             player.connection.send(packet)
+        }
+    }
+
+    override fun updateMetadataBatch(entities: Collection<VirtualEntity>, viewerUUIDs: Collection<UUID>) {
+        val players = resolveViewers(viewerUUIDs)
+        if (players.isEmpty() || entities.isEmpty()) return
+
+        val packets = mutableListOf<Packet<in net.minecraft.network.protocol.game.ClientGamePacketListener>>()
+        for (entity in entities) {
+            val metadataEntries = when (entity) {
+                is VirtualBlockDisplay -> MetadataEncoder.encodeBlockDisplay(entity)
+                is VirtualTextDisplay -> MetadataEncoder.encodeTextDisplay(entity)
+                is VirtualItemDisplay -> MetadataEncoder.encodeItemDisplay(entity)
+                else -> continue
+            }
+            packets.add(ClientboundSetEntityDataPacket(entity.entityId, metadataEntries))
+            entity.markClean()
+        }
+
+        sendBundled(packets, players)
+    }
+
+    override fun updateTransformBatch(entities: Collection<VirtualEntity>, viewerUUIDs: Collection<UUID>) {
+        val players = resolveViewers(viewerUUIDs)
+        if (players.isEmpty() || entities.isEmpty()) return
+
+        val packets = mutableListOf<Packet<in net.minecraft.network.protocol.game.ClientGamePacketListener>>()
+        for (entity in entities) {
+            val metadataEntries = MetadataEncoder.encodeTransformOnly(entity)
+            packets.add(ClientboundSetEntityDataPacket(entity.entityId, metadataEntries))
+            entity.markClean()
+        }
+
+        sendBundled(packets, players)
+    }
+
+    override fun spawnCarrierEntity(entityId: Int, position: Vec3d, viewerUUIDs: Collection<UUID>) {
+        val players = resolveViewers(viewerUUIDs)
+        if (players.isEmpty()) return
+
+        val packet = ClientboundAddEntityPacket(
+            entityId,
+            UUID.randomUUID(),
+            position.x, position.y, position.z,
+            0f, 0f,
+            EntityType.INTERACTION,
+            0,
+            Vec3.ZERO,
+            0.0
+        )
+
+        for (player in players) {
+            player.connection.send(packet)
+        }
+    }
+
+    override fun teleportCarrier(entityId: Int, position: Vec3d, viewerUUIDs: Collection<UUID>) {
+        val players = resolveViewers(viewerUUIDs)
+        if (players.isEmpty()) return
+
+        val positionMoveRotation = PositionMoveRotation(
+            Vec3(position.x, position.y, position.z),
+            Vec3.ZERO,
+            0f, 0f
+        )
+        val packet = ClientboundTeleportEntityPacket(
+            entityId,
+            positionMoveRotation,
+            emptySet(),
+            false
+        )
+
+        for (player in players) {
+            player.connection.send(packet)
+        }
+    }
+
+    override fun moveCarrier(entityId: Int, deltaX: Double, deltaY: Double, deltaZ: Double, viewerUUIDs: Collection<UUID>) {
+        val players = resolveViewers(viewerUUIDs)
+        if (players.isEmpty()) return
+
+        // Encode as shorts: 1 unit = 1/4096 of a block
+        val dx = (deltaX * 4096).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        val dy = (deltaY * 4096).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        val dz = (deltaZ * 4096).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+
+        val packet = ClientboundMoveEntityPacket.Pos(entityId, dx, dy, dz, false)
+
+        for (player in players) {
+            player.connection.send(packet)
+        }
+    }
+
+    override fun setPassengers(vehicleEntityId: Int, passengerEntityIds: IntArray, viewerUUIDs: Collection<UUID>) {
+        val players = resolveViewers(viewerUUIDs)
+        if (players.isEmpty()) return
+
+        // Construct via STREAM_CODEC since the only public constructor requires a real Entity
+        val buf = FriendlyByteBuf(Unpooled.buffer())
+        buf.writeVarInt(vehicleEntityId)
+        buf.writeVarInt(passengerEntityIds.size)
+        for (id in passengerEntityIds) {
+            buf.writeVarInt(id)
+        }
+        val packet = ClientboundSetPassengersPacket.STREAM_CODEC.decode(buf)
+        buf.release()
+
+        for (player in players) {
+            player.connection.send(packet)
+        }
+    }
+
+    private fun sendBundled(
+        packets: List<Packet<in net.minecraft.network.protocol.game.ClientGamePacketListener>>,
+        players: List<ServerPlayer>
+    ) {
+        // Single bundle so all entities update atomically in the same client tick
+        val bundle = ClientboundBundlePacket(packets)
+        for (player in players) {
+            player.connection.send(bundle)
         }
     }
 

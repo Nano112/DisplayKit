@@ -2,8 +2,10 @@ package io.schemat.displaykit.fabric.pack
 
 import io.schemat.displaykit.pack.DefaultAssets
 import io.schemat.displaykit.pack.GeistFontProvider
+import io.schemat.displaykit.pack.ItemModelAssetProvider
 import io.schemat.displaykit.pack.PackConfig
 import io.schemat.displaykit.pack.PackManager
+import io.schemat.displaykit.pack.SpriteAssetProvider
 import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.common.ClientboundResourcePackPushPacket
 import net.minecraft.server.MinecraftServer
@@ -38,8 +40,13 @@ object FabricPackIntegration {
         val javaLogger = Logger.getLogger("DisplayKit-Pack")
         packManager = PackManager(config, javaLogger).apply {
             // Register asset providers
-            registerAssetProvider(DefaultAssets)
-            registerAssetProvider(GeistFontProvider)
+            if (config.registerDefaultProviders) {
+                registerAssetProvider(DefaultAssets)
+                registerAssetProvider(GeistFontProvider)
+            }
+            registerAssetProvider(ItemModelAssetProvider)
+            // SpriteAssetProvider is opt-in, register manually via:
+            // FabricPackIntegration.registerAssetProvider(SpriteAssetProvider)
 
             // Set up callbacks for Fabric
             onSendPack = { playerId, url, sha1 ->
@@ -113,6 +120,17 @@ object FabricPackIntegration {
      */
     fun rebuildPack() {
         packManager?.rebuildPack()
+    }
+
+    /**
+     * Rebuild the pack and resend to all online players.
+     */
+    fun rebuildAndResendToAll() {
+        rebuildPack()
+        val mcServer = server ?: return
+        for (player in mcServer.playerList.players) {
+            sendPack(player)
+        }
     }
 
     /**
