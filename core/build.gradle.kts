@@ -12,6 +12,7 @@ kotlin {
 dependencies {
     implementation(libs.joml)
     implementation("com.google.code.gson:gson:2.10.1")
+    testImplementation(kotlin("test"))
 }
 
 tasks.withType<Test> {

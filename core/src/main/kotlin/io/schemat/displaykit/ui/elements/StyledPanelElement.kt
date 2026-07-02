@@ -79,8 +79,11 @@ class StyledPanelElement(
             textAlignment = TextAlignment.CENTER
             viewRange = 1.0f
             lineWidth = panelLineWidth
+            // text_display anchors its block at the BOTTOM of the text (grows
+            // upward), so shift down by half the height to center the quad on
+            // the element position — matching how every consumer places panels.
             transformation = ui.buildUIElementMatrix(
-                localOffsetX = 0f, localOffsetY = 0f, localOffsetZ = 0f,
+                localOffsetX = 0f, localOffsetY = -height / 2f, localOffsetZ = 0f,
                 scaleX = SCALE, scaleY = SCALE, scaleZ = 0.01f
             )
         }

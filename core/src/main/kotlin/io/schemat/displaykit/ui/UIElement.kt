@@ -14,6 +14,12 @@ abstract class UIElement(
     var isHovered = false
     var onClick: (() -> Unit)? = null
 
+    /**
+     * Multiplier applied to the hitbox during hover/click tests. In-world
+     * clicking is imprecise, so hitboxes are slightly forgiving by default.
+     */
+    var hitMargin: Double = 1.2
+
     private var lastInteractTime = 0L
     private val interactCooldown = 300L
 

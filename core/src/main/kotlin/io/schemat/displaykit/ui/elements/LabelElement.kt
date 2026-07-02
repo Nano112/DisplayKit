@@ -17,11 +17,20 @@ class LabelElement(
 
     private var textDisplay: VirtualTextDisplay? = null
 
+    private fun transformFor(content: String): Mat4f {
+        // Center-anchor: text_display blocks are bottom-anchored natively.
+        val correction = TextMetrics.verticalCenterCorrection(content, scale)
+        return Mat4f(
+            Matrix4f()
+                .translation(0f, correction, 0f)
+                .scale(scale, scale, scale)
+        )
+    }
+
     override fun spawn() {
         val textPos = ui.calculatePosition(localOffset.x, localOffset.y, localOffset.z - 0.1)
 
         val labelText = this.text
-        val labelScale = this.scale
         val display = VirtualTextDisplay().apply {
             position = textPos
             text = TextComponent.of(labelText)
@@ -31,7 +40,7 @@ class LabelElement(
             brightness = Brightness.FULL
             textAlignment = TextAlignment.CENTER
             viewRange = 1.0f
-            transformation = Mat4f(Matrix4f().scaling(labelScale, labelScale, labelScale))
+            transformation = transformFor(labelText)
         }
         textDisplay = display
         spawnEntity(display)
@@ -47,6 +56,7 @@ class LabelElement(
     fun updateText(newText: String) {
         textDisplay?.let { display ->
             display.text = TextComponent.of(newText)
+            display.transformation = transformFor(newText)
             updateEntity(display)
         }
     }

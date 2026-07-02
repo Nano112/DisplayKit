@@ -15,7 +15,13 @@ class ButtonElement(
     val hoverMaterial: BlockStateRef,
     val size: Float,
     onClick: () -> Unit
-) : UIElement(ui, localOffset, isInteractive = true, hitboxSize = size.toDouble()) {
+) : UIElement(
+    ui, localOffset,
+    isInteractive = true,
+    // Rectangular hitbox matching the visual face (plus the global hitMargin).
+    hitboxWidth = size.toDouble(),
+    hitboxHeight = size.toDouble()
+) {
 
     private var blockDisplay: VirtualBlockDisplay? = null
     private var textDisplay: VirtualTextDisplay? = null
@@ -52,7 +58,10 @@ class ButtonElement(
                 textAlignment = TextAlignment.CENTER
                 viewRange = 1.0f
                 transformation = ui.buildUIElementMatrix(
-                    localOffsetX = 0f, localOffsetY = 0f, localOffsetZ = 0f,
+                    localOffsetX = 0f,
+                    // Center-anchor: text_display blocks are bottom-anchored natively.
+                    localOffsetY = TextMetrics.verticalCenterCorrection(label, 0.35f),
+                    localOffsetZ = 0f,
                     scaleX = 0.35f, scaleY = 0.35f, scaleZ = 0.35f
                 )
             }

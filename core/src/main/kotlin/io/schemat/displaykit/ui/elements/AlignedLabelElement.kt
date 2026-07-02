@@ -1,5 +1,6 @@
 package io.schemat.displaykit.ui.elements
 
+import io.schemat.displaykit.math.Mat4f
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.*
 import io.schemat.displaykit.ui.FloatingUI
@@ -15,11 +16,19 @@ class AlignedLabelElement(
 
     private var textDisplay: VirtualTextDisplay? = null
 
+    private fun transformFor(content: String): Mat4f =
+        // Center-anchor: text_display blocks are bottom-anchored natively.
+        ui.buildUIElementMatrix(
+            localOffsetX = 0f,
+            localOffsetY = TextMetrics.verticalCenterCorrection(content, scale),
+            localOffsetZ = 0f,
+            scaleX = scale, scaleY = scale, scaleZ = scale
+        )
+
     override fun spawn() {
         val pos = ui.calculatePosition(localOffset.x, localOffset.y, localOffset.z)
 
         val labelText = this.text
-        val labelScale = this.scale
         val display = VirtualTextDisplay().apply {
             position = pos
             text = TextComponent.of(labelText)
@@ -29,10 +38,7 @@ class AlignedLabelElement(
             brightness = Brightness.FULL
             textAlignment = TextAlignment.CENTER
             viewRange = 1.0f
-            transformation = ui.buildUIElementMatrix(
-                localOffsetX = 0f, localOffsetY = 0f, localOffsetZ = 0f,
-                scaleX = labelScale, scaleY = labelScale, scaleZ = labelScale
-            )
+            transformation = transformFor(labelText)
         }
         textDisplay = display
         spawnEntity(display)
@@ -48,6 +54,7 @@ class AlignedLabelElement(
     fun updateText(newText: String) {
         textDisplay?.let { display ->
             display.text = TextComponent.of(newText)
+            display.transformation = transformFor(newText)
             updateEntity(display)
         }
     }

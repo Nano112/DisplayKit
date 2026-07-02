@@ -189,15 +189,10 @@ class FloatingUI(
         for (element in elements) {
             if (!element.isInteractive) continue
 
-            val elementPos = element.getWorldPosition()
-
             val result = if (element.usesRectangularHitbox()) {
-                isLookingAtRectangularElement(
-                    eyePos, lookDir, element.localOffset,
-                    element.hitboxWidth, element.hitboxHeight
-                )
+                isLookingAtRectangularElement(eyePos, lookDir, element)
             } else {
-                isLookingAtElement(eyePos, lookDir, elementPos, element.hitboxSize)
+                isLookingAtElement(eyePos, lookDir, element)
             }
 
             if (result != null) {
@@ -332,38 +327,46 @@ class FloatingUI(
         return t
     }
 
-    private fun isLookingAtElement(
-        eye: Vec3d, direction: Vec3d, elementCenter: Vec3d, hitboxSize: Double
-    ): Pair<Double, Double>? {
+    /**
+     * Ray test against the plane the ELEMENT actually lies in (its forward
+     * offset), not the UI base plane. Elements floating in front of the panel
+     * otherwise get view-angle parallax: the visual and clickable positions
+     * diverge the further off-perpendicular the player looks.
+     */
+    private fun elementPlaneHit(
+        eye: Vec3d, direction: Vec3d, element: UIElement
+    ): Triple<Double, Double, Double>? {
         val planeNormal = getPlaneNormal()
-        val planeDistance = rayIntersectsPlane(eye, direction, center, planeNormal) ?: return null
+        val planePoint = localToWorld(0.0, 0.0, element.localOffset.z)
+        val planeDistance = rayIntersectsPlane(eye, direction, planePoint, planeNormal) ?: return null
         val hitPoint = eye + direction * planeDistance
-        val offset = hitPoint.distance(elementCenter)
-        return if (offset < hitboxSize) Pair(planeDistance, offset) else null
+        // right/up are orthogonal to forward, so measuring from the UI center
+        // is exact regardless of the element's forward offset.
+        val relativePoint = hitPoint - center
+        return Triple(planeDistance, relativePoint.dot(right), relativePoint.dot(up))
+    }
+
+    private fun isLookingAtElement(
+        eye: Vec3d, direction: Vec3d, element: UIElement
+    ): Pair<Double, Double>? {
+        val (planeDistance, localX, localY) = elementPlaneHit(eye, direction, element) ?: return null
+        val offsetX = localX - element.localOffset.x
+        val offsetY = localY - element.localOffset.y
+        val offset = sqrt(offsetX * offsetX + offsetY * offsetY)
+        return if (offset < element.hitboxSize * element.hitMargin) Pair(planeDistance, offset) else null
     }
 
     private fun isLookingAtRectangularElement(
-        eye: Vec3d, direction: Vec3d,
-        elementLocalOffset: Vec3d,
-        hitboxWidth: Double, hitboxHeight: Double
+        eye: Vec3d, direction: Vec3d, element: UIElement
     ): Pair<Double, Double>? {
-        val planeNormal = getPlaneNormal()
-        val planeDistance = rayIntersectsPlane(eye, direction, center, planeNormal) ?: return null
-        val hitPoint = eye + direction * planeDistance
-        val relativePoint = hitPoint - center
-        val localX = relativePoint.dot(right)
-        val localY = relativePoint.dot(up)
+        val (planeDistance, localX, localY) = elementPlaneHit(eye, direction, element) ?: return null
 
-        val halfWidth = hitboxWidth / 2
-        val halfHeight = hitboxHeight / 2
-        val minX = elementLocalOffset.x - halfWidth
-        val maxX = elementLocalOffset.x + halfWidth
-        val minY = elementLocalOffset.y - halfHeight
-        val maxY = elementLocalOffset.y + halfHeight
+        val halfWidth = element.hitboxWidth / 2 * element.hitMargin
+        val halfHeight = element.hitboxHeight / 2 * element.hitMargin
+        val offsetX = localX - element.localOffset.x
+        val offsetY = localY - element.localOffset.y
 
-        if (localX in minX..maxX && localY in minY..maxY) {
-            val offsetX = localX - elementLocalOffset.x
-            val offsetY = localY - elementLocalOffset.y
+        if (abs(offsetX) <= halfWidth && abs(offsetY) <= halfHeight) {
             val offset = sqrt(offsetX * offsetX + offsetY * offsetY)
             return Pair(planeDistance, offset)
         }
@@ -604,13 +607,17 @@ class FloatingUI(
     fun addTabs(
         offsetRight: Double, offsetUp: Double, offsetForward: Double = 0.0,
         tabs: List<TabDefinition>, tabWidth: Float = 0.8f, tabHeight: Float = 0.3f,
-        gap: Float = 0.05f, selectedIndex: Int = 0,
+        gap: Float = 0.05f,
+        labelScale: Float = TabsElement.DEFAULT_LABEL_SCALE,
+        labelPadding: Float = TabsElement.DEFAULT_TAB_PADDING,
+        selectedIndex: Int = 0,
         onTabChange: (Int, TabDefinition) -> Unit = { _, _ -> }
     ): TabsElement {
         val element = TabsElement(
             ui = this, localOffset = Vec3d(offsetRight, offsetUp, offsetForward),
             tabs = tabs, tabWidth = tabWidth, tabHeight = tabHeight,
-            gap = gap, selectedIndex = selectedIndex, onTabChange = onTabChange
+            gap = gap, labelScale = labelScale, labelPadding = labelPadding,
+            selectedIndex = selectedIndex, onTabChange = onTabChange
         )
         element.spawn()
         elements.add(element)
