@@ -270,8 +270,18 @@ object HotbarMenu {
 
         override fun replaceCurrent(slots: List<HotbarSlot>) {
             val level = stack.lastOrNull() ?: return
+            // Keep the HIGHLIGHTED BUTTON'S IDENTITY stable across the rebuild:
+            // when the new list shifts positions, re-align the held slot to the
+            // button the player had highlighted. Without this, page rebuilds
+            // (e.g. aim-driven filters) silently changed what a click would do
+            // and fought the player's own scrolling.
+            val heldId = selectedSlotId()
             level.slots = slots
             render()
+            if (heldId != null && selectedSlotId() != heldId) {
+                val idx = layout().indexOfFirst { (it as? Cell.Button)?.slot?.id == heldId }
+                if (idx >= 0) selectSilently(idx)
+            }
         }
 
         override fun popToRoot() {

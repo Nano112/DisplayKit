@@ -145,12 +145,32 @@ class Hologram(private val platform: PlatformProvider) {
     fun moveTo(newOrigin: Vec3d) {
         if (newOrigin.distanceSquared(origin) == 0.0) return
         origin = newOrigin
-        if (entities.isEmpty()) return
+        if (entities.isEmpty() || !visible) return
         for ((i, e) in entities.withIndex()) {
             e.position = entityPosition(specs[i])
             platform.packetSender.teleportEntity(e, viewers)
         }
         perfCount?.invoke("hologram.moved", entities.size)
+    }
+
+    /**
+     * Soft visibility: hiding teleports the entities far below the world
+     * instead of despawning them, so a transient hide/show cycle (selection
+     * gates, page rebuilds) costs one teleport batch each way — never a
+     * spawn/despawn storm. Entities keep existing between toggles.
+     */
+    var visible: Boolean = true
+        private set
+
+    fun setVisible(v: Boolean) {
+        if (visible == v) return
+        visible = v
+        if (entities.isEmpty()) return
+        for ((i, e) in entities.withIndex()) {
+            e.position = entityPosition(specs[i])
+            platform.packetSender.teleportEntity(e, viewers)
+        }
+        perfCount?.invoke(if (v) "hologram.softShown" else "hologram.softHidden", entities.size)
     }
 
     fun hide() {
@@ -199,7 +219,8 @@ class Hologram(private val platform: PlatformProvider) {
     }
 
     private fun entityPosition(spec: Spec): Vec3d =
-        origin + spec.local + Vec3d(INSET, INSET, INSET)
+        origin + spec.local + Vec3d(INSET, INSET, INSET) +
+            (if (visible) Vec3d.ZERO else HIDDEN_OFFSET)
 
     private fun insetScale(spec: Spec): Vec3f = Vec3f(
         (spec.size.x - 2 * INSET.toFloat()).coerceAtLeast(0.05f),
@@ -225,6 +246,7 @@ class Hologram(private val platform: PlatformProvider) {
 
     companion object {
         private const val INSET = 0.02
+        private val HIDDEN_OFFSET = Vec3d(0.0, -4096.0, 0.0)
 
         private val WHITE_GLASS = BlockStateRef("minecraft:white_stained_glass")
         private val LIME_GLASS = BlockStateRef("minecraft:lime_stained_glass")
