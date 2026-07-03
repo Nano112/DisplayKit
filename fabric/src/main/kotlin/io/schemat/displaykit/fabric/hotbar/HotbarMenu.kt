@@ -72,8 +72,15 @@ object HotbarMenu {
     private val sessions = ConcurrentHashMap<UUID, Session>()
     private var nonceCounter = 1
     private var registered = false
-    /** Debounce: use/attack events can fire multiple times per click. */
-    private const val CLICK_COOLDOWN_TICKS = 3
+    /**
+     * Duplicate-click suppression. One physical click can reach us twice via
+     * DIFFERENT paths (an interaction-entity click routed by an arbiter plus
+     * a vanilla use/attack event) within ~2 ticks — those are rejected. Rapid
+     * genuine presses arrive via the SAME path and only need to be on a later
+     * tick, so spamming Back works at up to one press per tick (the old
+     * blanket 3-tick cooldown ate every other deliberate press).
+     */
+    private const val CROSS_SOURCE_COOLDOWN_TICKS = 2
 
     // ── Public API ──────────────────────────────────────────────────────────
 
@@ -99,8 +106,9 @@ object HotbarMenu {
      * world overlay whose interaction entities swallow the click before our
      * callbacks see it) route "this click means press" decisions here.
      */
-    fun pressSelected(uuid: UUID) {
-        sessions[uuid]?.pressSelected()
+    @JvmOverloads
+    fun pressSelected(uuid: UUID, source: String = "arbiter") {
+        sessions[uuid]?.pressSelected(source)
     }
 
     /**
@@ -134,13 +142,13 @@ object HotbarMenu {
 
         UseItemCallback.EVENT.register { player, _, hand ->
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
-                sessions[player.uuid]?.let { it.pressSelected(); return@register InteractionResult.SUCCESS }
+                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
             }
             InteractionResult.PASS
         }
         UseBlockCallback.EVENT.register { player, _, hand, _ ->
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
-                sessions[player.uuid]?.let { it.pressSelected(); return@register InteractionResult.SUCCESS }
+                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
             }
             InteractionResult.PASS
         }
@@ -152,13 +160,13 @@ object HotbarMenu {
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND &&
                 entity !is net.minecraft.world.entity.Interaction
             ) {
-                sessions[player.uuid]?.let { it.pressSelected(); return@register InteractionResult.SUCCESS }
+                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
             }
             InteractionResult.PASS
         }
         AttackBlockCallback.EVENT.register { player, _, hand, _, _ ->
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
-                sessions[player.uuid]?.let { it.pressSelected(); return@register InteractionResult.SUCCESS }
+                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
             }
             InteractionResult.PASS
         }
@@ -166,7 +174,7 @@ object HotbarMenu {
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND &&
                 entity !is net.minecraft.world.entity.Interaction
             ) {
-                sessions[player.uuid]?.let { it.pressSelected(); return@register InteractionResult.SUCCESS }
+                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
             }
             InteractionResult.PASS
         }
@@ -240,7 +248,8 @@ object HotbarMenu {
         private var stashed: List<ItemStack> = emptyList()
         private var stashedSelected = 0
         private var lastSelected = -1
-        private var lastPressTick = 0L
+        private var lastPressTick = -10L
+        private var lastPressSource = ""
         private var closed = false
         private var sweepCountdown = 0
 
@@ -405,10 +414,18 @@ object HotbarMenu {
 
         // ── Interaction ──
 
-        fun pressSelected() {
+        fun pressSelected(source: String = "arbiter") {
             val tick = player.level().server.tickCount.toLong()
-            if (tick - lastPressTick < CLICK_COOLDOWN_TICKS) return
+            val dup = if (source == lastPressSource) tick <= lastPressTick
+                else tick - lastPressTick < CROSS_SOURCE_COOLDOWN_TICKS
+            if (dup) {
+                logger.debug("press rejected (dup): slot={} source={} lastTick={} tick={}",
+                    selectedSlot(), source, lastPressTick, tick)
+                return
+            }
             lastPressTick = tick
+            lastPressSource = source
+            logger.debug("press: slot={} kind={} source={}", selectedSlot(), selectedCellKind(), source)
             when (val cell = layout()[selectedSlot().coerceIn(0, 8)]) {
                 null -> {}
                 is Cell.Button -> if (cell.slot.enabled) runCatching { cell.slot.onSelect(this) }

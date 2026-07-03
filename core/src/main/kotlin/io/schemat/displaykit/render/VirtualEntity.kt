@@ -47,6 +47,13 @@ abstract class VirtualEntity(
         set(value) { field = value; dirty = true }
 
     var interpolationDuration: Int = 0
+
+    /**
+     * Position/rotation interpolation duration in ticks (display data id 10,
+     * "teleport_duration"). When > 0, teleport packets glide the entity to
+     * its new position client-side instead of snapping — smooth holograms.
+     */
+    var teleportDuration: Int = 0
         set(value) { field = value; dirty = true }
 
     var startInterpolation: Int = 0

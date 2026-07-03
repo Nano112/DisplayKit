@@ -178,6 +178,9 @@ class Hologram(private val platform: PlatformProvider) {
             glowing = true
             glowColorOverride = styleGlow(spec)
             brightness = Brightness.FULL
+            // Glide teleports over 2 ticks so aim-tracking reads as motion,
+            // not popping (display data id 10; see VirtualEntity.teleportDuration)
+            teleportDuration = 2
         }
         entities.add(display)
         if (viewers.isNotEmpty()) {

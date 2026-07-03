@@ -45,6 +45,7 @@ object MetadataEncoder {
     private const val ID_SHARED_FLAGS = 0        // base Entity flags; 0x40 = glowing
     private const val ID_START_INTERPOLATION = 8
     private const val ID_INTERPOLATION_DURATION = 9
+    private const val ID_POS_ROT_INTERPOLATION_DURATION = 10  // "teleport_duration"
     private const val ID_TRANSLATION = 11
     private const val ID_SCALE = 12
     private const val ID_LEFT_ROTATION = 13
@@ -102,6 +103,11 @@ object MetadataEncoder {
         entries.add(SynchedEntityData.DataValue(
             ID_INTERPOLATION_DURATION, EntityDataSerializers.INT, entity.interpolationDuration
         ))
+        if (entity.teleportDuration > 0) {
+            entries.add(SynchedEntityData.DataValue(
+                ID_POS_ROT_INTERPOLATION_DURATION, EntityDataSerializers.INT, entity.teleportDuration
+            ))
+        }
         encodeTransformation(entity, entries)
         return entries
     }
@@ -115,6 +121,11 @@ object MetadataEncoder {
         entries.add(SynchedEntityData.DataValue(
             ID_INTERPOLATION_DURATION, EntityDataSerializers.INT, entity.interpolationDuration
         ))
+        if (entity.teleportDuration > 0) {
+            entries.add(SynchedEntityData.DataValue(
+                ID_POS_ROT_INTERPOLATION_DURATION, EntityDataSerializers.INT, entity.teleportDuration
+            ))
+        }
 
         // Decompose and send the full transformation matrix
         encodeTransformation(entity, entries)
@@ -157,6 +168,11 @@ object MetadataEncoder {
         entries.add(SynchedEntityData.DataValue(
             ID_INTERPOLATION_DURATION, EntityDataSerializers.INT, entity.interpolationDuration
         ))
+        if (entity.teleportDuration > 0) {
+            entries.add(SynchedEntityData.DataValue(
+                ID_POS_ROT_INTERPOLATION_DURATION, EntityDataSerializers.INT, entity.teleportDuration
+            ))
+        }
 
         // Decompose and send the full transformation matrix
         encodeTransformation(entity, entries)
@@ -220,6 +236,11 @@ object MetadataEncoder {
         entries.add(SynchedEntityData.DataValue(
             ID_INTERPOLATION_DURATION, EntityDataSerializers.INT, entity.interpolationDuration
         ))
+        if (entity.teleportDuration > 0) {
+            entries.add(SynchedEntityData.DataValue(
+                ID_POS_ROT_INTERPOLATION_DURATION, EntityDataSerializers.INT, entity.teleportDuration
+            ))
+        }
 
         // Decompose and send the full transformation matrix
         encodeTransformation(entity, entries)
