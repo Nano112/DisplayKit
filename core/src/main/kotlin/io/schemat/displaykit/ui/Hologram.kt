@@ -56,6 +56,9 @@ class Hologram(private val platform: PlatformProvider) {
     var origin: Vec3d = Vec3d.ZERO
         private set
 
+    /** Live display-entity count (for budget/perf accounting). */
+    val entityCount: Int get() = entities.size
+
     var tint: Tint = Tint.NEUTRAL
         set(value) {
             if (field == value) return
@@ -127,6 +130,7 @@ class Hologram(private val platform: PlatformProvider) {
         if (entities.isEmpty() && specs.isNotEmpty()) {
             viewers.addAll(added)
             specs.forEach { spawnSpec(it) }
+            perfCount?.invoke("hologram.spawned", specs.size)
             return
         }
         if (added.isEmpty()) return
@@ -146,11 +150,13 @@ class Hologram(private val platform: PlatformProvider) {
             e.position = entityPosition(specs[i])
             platform.packetSender.teleportEntity(e, viewers)
         }
+        perfCount?.invoke("hologram.moved", entities.size)
     }
 
     fun hide() {
         if (entities.isNotEmpty() && viewers.isNotEmpty()) {
             platform.packetSender.destroyEntities(entities.map { it.entityId }, viewers)
+            perfCount?.invoke("hologram.despawned", entities.size)
         }
         entities.clear()
         viewers.clear()
@@ -229,5 +235,9 @@ class Hologram(private val platform: PlatformProvider) {
         /** Suggested marker colors matching hardwired's port color language. */
         val SENSOR_MARKER = DkColor(255, 120, 190, 255)   // light blue: kernel reads
         val ACTUATOR_MARKER = DkColor(255, 255, 160, 60)  // orange: kernel writes
+
+        /** Optional perf counter sink (name, count) — e.g. hardwired's PerfMonitor. */
+        @JvmStatic
+        var perfCount: ((String, Int) -> Unit)? = null
     }
 }

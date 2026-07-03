@@ -111,6 +111,21 @@ object HotbarMenu {
         sessions[uuid]?.selectSilently(index.coerceIn(0, 8))
     }
 
+    /**
+     * What kind of cell is currently highlighted: "button", "prev", "next",
+     * "exit", or null (empty slot / no session). Arbiters use this to give
+     * NAVIGATION cells absolute priority over world clicks — Back/Exit must
+     * work no matter what the crosshair rests on.
+     */
+    fun selectedCellKind(uuid: UUID): String? = sessions[uuid]?.selectedCellKind()
+
+    /** The highlighted button's slot id, or null when a non-button is highlighted. */
+    fun selectedSlotId(uuid: UUID): String? = sessions[uuid]?.selectedSlotId()
+
+    /** Optional perf sinks (wired by the host mod, e.g. hardwired's PerfMonitor). */
+    @JvmStatic var perfTime: ((String, Long) -> Unit)? = null
+    @JvmStatic var perfCount: ((String, Long) -> Unit)? = null
+
     // ── Event wiring (idempotent; call once from mod init) ─────────────────
 
     fun register() {
@@ -158,7 +173,9 @@ object HotbarMenu {
 
         ServerTickEvents.END_SERVER_TICK.register { server ->
             if (sessions.isEmpty()) return@register
+            val t0 = System.nanoTime()
             for (session in sessions.values.toList()) session.tick(server)
+            perfTime?.invoke("hotbar.tick", (System.nanoTime() - t0) / 1000)
         }
 
         // Disconnect restores in-memory but KEEPS the stash file: if player
@@ -324,15 +341,18 @@ object HotbarMenu {
         fun render() {
             val inv = player.inventory
             val cells = layout()
-            var dirty = false
+            var written = 0
             for (i in 0..8) {
                 val target = buttonItem(i, cells[i])
                 if (!ItemStack.matches(inv.getItem(i), target)) {
                     inv.setItem(i, target)
-                    dirty = true
+                    written++
                 }
             }
-            if (dirty) player.inventoryMenu.broadcastChanges()
+            if (written > 0) {
+                player.inventoryMenu.broadcastChanges()
+                perfCount?.invoke("hotbar.slotWrites", written.toLong())
+            }
         }
 
         private fun buttonItem(index: Int, cell: Cell?): ItemStack {
@@ -446,6 +466,17 @@ object HotbarMenu {
         private fun selectedSlot(): Int = player.inventory.selectedSlot
 
         /** Move the highlight without firing onScrollTo (see [HotbarMenu.selectSlot]). */
+        fun selectedCellKind(): String? = when (layout()[selectedSlot().coerceIn(0, 8)]) {
+            null -> null
+            is Cell.Button -> "button"
+            Cell.Prev -> "prev"
+            Cell.Next -> "next"
+            Cell.Exit -> "exit"
+        }
+
+        fun selectedSlotId(): String? =
+            (layout()[selectedSlot().coerceIn(0, 8)] as? Cell.Button)?.slot?.id
+
         fun selectSilently(index: Int) {
             lastSelected = index
             setSelectedSlot(player, index)
