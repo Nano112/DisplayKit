@@ -130,6 +130,19 @@ object HotbarMenu {
     /** The highlighted button's slot id, or null when a non-button is highlighted. */
     fun selectedSlotId(uuid: UUID): String? = sessions[uuid]?.selectedSlotId()
 
+    /** Menu stack depth: 1 = root page; >1 = a submenu (editor, stepper, ...). */
+    fun stackDepth(uuid: UUID): Int = sessions[uuid]?.depth() ?: 0
+
+    /** The current page's id (null for the root or untagged pages). */
+    fun pageId(uuid: UUID): String? = sessions[uuid]?.currentPageId
+
+    /**
+     * Escape hatch: sneak-press pops to the root; a second sneak-press within
+     * a second closes and restores outright. Frozen menus must always have a
+     * way out that needs no working buttons.
+     */
+    fun sneakReset(uuid: UUID) { sessions[uuid]?.sneakReset() }
+
     /** Optional perf sinks (wired by the host mod, e.g. hardwired's PerfMonitor). */
     @JvmStatic var perfTime: ((String, Long) -> Unit)? = null
     @JvmStatic var perfCount: ((String, Long) -> Unit)? = null
@@ -249,16 +262,29 @@ object HotbarMenu {
         private var stashedSelected = 0
         private var lastSelected = -1
         private var lastPressTick = -10L
+        private var lastSneakTick = Long.MIN_VALUE
         private var lastPressSource = ""
         private var closed = false
         private var sweepCountdown = 0
 
         // ── HotbarHost ──
 
-        override fun push(slots: List<HotbarSlot>) { stack.addLast(Level(slots)); render() }
+        override fun push(slots: List<HotbarSlot>) = push(slots, null)
 
         override fun push(slots: List<HotbarSlot>, pageId: String?) {
-            stack.addLast(Level(slots, pageId = pageId)); render()
+            // Dead-page watchdog: an empty page can never be interacted with
+            if (slots.isEmpty()) {
+                logger.warn("refused to push an EMPTY menu page (pageId={}) for {}", pageId, player.gameProfile.name)
+                return
+            }
+            stack.addLast(Level(slots, pageId = pageId))
+            // A page whose render throws (bad icon, encoder error) would leave
+            // the stack pointing at an invisible level — pop it back off
+            runCatching { render() }.onFailure {
+                logger.error("page render failed (pageId={}) — popping the broken page", pageId, it)
+                stack.removeLast()
+                runCatching { render() }.onFailure { _ -> HotbarMenu.close(player) }
+            }
         }
 
         override val currentPageId: String? get() = stack.lastOrNull()?.pageId
@@ -306,6 +332,10 @@ object HotbarMenu {
             lastSelected = stashedSelected
             writeStashFile(player, stashed, stashedSelected)
             render()
+            // One-time discoverability for the escape hatch
+            player.displayClientMessage(
+                net.minecraft.network.chat.Component.literal("Stuck? Sneak-click resets the menu")
+                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY), true)
         }
 
         /**
@@ -424,7 +454,25 @@ object HotbarMenu {
 
         // ── Interaction ──
 
+        fun depth(): Int = stack.size
+
+        fun sneakReset() {
+            val tick = player.level().server.tickCount.toLong()
+            if (tick - lastSneakTick < 20) {
+                logger.info("sneak-reset x2: closing menu for {}", player.gameProfile.name)
+                HotbarMenu.close(player)
+                return
+            }
+            lastSneakTick = tick
+            logger.info("sneak-reset: popToRoot for {}", player.gameProfile.name)
+            popToRoot()
+            player.displayClientMessage(
+                net.minecraft.network.chat.Component.literal("Menu reset — sneak-click again to exit"), true)
+        }
+
         fun pressSelected(source: String = "arbiter") {
+            // Escape hatch has absolute priority over any button/page state
+            if (player.isShiftKeyDown) { sneakReset(); return }
             val tick = player.level().server.tickCount.toLong()
             val dup = if (source == lastPressSource) tick <= lastPressTick
                 else tick - lastPressTick < CROSS_SOURCE_COOLDOWN_TICKS
@@ -439,7 +487,10 @@ object HotbarMenu {
             when (val cell = layout()[selectedSlot().coerceIn(0, 8)]) {
                 null -> {}
                 is Cell.Button -> if (cell.slot.enabled) runCatching { cell.slot.onSelect(this) }
-                    .onFailure { logger.error("menu button ${cell.slot.id} failed", it) }
+                    .onFailure {
+                        logger.error("menu button ${cell.slot.id} failed (page=${currentPageId ?: "root"}) — recovering to root", it)
+                        runCatching { popToRoot() }.onFailure { _ -> HotbarMenu.close(player) }
+                    }
                 Cell.Prev -> { stack.last().page--; render() }
                 Cell.Next -> { stack.last().page++; render() }
                 Cell.Exit -> pop()
