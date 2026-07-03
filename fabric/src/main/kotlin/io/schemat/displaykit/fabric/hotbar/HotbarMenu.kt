@@ -161,12 +161,30 @@ object HotbarMenu {
             for (session in sessions.values.toList()) session.tick(server)
         }
 
+        // Disconnect restores in-memory but KEEPS the stash file: if player
+        // data was already saved this tick (crash shutdown saves players
+        // BEFORE the disconnect event fires), only join recovery can undo it.
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
-            sessions.remove(handler.player.uuid)?.restore()
+            sessions.remove(handler.player.uuid)?.restore(deleteFile = false)
         }
-        // Crash recovery: a stash file on join means we never restored
+        // Server stopping: restore every open session NOW. Fabric fires this
+        // at the head of MinecraftServer.stopServer, i.e. BEFORE the
+        // "Saving players" pass — so restored hotbars are what gets persisted
+        // even on a crash-initiated shutdown. Files kept as belt-and-braces.
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register { _ ->
+            if (sessions.isNotEmpty()) {
+                logger.info("server stopping — restoring ${sessions.size} open hotbar menu(s)")
+                for (uuid in sessions.keys.toList()) {
+                    sessions.remove(uuid)?.restore(deleteFile = false)
+                }
+            }
+        }
+        // Crash recovery: a stash file on join means the restored state was
+        // never persisted — give the items back. Then, regardless of stash,
+        // purge any button-tagged items that survived in the saved inventory.
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
             recoverStash(server, handler.player)
+            sweepTaggedItems(handler.player)
         }
         // Restore BEFORE vanilla death drops so the real items drop, not buttons
         ServerLivingEntityEvents.ALLOW_DEATH.register { entity, _, _ ->
@@ -241,21 +259,36 @@ object HotbarMenu {
 
         fun stashAndShow() {
             val inv = player.inventory
-            stashed = (0..8).map { inv.getItem(it).copy() }
+            // A stash may never contain button items (would re-inject them on
+            // restore); anything tagged in the hotbar at open time is leftover
+            // from a failed cleanup and gets stashed as empty.
+            stashed = (0..8).map { i ->
+                val st = inv.getItem(i)
+                if (buttonIndexOf(st) != null) ItemStack.EMPTY else st.copy()
+            }
             stashedSelected = selectedSlot()
             lastSelected = stashedSelected
             writeStashFile(player, stashed, stashedSelected)
             render()
         }
 
-        fun restore() {
+        /**
+         * @param deleteFile normal closes delete the crash stash; DISCONNECT /
+         *   SERVER_STOPPING restores KEEP it — if the player's data was saved
+         *   before this restore ran (exactly what happens in a crash-shutdown:
+         *   saveAll runs first, the disconnect event after), the buttons are
+         *   already persisted and only the join-side recovery can fix them.
+         *   Re-applying an already-restored stash on join is a no-op, so
+         *   keeping the file is always safe.
+         */
+        fun restore(deleteFile: Boolean = true) {
             if (closed) return
             closed = true
             val inv = player.inventory
             for (i in 0..8) inv.setItem(i, if (i < stashed.size) stashed[i] else ItemStack.EMPTY)
             setSelectedSlot(player, stashedSelected)
             player.inventoryMenu.broadcastChanges()
-            deleteStashFile(player.level().server, player.uuid)
+            if (deleteFile) deleteStashFile(player.level().server, player.uuid)
             runCatching { onClosed?.invoke() }
         }
 
@@ -279,11 +312,27 @@ object HotbarMenu {
             return cells
         }
 
+        /**
+         * Delta-render: only slots whose content actually differs are written.
+         * Every real slot write is observed by vanilla's per-tick
+         * `broadcastChanges` and fires `InventoryChangeTrigger` → recipe/
+         * advancement awards — a nested-trigger path with a known CME race
+         * (crash-2026-07-03_11.29.32). Rewriting identical buttons on every
+         * page change/scroll hammered that path; writing only true deltas
+         * shrinks the trigger surface to the unavoidable minimum.
+         */
         fun render() {
             val inv = player.inventory
             val cells = layout()
-            for (i in 0..8) inv.setItem(i, buttonItem(i, cells[i]))
-            player.inventoryMenu.broadcastChanges()
+            var dirty = false
+            for (i in 0..8) {
+                val target = buttonItem(i, cells[i])
+                if (!ItemStack.matches(inv.getItem(i), target)) {
+                    inv.setItem(i, target)
+                    dirty = true
+                }
+            }
+            if (dirty) player.inventoryMenu.broadcastChanges()
         }
 
         private fun buttonItem(index: Int, cell: Cell?): ItemStack {
@@ -344,7 +393,8 @@ object HotbarMenu {
             if (closed) return
             if (player.isRemoved || player.hasDisconnected()) {
                 HotbarMenu.sessions.remove(player.uuid)
-                restore()
+                // Player may already be saved — keep the stash for join recovery
+                restore(deleteFile = false)
                 return
             }
 
@@ -355,25 +405,21 @@ object HotbarMenu {
                     ?.let { runCatching { it(this) } }
             }
 
-            heal()
+            // Self-heal + purge every few ticks, not every tick: render() is
+            // delta-only, so drift is rare, and each inventory write feeds the
+            // advancement-trigger path we're minimizing (see render()).
             if (--sweepCountdown <= 0) {
-                sweepCountdown = 10
+                sweepCountdown = 5
+                heal()
                 vacuumDroppedButtons()
             }
         }
 
-        /** Re-impose menu items in 0-8; purge tagged items everywhere else. */
+        /** Re-impose menu items in 0-8 (delta only); purge tagged items everywhere else. */
         private fun heal() {
+            render()
             val inv = player.inventory
-            val cells = layout()
             var dirty = false
-            for (i in 0..8) {
-                val current = inv.getItem(i)
-                if (buttonIndexOf(current) != i || (current.isEmpty && cells[i] != null)) {
-                    inv.setItem(i, buttonItem(i, cells[i]))
-                    dirty = true
-                }
-            }
             for (i in 9 until inv.containerSize) {
                 if (buttonIndexOf(inv.getItem(i)) != null) { inv.setItem(i, ItemStack.EMPTY); dirty = true }
             }
@@ -441,6 +487,29 @@ object HotbarMenu {
         runCatching { Files.deleteIfExists(stashFile(server, uuid)) }
     }
 
+    /**
+     * Join-time defense in depth: delete every button-tagged item anywhere in
+     * the saved inventory (main 36 + armor + offhand). Tagged items must never
+     * survive as real items, stash or no stash.
+     */
+    private fun sweepTaggedItems(player: ServerPlayer) {
+        val inv = player.inventory
+        var purged = 0
+        for (i in 0 until inv.containerSize) {
+            val st = inv.getItem(i)
+            if (st.isEmpty) continue
+            val tag = st.get(DataComponents.CUSTOM_DATA)?.copyTag() ?: continue
+            if (tag.contains(TAG_NONCE)) {
+                inv.setItem(i, ItemStack.EMPTY)
+                purged++
+            }
+        }
+        if (purged > 0) {
+            player.inventoryMenu.broadcastChanges()
+            logger.info("purged $purged stray menu button item(s) from ${player.gameProfile.name}'s inventory on join")
+        }
+    }
+
     /** A stash file on join = we crashed mid-menu; give the items back. */
     private fun recoverStash(server: MinecraftServer, player: ServerPlayer) {
         val file = stashFile(server, player.uuid)
@@ -448,13 +517,22 @@ object HotbarMenu {
         runCatching {
             val tag = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap())
             val ops = player.registryAccess().createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE)
+            // Delta-apply: files also survive ORDERLY disconnects (see the
+            // DISCONNECT handler), where the restore usually persisted fine —
+            // then this is a no-op and shouldn't churn slots or log.
+            var changed = 0
             for (i in 0..8) {
                 val stack = tag.read("s$i", ItemStack.OPTIONAL_CODEC, ops).orElse(ItemStack.EMPTY)
-                player.inventory.setItem(i, stack)
+                if (!ItemStack.matches(player.inventory.getItem(i), stack)) {
+                    player.inventory.setItem(i, stack)
+                    changed++
+                }
             }
-            setSelectedSlot(player, tag.getIntOr("sel", 0))
-            player.inventoryMenu.broadcastChanges()
-            logger.info("recovered stashed hotbar for ${player.gameProfile.name}")
+            if (changed > 0) {
+                setSelectedSlot(player, tag.getIntOr("sel", 0))
+                player.inventoryMenu.broadcastChanges()
+                logger.info("recovered stashed hotbar for ${player.gameProfile.name} ($changed slot(s))")
+            }
         }.onFailure { logger.warn("stash recovery failed for ${player.uuid}", it) }
         deleteStashFile(server, player.uuid)
     }
