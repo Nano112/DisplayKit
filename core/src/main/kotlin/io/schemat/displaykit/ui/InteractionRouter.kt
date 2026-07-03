@@ -9,8 +9,20 @@ object InteractionRouter {
     private val activeUIs = ConcurrentHashMap<UUID, MutableList<FloatingUI>>()
     private val activeOverlays = ConcurrentHashMap<UUID, MutableList<WorldOverlay>>()
     private val debugPlayers = ConcurrentHashMap.newKeySet<UUID>()
-    private val lastClickTime = ConcurrentHashMap<UUID, Long>()
+    private val lastClickTime = ConcurrentHashMap<String, Long>()
     private val lastConsumedLeftClick = ConcurrentHashMap<UUID, Long>()
+
+    /**
+     * Players whose FloatingUIs should NOT receive clicks — set while a tool
+     * flow (Place/Move/Edit) is active so panels hovering over buildings
+     * (e.g. the island terminal above the pavilion) can't swallow the clicks
+     * meant for the world. Overlays still dispatch normally.
+     */
+    private val uiSuppressed = ConcurrentHashMap.newKeySet<UUID>()
+
+    fun setUiSuppressed(playerUUID: UUID, suppressed: Boolean) {
+        if (suppressed) uiSuppressed.add(playerUUID) else uiSuppressed.remove(playerUUID)
+    }
     private const val CLICK_COOLDOWN_MS = 200L
     private const val CONSUMED_WINDOW_MS = 100L
 
@@ -86,7 +98,7 @@ object InteractionRouter {
      * Debounces, then raycasts all UIs and overlays, dispatching to the closest hit. Returns true if consumed.
      */
     fun onLeftClick(playerUUID: UUID): Boolean {
-        if (!tryClick(playerUUID)) return false
+        if (!tryClick(playerUUID, isRightClick = false)) return false
         val consumed = dispatchClick(playerUUID, isRightClick = false)
         if (consumed) {
             lastConsumedLeftClick[playerUUID] = System.currentTimeMillis()
@@ -108,15 +120,22 @@ object InteractionRouter {
      * Debounces, then raycasts all UIs and overlays, dispatching to the closest hit. Returns true if consumed.
      */
     fun onRightClick(playerUUID: UUID): Boolean {
-        if (!tryClick(playerUUID)) return false
+        if (!tryClick(playerUUID, isRightClick = true)) return false
         return dispatchClick(playerUUID, isRightClick = true)
     }
 
-    /** Returns true if click is allowed (not debounced). */
-    private fun tryClick(playerUUID: UUID): Boolean {
+    /**
+     * Returns true if click is allowed (not debounced). Cooldowns are
+     * PER SIDE (a right-click must not eat the following left-click) and the
+     * timestamp is recorded ONLY when allowed — recording rejected attempts
+     * perpetually renewed the window, eating whole click bursts.
+     */
+    private fun tryClick(playerUUID: UUID, isRightClick: Boolean): Boolean {
+        val key = "$playerUUID:${if (isRightClick) "R" else "L"}"
         val now = System.currentTimeMillis()
-        val last = lastClickTime.put(playerUUID, now) ?: 0L
+        val last = lastClickTime[key] ?: 0L
         val allowed = (now - last) >= CLICK_COOLDOWN_MS
+        if (allowed) lastClickTime[key] = now
         if (!allowed && isDebug(playerUUID)) {
             logger.info("[debug $playerUUID] click DEBOUNCED (${now - last}ms)")
         }
@@ -132,8 +151,8 @@ object InteractionRouter {
         var closestAction: (() -> Unit)? = null
         var closestLabel = ""
 
-        // Collect UI hits
-        val uis = activeUIs[playerUUID]
+        // Collect UI hits (skipped while a tool flow owns the clicks)
+        val uis = if (playerUUID in uiSuppressed) null else activeUIs[playerUUID]
         if (uis != null) {
             for (ui in uis.toList()) {
                 if (ui.isDestroyed()) continue
@@ -172,7 +191,9 @@ object InteractionRouter {
 
     /** Clean up per-player state on disconnect. */
     fun cleanupPlayer(playerUUID: UUID) {
-        lastClickTime.remove(playerUUID)
+        lastClickTime.remove("$playerUUID:L")
+        lastClickTime.remove("$playerUUID:R")
+        uiSuppressed.remove(playerUUID)
         lastConsumedLeftClick.remove(playerUUID)
         debugPlayers.remove(playerUUID)
     }

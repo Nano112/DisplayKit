@@ -85,6 +85,29 @@ public class InteractPacketMixin {
     @Inject(method = "handleInteract", at = @At("HEAD"), cancellable = true)
     private void displaykit$onInteract(ServerboundInteractPacket packet, CallbackInfo ci) {
         if (InteractionRouter.INSTANCE.isTargetingInteractive(player.getUUID())) {
+            // Entity-aimed clicks arrive as INTERACT packets, not use/swing —
+            // dispatch them so left-click (ATTACK) works on panels too. The
+            // per-side debounce dedupes against the swing-packet path.
+            packet.dispatch(new ServerboundInteractPacket.Handler() {
+                @Override
+                public void onInteraction(net.minecraft.world.InteractionHand hand) {
+                    if (hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
+                        InteractionRouter.INSTANCE.onRightClick(player.getUUID());
+                    }
+                }
+
+                @Override
+                public void onInteraction(net.minecraft.world.InteractionHand hand, net.minecraft.world.phys.Vec3 pos) {
+                    if (hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
+                        InteractionRouter.INSTANCE.onRightClick(player.getUUID());
+                    }
+                }
+
+                @Override
+                public void onAttack() {
+                    InteractionRouter.INSTANCE.onLeftClick(player.getUUID());
+                }
+            });
             ci.cancel();
         }
     }
