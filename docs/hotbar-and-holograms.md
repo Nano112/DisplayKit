@@ -69,3 +69,18 @@ holo.destroy()
 - **Per-player**: packet-only, viewer-set based (nothing enters the world),
   same idiom as virtual labels.
 - `localBounds()` exposes the pure geometry for tests/placement math.
+
+## Sprite text components (`Sprites`)
+
+`io.schemat.displaykit.fabric.text.Sprites` builds atlas-sprite text
+components (MC 1.21.9+ `object` content type) — 8×8 inline icons that work in
+chat, action bars, item names/lore, titles, and scoreboard lines:
+
+- `Sprites.gui("recipe_book/page_forward")` — any GUI-atlas sprite
+- `Sprites.atlas(atlasId, spriteId)` — any atlas
+- `pageForward() / pageBackward() / cross()` — verified vanilla sprites,
+  used by HotbarMenu's Prev/Next/Exit buttons
+- `rmb() / lmb() / scroll()` — input badges (vanilla has no mouse sprites,
+  so these are compact `[RMB]`-style text badges; one language everywhere)
+
+Factories return fresh components per call — never share component instances.

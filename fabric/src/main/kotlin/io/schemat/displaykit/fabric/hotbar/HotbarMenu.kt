@@ -366,15 +366,27 @@ object HotbarMenu {
                     it.set(DataComponents.CUSTOM_NAME, name)
                 }
                 Cell.Prev -> ItemStack(Items.ARROW).also {
-                    it.set(DataComponents.CUSTOM_NAME, Component.literal("◀ Prev (${stack.last().page + 1})").withStyle { s -> s.withItalic(false) })
+                    it.set(
+                        DataComponents.CUSTOM_NAME,
+                        io.schemat.displaykit.fabric.text.Sprites.pageBackward()
+                            .append(Component.literal(" Prev (${stack.last().page + 1})"))
+                            .withStyle { s -> s.withItalic(false) }
+                    )
                 }
                 Cell.Next -> ItemStack(Items.ARROW).also {
-                    it.set(DataComponents.CUSTOM_NAME, Component.literal("Next ▶").withStyle { s -> s.withItalic(false) })
+                    it.set(
+                        DataComponents.CUSTOM_NAME,
+                        Component.literal("Next ")
+                            .append(io.schemat.displaykit.fabric.text.Sprites.pageForward())
+                            .withStyle { s -> s.withItalic(false) }
+                    )
                 }
                 Cell.Exit -> ItemStack(if (stack.size > 1) Items.RED_CONCRETE else Items.BARRIER).also {
                     it.set(
                         DataComponents.CUSTOM_NAME,
-                        Component.literal(if (stack.size > 1) "Back" else "Exit").withStyle { s -> s.withItalic(false) }
+                        io.schemat.displaykit.fabric.text.Sprites.cross()
+                            .append(Component.literal(if (stack.size > 1) " Back" else " Exit"))
+                            .withStyle { s -> s.withItalic(false) }
                     )
                 }
             }
