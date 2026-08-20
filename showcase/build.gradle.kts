@@ -40,6 +40,11 @@ loom {
             configName = "Showcase Server"
             ideConfigGenerated(true)
             runDir("run")
+            // DisplayKit's pack HTTP server defaults to 8080, which commonly
+            // collides with Docker and other local services. A collision is
+            // quiet but fatal here: the pack never serves, so every sprite
+            // glyph renders as a missing-glyph box.
+            vmArg("-Ddisplaykit.pack.port=8099")
         }
     }
 }
