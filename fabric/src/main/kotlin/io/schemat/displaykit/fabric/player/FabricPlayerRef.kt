@@ -5,6 +5,7 @@ import io.schemat.displaykit.platform.PlayerRef
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextComponent
 import net.minecraft.network.chat.Component
+import net.minecraft.network.chat.FontDescription
 import net.minecraft.network.chat.MutableComponent
 import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.TextColor
@@ -116,38 +117,14 @@ class FabricPlayerRef(
         }
 
         /**
-         * Apply font to style, handling version differences via reflection.
-         * MC 1.21.11+ uses FontDescription instead of direct Identifier.
+         * Apply a font to a style.
+         *
+         * MC 1.21.11's `Style.withFont` takes a `FontDescription`, not an `Identifier`.
+         * `FontDescription` is an interface; a plain resource-pack font is the
+         * `FontDescription.Resource(Identifier)` record.
          */
         private fun applyFont(style: Style, fontId: Identifier): Style {
-            return try {
-                // Try direct Identifier approach first (older MC versions)
-                val method = Style::class.java.getMethod("withFont", Identifier::class.java)
-                method.invoke(style, fontId) as Style
-            } catch (e: NoSuchMethodException) {
-                // Newer versions may use FontDescription or ResourceLocation
-                try {
-                    val fontDescClass = Class.forName("net.minecraft.network.chat.FontDescription")
-                    val ofMethod = fontDescClass.getMethod("of", Identifier::class.java)
-                    val fontDesc = ofMethod.invoke(null, fontId)
-                    val withFontMethod = Style::class.java.getMethod("withFont", fontDescClass)
-                    withFontMethod.invoke(style, fontDesc) as Style
-                } catch (e2: Exception) {
-                    // Last resort: try ResourceLocation (if different from Identifier)
-                    try {
-                        val rlClass = Class.forName("net.minecraft.resources.ResourceLocation")
-                        val parseMethod = rlClass.getMethod("parse", String::class.java)
-                        val rl = parseMethod.invoke(null, fontId.toString())
-                        val withFontMethod = Style::class.java.getMethod("withFont", rlClass)
-                        withFontMethod.invoke(style, rl) as Style
-                    } catch (e3: Exception) {
-                        // Fall back to original style without font
-                        style
-                    }
-                }
-            } catch (e: Exception) {
-                style
-            }
+            return style.withFont(FontDescription.Resource(fontId))
         }
 
         /**

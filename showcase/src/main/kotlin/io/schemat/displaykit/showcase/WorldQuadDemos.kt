@@ -88,11 +88,27 @@ object WorldQuadDemos {
             )
             val s = SpriteGeometry.scaleFor(face, 1f)
             val t = SpriteGeometry.centeringTranslation(s)
+            // A plain text_display's content faces its local -Z (a viewer
+            // looking in +Z sees the front) before rotation. But this quad
+            // renders sprite/atlas content (Component.object(AtlasSprite)),
+            // which -- verified empirically against the actual rotation math
+            // below -- faces the opposite way: local +Z. Rotating each face
+            // by its "natural" yaw/pitch (the values that would be correct
+            // for -Z-facing text content) therefore lands every face's front
+            // pointing at the cube's centre instead of away from it.
+            //
+            // Composing rotate().translate().scale() yields R*T*S, so R is
+            // applied last -- only R (not the centering translation T)
+            // decides which way the front ends up facing. Correcting for the
+            // +Z front takes one fixed 180 degree yaw addition plus a pitch
+            // negation (both needed together: yaw+180 alone flips the four
+            // side faces but leaves up/down still inward, since Y-then-X
+            // composition doesn't commute).
             quad.transformation = Mat4f(
                 Matrix4f()
                     .rotate(Quaternionf().rotationYXZ(
-                        Math.toRadians(yaw.toDouble()).toFloat(),
-                        Math.toRadians(pitch.toDouble()).toFloat(),
+                        Math.toRadians((yaw + 180f).toDouble()).toFloat(),
+                        Math.toRadians((-pitch).toDouble()).toFloat(),
                         0f
                     ))
                     .translate(t.x, t.y, t.z)

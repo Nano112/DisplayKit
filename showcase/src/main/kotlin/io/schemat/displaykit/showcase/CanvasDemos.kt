@@ -2,12 +2,14 @@ package io.schemat.displaykit.showcase
 
 import io.schemat.displaykit.DisplayKit
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration
+import io.schemat.displaykit.math.Mat4f
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.pack.SpacingFontProvider
 import io.schemat.displaykit.pack.SpriteFontProvider
 import io.schemat.displaykit.render.Billboard
 import io.schemat.displaykit.render.Brightness
 import io.schemat.displaykit.render.DkColor
+import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.render.VirtualTextDisplay
 import io.schemat.displaykit.sprite.SpriteCanvas
 import io.schemat.displaykit.sprite.SpriteGlyphs
@@ -15,6 +17,7 @@ import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
+import org.joml.Matrix4f
 
 /**
  * `/dk demo terminal` and `/dk demo grid` — the compositor render mode.
@@ -22,6 +25,19 @@ import net.minecraft.server.level.ServerPlayer
 object CanvasDemos {
 
     private const val LIFETIME_TICKS = 20L * 60
+
+    // A bare VirtualTextDisplay renders at TextMetrics.PIXEL_SIZE world units
+    // per canvas pixel (transformation scale 1) -- far too wide for these
+    // demo canvases (320px/400px). Derive a transformation scale from a
+    // target on-screen width instead, the same way GridMapTab does.
+    private const val TERMINAL_TARGET_WIDTH_BLOCKS = 4f
+    private const val GRID_TARGET_WIDTH_BLOCKS = 3f
+
+    private fun scaleFor(canvas: SpriteCanvas, targetWidthBlocks: Float): Float =
+        targetWidthBlocks / (canvas.widthPx * TextMetrics.PIXEL_SIZE)
+
+    private fun transformFor(scale: Float): Mat4f =
+        Mat4f(Matrix4f().scale(scale, scale, scale))
 
     // Pinned to the same sprite GridMapTab uses: vanilla ships no small
     // greyscale sprite, and glyph tint is multiplicative, so only a uniform
@@ -55,9 +71,13 @@ object CanvasDemos {
             position = Vec3d(player.x, player.y + 2.0, player.z + 4.0)
             text = canvas.toTextComponent()
             billboard = Billboard.CENTER
-            backgroundColor = DkColor(200, 15, 20, 18)
+            // Alpha 100-149 and 200-249 are DkColor shader sentinels (glass /
+            // corner-radius, see DkColor.withGlass / withCornerRadius) -- 190
+            // sits outside both.
+            backgroundColor = DkColor(190, 15, 20, 18)
             brightness = Brightness.FULL
             hasShadow = false
+            transformation = transformFor(scaleFor(canvas, TERMINAL_TARGET_WIDTH_BLOCKS))
         }
         spawn(display, player)
         player.sendSystemMessage(Component.literal("Terminal: 1 entity for ${lines.size} lines."))
@@ -102,6 +122,7 @@ object CanvasDemos {
             backgroundColor = DkColor.TRANSPARENT
             brightness = Brightness.FULL
             hasShadow = false
+            transformation = transformFor(scaleFor(canvas, GRID_TARGET_WIDTH_BLOCKS))
         }
         spawn(display, player)
 

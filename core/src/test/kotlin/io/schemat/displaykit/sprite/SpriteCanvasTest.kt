@@ -149,4 +149,54 @@ class SpriteCanvasTest {
             c.draw(entry("dot"), x = 0, y = -1)
         }
     }
+
+    // --- Row model (text() now honours y, quantised to TextMetrics.LINE_HEIGHT_PX) ---
+
+    @Test
+    fun itemsOnDifferentRowsAreSeparatedByANewline() {
+        val c = SpriteCanvas(64, 64)
+        c.text("a", x = 0, y = 0)
+        c.text("b", x = 0, y = 10) // row 1
+        val children = c.toTextComponent().children
+        assertEquals(listOf("a", "\n", "b"), children.map { it.text })
+    }
+
+    @Test
+    fun emptyIntermediateRowsStillEmitNewlines() {
+        // Items in rows 0 and 3 (y=30): rows 1 and 2 have no items but must
+        // still each contribute a newline, or row 3's vertical position
+        // collapses upward.
+        val c = SpriteCanvas(64, 64)
+        c.text("a", x = 0, y = 0)
+        c.text("b", x = 0, y = 30)
+        val children = c.toTextComponent().children
+        assertEquals(listOf("a", "\n", "\n", "\n", "b"), children.map { it.text })
+    }
+
+    @Test
+    fun cursorXResetsAtTheStartOfEachRow() {
+        // Row 0 ends with a large cursorX. Row 1 places an item at x=0 —
+        // if the cursor carried over, that would require a large negative
+        // spacing correction; it must instead emit no leading advance at all.
+        val c = SpriteCanvas(64, 64)
+        c.text("a very long line of text indeed", x = 0, y = 0)
+        c.text("row1", x = 0, y = 10)
+
+        val allChildren = c.toTextComponent().children
+        val newlineIndex = allChildren.indexOfFirst { it.text == "\n" }
+        val row1Children = allChildren.subList(newlineIndex + 1, allChildren.size)
+
+        assertEquals(1, row1Children.size)
+        assertEquals("row1", row1Children.single().text)
+    }
+
+    @Test
+    fun spriteYRequestsAscentOffsetFromTheRowRemainder() {
+        // y=16 with LINE=10 -> row 1 (baseline 10) + remainder 6 -> ascent
+        // offset -6, landing pixel-exact at 16.
+        val c = SpriteCanvas(64, 64)
+        c.draw(entry("dot"), x = 0, y = 16)
+        val variant = SpriteGlyphs.requested().single()
+        assertEquals(-6, variant.yOffset)
+    }
 }

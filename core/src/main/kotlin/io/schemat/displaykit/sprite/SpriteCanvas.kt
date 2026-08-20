@@ -74,6 +74,10 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     /**
      * One placed item, ready to be flattened.
      *
+     * @param y The item's canvas Y, unquantised. [toTextComponent] derives its
+     *   row from this (`y / TextMetrics.LINE_HEIGHT_PX`) — sprite items have
+     *   already baked their within-row remainder into [content] via
+     *   [SpriteGlyphs] ascent, at draw() time.
      * @param advanceWidth How far the text cursor moves once this item is
      *   emitted — i.e. the pixel position immediately after it. For a sprite
      *   glyph this is `entry.width + 1`, matching the client's bitmap glyph
@@ -84,6 +88,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         val content: String,
         val font: String?,
         val x: Int,
+        val y: Int,
         val advanceWidth: Int,
         val tint: DkColor?
     )
@@ -94,11 +99,17 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * Draw [entry] with its top-left at ([x], [y]) in canvas pixels, y growing
      * downward.
      *
+     * [y] is split into a row (`y / TextMetrics.LINE_HEIGHT_PX`, handled by
+     * [toTextComponent]) and a within-row remainder (`y % LINE_HEIGHT_PX`),
+     * which is baked into the glyph's ascent immediately so the sprite lands
+     * pixel-exact regardless of which row it falls in.
+     *
      * @throws IllegalArgumentException if [entry] is animated.
      * @throws IllegalArgumentException if [y] is negative. `draw` shifts the
-     *   glyph's baked `ascent` down by [y] pixels (see [SpriteGlyphs]), and
-     *   upward shift is not representable — `ascent <= height` is
-     *   client-enforced and already sits at its maximum when `y = 0`.
+     *   glyph's baked `ascent` down by [y]'s remainder (see [SpriteGlyphs]),
+     *   and upward shift is not representable — `ascent <= height` is
+     *   client-enforced and already sits at its maximum when the remainder
+     *   is `0`.
      */
     fun draw(entry: SpriteEntry, x: Int, y: Int, tint: DkColor? = null) {
         require(!entry.animated) {
@@ -110,10 +121,12 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
                 "the top of the canvas), but got y=$y for ${entry.id}."
         }
         if (tint != null) SpriteDiagnostics.checkTintable(entry)
+        val remainder = y % TextMetrics.LINE_HEIGHT_PX
         items += Item(
-            content = SpriteGlyphs.charsFor(entry, -y),
+            content = SpriteGlyphs.charsFor(entry, -remainder),
             font = SpriteGlyphs.FONT_ID,
             x = x,
+            y = y,
             advanceWidth = entry.width + 1,
             tint = tint
         )
@@ -122,15 +135,20 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     /**
      * Draw literal text at ([x], [y]).
      *
-     * Text has no per-glyph `ascent` mechanism, so [y] does not move it
-     * vertically — everything the canvas draws lands on one line in one text
-     * display. The parameter is kept for a uniform `draw`/`text` call shape.
+     * Text has no per-glyph `ascent` mechanism, so within a row it cannot
+     * shift vertically — [y] is quantised to
+     * `TextMetrics.LINE_HEIGHT_PX` (its row, `y / LINE_HEIGHT_PX`) and the
+     * text always sits at that row's baseline. Sprites drawn via [draw] are
+     * pixel-exact because their glyph ascent absorbs the remainder; text
+     * cannot do the same, so pick `y` values that are multiples of
+     * `TextMetrics.LINE_HEIGHT_PX` when exact placement matters.
      */
     fun text(s: String, x: Int, y: Int, tint: DkColor? = null) {
         items += Item(
             content = s,
             font = null,
             x = x,
+            y = y,
             advanceWidth = TextMetrics.textWidthPx(s),
             tint = tint
         )
@@ -139,31 +157,44 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     fun clear() = items.clear()
 
     /**
-     * Flatten to a single component.
+     * Flatten to a single component using a row model.
      *
-     * Items are sorted by `x` alone (stable — ties keep insertion order) and
-     * strung along one running cursor. The gap between the cursor and each
-     * item's `x` is closed with a [Spacing] advance, which is allowed to go
-     * negative: a glyph's advance exceeds its drawn width by 1, so touching
-     * or overlapping sprites correct the cursor backward.
+     * Each item belongs to row `item.y / TextMetrics.LINE_HEIGHT_PX`. Rows
+     * are emitted in ascending order, separated by a single `"\n"` child —
+     * including rows with no items of their own, since skipping them would
+     * collapse the vertical gap they represent.
+     *
+     * Within a row, items are sorted by `x` alone (stable — ties keep
+     * insertion order) and strung along a cursor that resets to `0` at the
+     * start of every row. The gap between the cursor and each item's `x` is
+     * closed with a [Spacing] advance, which is allowed to go negative: a
+     * glyph's advance exceeds its drawn width by 1, so touching or
+     * overlapping sprites correct the cursor backward.
      */
     fun toTextComponent(): TextComponent {
         if (items.isEmpty()) return TextComponent.EMPTY
 
-        val children = mutableListOf<TextComponent>()
-        var cursorX = 0
+        val byRow = items.groupBy { it.y / TextMetrics.LINE_HEIGHT_PX }
+        val maxRow = byRow.keys.max()
 
-        for (item in items.sortedBy { it.x }) {
-            val gap = item.x - cursorX
-            if (gap != 0) {
-                children += TextComponent(text = Spacing.advance(gap), font = Spacing.FONT_ID)
+        val children = mutableListOf<TextComponent>()
+        for (row in 0..maxRow) {
+            if (row > 0) {
+                children += TextComponent(text = "\n")
             }
-            children += TextComponent(
-                text = item.content,
-                font = item.font,
-                color = item.tint
-            )
-            cursorX = item.x + item.advanceWidth
+            var cursorX = 0
+            for (item in byRow[row].orEmpty().sortedBy { it.x }) {
+                val gap = item.x - cursorX
+                if (gap != 0) {
+                    children += TextComponent(text = Spacing.advance(gap), font = Spacing.FONT_ID)
+                }
+                children += TextComponent(
+                    text = item.content,
+                    font = item.font,
+                    color = item.tint
+                )
+                cursorX = item.x + item.advanceWidth
+            }
         }
 
         return TextComponent(children = children)
