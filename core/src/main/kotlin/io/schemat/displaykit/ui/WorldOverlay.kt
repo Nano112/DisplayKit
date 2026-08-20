@@ -27,8 +27,8 @@ data class OverlayCell(
     val worldY: Double,
     val worldZ: Double,
     val cellSize: Float,
-    val material: BlockStateRef,
-    val hoverMaterial: BlockStateRef? = null,
+    val material: SurfaceMaterial,
+    val hoverMaterial: SurfaceMaterial? = null,
     val interactive: Boolean = false
 )
 
@@ -48,9 +48,34 @@ class WorldOverlay(
     var onCellClick: ((key: String, isRightClick: Boolean) -> Unit)? = null
 
     private class OverlayEntity(
-        val entity: VirtualBlockDisplay,
+        var entity: VirtualEntity,
         var cell: OverlayCell
     )
+
+    private fun materialEntity(cell: OverlayCell, material: SurfaceMaterial): VirtualEntity =
+        when (material) {
+            is SurfaceMaterial.Block -> VirtualBlockDisplay().apply {
+                position = Vec3d(cell.worldX, cell.worldY, cell.worldZ)
+                blockState = material.state
+                brightness = Brightness(15, 15)
+            }
+            is SurfaceMaterial.Sprite -> {
+                val entry = io.schemat.displaykit.sprite.SpriteIndex.bundled.get(material.id)
+                    ?: error("Unknown sprite ${material.id}")
+                io.schemat.displaykit.sprite.SpriteDisplay.create(
+                    entry,
+                    Vec3d(cell.worldX, cell.worldY, cell.worldZ)
+                ).apply {
+                    material.tint?.let { text = text.withColor(it) }
+                }
+            }
+            is SurfaceMaterial.Solid -> VirtualTextDisplay().apply {
+                position = Vec3d(cell.worldX, cell.worldY, cell.worldZ)
+                text = TextComponent.of(" ")
+                backgroundColor = material.color
+                brightness = Brightness(15, 15)
+            }
+        }
 
     fun start() {
         tickTask = platform.scheduler.scheduleRepeating(1L, 1L, Runnable {
@@ -193,22 +218,21 @@ class WorldOverlay(
                 // Spawn new entity with scale-up animation
                 spawnCell(key, cell, viewers)
             } else if (existing.cell.material != cell.material) {
-                // Material changed — update block state
+                // Material changed — a block display and a text display are
+                // different entity types, so a general material change swaps
+                // the entity. destroy the old one and respawn.
                 existing.cell = cell
-                val isHovered = key == hoveredKey && cell.hoverMaterial != null
-                existing.entity.blockState = if (isHovered) cell.hoverMaterial!! else cell.material
-                platform.packetSender.updateMetadata(existing.entity, viewers)
+                platform.packetSender.destroyEntities(listOf(existing.entity.entityId), viewers)
+                activeEntities.remove(key)
+                spawnCell(key, cell, viewers)
             }
         }
     }
 
     private fun spawnCell(key: String, cell: OverlayCell, viewers: Collection<UUID>) {
-        val entity = VirtualBlockDisplay()
-        entity.position = Vec3d(cell.worldX, cell.worldY, cell.worldZ)
-        entity.blockState = cell.material
-        entity.brightness = Brightness(15, 15)
+        val entity = materialEntity(cell, cell.material)
 
-        // Start small for scale-up animation
+        // Start small, then interpolate to full size.
         entity.transformation = Mat4f.scaling(0.1f, 0.02f, 0.1f)
         entity.interpolationDuration = 0
         entity.startInterpolation = 0
@@ -216,13 +240,44 @@ class WorldOverlay(
         platform.packetSender.spawnEntity(entity, viewers)
         platform.packetSender.updateMetadata(entity, viewers)
 
-        // Immediately set target scale with interpolation for smooth animation
-        entity.transformation = Mat4f.scaling(cell.cellSize, 0.02f, cell.cellSize)
-        entity.interpolationDuration = 3
-        entity.startInterpolation = 0
-        platform.packetSender.updateMetadata(entity, viewers)
+        if (entity is VirtualBlockDisplay) {
+            entity.transformation = Mat4f.scaling(cell.cellSize, 0.02f, cell.cellSize)
+            entity.interpolationDuration = 3
+            entity.startInterpolation = 0
+            platform.packetSender.updateMetadata(entity, viewers)
+        }
 
         activeEntities[key] = OverlayEntity(entity, cell)
+    }
+
+    /**
+     * Swap the material of an active cell's entity, used both for hover and
+     * for cell state changes.
+     *
+     * Block -> block transitions keep the entity in place so `CellGridOverlay`
+     * keeps its 2-tick hover interpolation. Every other transition (a swap
+     * to/from Sprite or Solid) requires a fresh entity, because a block
+     * display and a text display are different entity types.
+     */
+    private fun swapMaterial(key: String, material: SurfaceMaterial, viewers: Set<UUID>) {
+        val oe = activeEntities[key] ?: return
+        val current = oe.entity
+
+        // Block -> block keeps the entity, so the 2-tick interpolation survives.
+        if (current is VirtualBlockDisplay && material is SurfaceMaterial.Block) {
+            current.blockState = material.state
+            current.interpolationDuration = 2
+            current.startInterpolation = 0
+            platform.packetSender.updateMetadata(current, viewers)
+            return
+        }
+
+        platform.packetSender.destroyEntities(listOf(current.entityId), viewers)
+        val replacement = materialEntity(oe.cell, material)
+        replacement.transformation = Mat4f.scaling(oe.cell.cellSize, 0.02f, oe.cell.cellSize)
+        platform.packetSender.spawnEntity(replacement, viewers)
+        platform.packetSender.updateMetadata(replacement, viewers)
+        oe.entity = replacement
     }
 
     private fun updateHover() {
@@ -239,10 +294,7 @@ class WorldOverlay(
             if (oldKey != null) {
                 val oe = activeEntities[oldKey]
                 if (oe != null) {
-                    oe.entity.blockState = oe.cell.material
-                    oe.entity.interpolationDuration = 2
-                    oe.entity.startInterpolation = 0
-                    platform.packetSender.updateMetadata(oe.entity, viewers)
+                    swapMaterial(oldKey, oe.cell.material, viewers)
                 }
             }
 
@@ -250,11 +302,9 @@ class WorldOverlay(
             hoveredKey = newHoveredKey
             if (newHoveredKey != null) {
                 val oe = activeEntities[newHoveredKey]
-                if (oe != null && oe.cell.hoverMaterial != null && oe.cell.interactive) {
-                    oe.entity.blockState = oe.cell.hoverMaterial!!
-                    oe.entity.interpolationDuration = 2
-                    oe.entity.startInterpolation = 0
-                    platform.packetSender.updateMetadata(oe.entity, viewers)
+                val hoverMaterial = oe?.cell?.hoverMaterial
+                if (oe != null && hoverMaterial != null && oe.cell.interactive) {
+                    swapMaterial(newHoveredKey, hoverMaterial, viewers)
                 }
             }
         }

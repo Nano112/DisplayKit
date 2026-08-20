@@ -7,6 +7,7 @@ import io.schemat.displaykit.platform.PlatformProvider
 import io.schemat.displaykit.platform.PlayerRef
 import io.schemat.displaykit.platform.TaskHandle
 import io.schemat.displaykit.render.*
+import io.schemat.displaykit.sprite.SpriteCanvas
 import io.schemat.displaykit.ui.elements.*
 import org.joml.Matrix4f
 import org.joml.Vector4f
@@ -601,6 +602,31 @@ class FloatingUI @JvmOverloads constructor(
         val element = PanelElement(
             ui = this, localOffset = Vec3d(offsetRight, offsetUp, offsetForward),
             width = width, height = height, material = material, rotateToFace = rotateToFace
+        )
+        element.spawn()
+        elements.add(element)
+        return element
+    }
+
+    /**
+     * Add a composited sprite canvas. One entity, however many sprites the
+     * canvas contains — unlike [addPanel], which costs an entity per call.
+     *
+     * @param scale World-unit size of one canvas pixel, applied as the
+     *   display's transformation scale (see [SpriteCanvasElement]). A bare
+     *   scale of 1 renders at `TextMetrics.PIXEL_SIZE` world units per pixel,
+     *   which is normally far larger than intended — callers should derive
+     *   this from a target on-screen width.
+     */
+    fun addSpriteCanvas(
+        offsetRight: Double, offsetUp: Double, offsetForward: Double = 0.1,
+        canvas: SpriteCanvas, scale: Float
+    ): SpriteCanvasElement {
+        val element = SpriteCanvasElement(
+            ui = this,
+            localOffset = Vec3d(offsetRight, offsetUp, offsetForward),
+            canvas = canvas,
+            scale = scale
         )
         element.spawn()
         elements.add(element)
