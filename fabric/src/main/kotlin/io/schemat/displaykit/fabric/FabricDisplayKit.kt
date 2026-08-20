@@ -13,6 +13,8 @@ import io.schemat.displaykit.fabric.state.BlockStateResolver
 import io.schemat.displaykit.pack.PackConfig
 import io.schemat.displaykit.platform.TaskHandle
 import io.schemat.displaykit.render.GlassTrigger
+import io.schemat.displaykit.sprite.SpriteDiagnostics
+import io.schemat.displaykit.sprite.SpriteIndex
 import io.schemat.displaykit.ui.InteractionRouter
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -76,6 +78,12 @@ class FabricDisplayKit : ModInitializer {
             )
 
             DisplayKit.init(platform)
+
+            SpriteDiagnostics.checkVersion(
+                SpriteIndex.bundled,
+                server.serverVersion
+            )
+            if (!enableResourcePack) SpriteDiagnostics.packDisabled()
 
             interactionHandler = FabricInteractionHandler(server)
             interactionHandler?.register()

@@ -97,6 +97,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
             "SpriteCanvas.draw requires y >= 0 (canvas y grows downward from " +
                 "the top of the canvas), but got y=$y for ${entry.id}."
         }
+        if (tint != null) SpriteDiagnostics.checkTintable(entry)
         items += Item(
             content = SpriteGlyphs.charsFor(entry, -y),
             font = SpriteGlyphs.FONT_ID,
