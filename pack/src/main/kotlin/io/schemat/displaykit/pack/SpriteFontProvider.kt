@@ -29,9 +29,17 @@ object SpriteFontProvider : AssetProvider {
             val entry = variant.entry
 
             // ascent <= height is enforced by the client
-            // ("Ascent {} higher than height {}"). Negative is unbounded, so
-            // downward shifts are free and upward shifts are capped.
-            val ascent = (entry.height + variant.yOffset).coerceAtMost(entry.height)
+            // ("Ascent {} higher than height {}"). SpriteGlyphs.codepointFor
+            // already rejects positive yOffset, so this domain is guaranteed
+            // non-positive here — no clamp needed, just a guard against a
+            // future change silently reintroducing an illegal value.
+            val ascent = entry.height + variant.yOffset
+            check(ascent <= entry.height) {
+                "Computed ascent $ascent exceeds height ${entry.height} for " +
+                    "${entry.id} at yOffset ${variant.yOffset} — this should be " +
+                    "unreachable since SpriteGlyphs.codepointFor rejects positive " +
+                    "yOffset."
+            }
 
             providers.add(JsonObject().apply {
                 addProperty("type", "bitmap")

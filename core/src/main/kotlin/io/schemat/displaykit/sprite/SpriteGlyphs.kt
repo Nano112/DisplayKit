@@ -50,11 +50,23 @@ object SpriteGlyphs {
      *
      * @throws IllegalArgumentException if [entry] is animated — a glyph would
      *   render the entire vertical strip rather than one frame.
+     * @throws IllegalArgumentException if [yOffset] is positive — upward
+     *   shift is not representable. The client enforces `ascent <= height`,
+     *   and `yOffset = 0` already puts `ascent` at its maximum (`height`), so
+     *   there is no slack to shift into; a by-reference vanilla texture has
+     *   no padding to exploit either.
      */
     fun codepointFor(entry: SpriteEntry, yOffset: Int = 0): Int {
         require(!entry.animated) {
             "Sprite ${entry.id} is animated and cannot be a font glyph — " +
                 "a glyph renders the whole strip. Use SpriteDisplay instead."
+        }
+        require(yOffset <= 0) {
+            "Sprite ${entry.id} requested yOffset $yOffset, but positive " +
+                "offsets are not supported — ascent <= height is client-enforced " +
+                "and ascent already sits at its maximum (height) when yOffset = 0. " +
+                "Shift the whole composition down instead, or use SpriteDisplay " +
+                "for free positioning."
         }
         return variants.getOrPut(Key(entry.id, yOffset)) {
             check(next <= MAX_CODEPOINT) { "Exhausted Supplementary PUA-A glyph space" }

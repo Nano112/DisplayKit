@@ -60,6 +60,20 @@ class SpriteGlyphsTest {
     }
 
     @Test
+    fun positiveYOffsetIsRejectedRatherThanSilentlyClampedToZero() {
+        // ascent <= height is client-enforced, and yOffset = 0 already puts
+        // ascent at its maximum (height) — there is no upward slack to shift
+        // into, so a positive offset must be an error, not a no-op.
+        val failure = assertFailsWith<IllegalArgumentException> {
+            SpriteGlyphs.codepointFor(entry("a"), yOffset = 4)
+        }
+        assertTrue(
+            failure.message!!.contains("positive"),
+            "expected message to mention positive offsets being unsupported, got: ${failure.message}"
+        )
+    }
+
+    @Test
     fun charsForRoundTripsThroughSurrogatePairs() {
         val e = entry("a")
         val cp = SpriteGlyphs.codepointFor(e, 0)
