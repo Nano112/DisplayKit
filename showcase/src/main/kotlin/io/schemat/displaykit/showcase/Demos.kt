@@ -8,6 +8,6 @@ package io.schemat.displaykit.showcase
  */
 object Demos {
     fun registerAll() {
-        // Populated by Tasks 5-8.
+        WorldQuadDemos.register()
     }
 }

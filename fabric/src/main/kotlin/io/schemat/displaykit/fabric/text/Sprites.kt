@@ -1,5 +1,8 @@
 package io.schemat.displaykit.fabric.text
 
+import io.schemat.displaykit.sprite.SpriteEntry
+import io.schemat.displaykit.sprite.SpriteId
+import io.schemat.displaykit.sprite.SpriteIndex
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.MutableComponent
@@ -30,6 +33,16 @@ object Sprites {
     /** A sprite from the GUI atlas (`textures/gui/sprites/<path>.png`). */
     fun gui(path: String): MutableComponent =
         atlas(GUI, Identifier.withDefaultNamespace(path))
+
+    /** A sprite component for an indexed [SpriteEntry]. */
+    fun forEntry(entry: SpriteEntry): MutableComponent = atlas(
+        Identifier.withDefaultNamespace(entry.id.atlas),
+        Identifier.withDefaultNamespace(entry.id.sprite)
+    )
+
+    /** Look a sprite up by id and build its component, or null if unknown. */
+    fun byId(atlas: String, sprite: String): MutableComponent? =
+        SpriteIndex.bundled.get(SpriteId(atlas, sprite))?.let(::forEntry)
 
     // ── Useful vanilla GUI sprites (verified present in 1.21.11) ────────────
 
