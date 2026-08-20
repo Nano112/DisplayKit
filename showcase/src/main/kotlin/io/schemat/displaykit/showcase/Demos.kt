@@ -10,5 +10,6 @@ object Demos {
     fun registerAll() {
         WorldQuadDemos.register()
         TintDemo.register()
+        CanvasDemos.register()
     }
 }

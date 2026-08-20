@@ -1,0 +1,117 @@
+package io.schemat.displaykit.showcase
+
+import io.schemat.displaykit.DisplayKit
+import io.schemat.displaykit.fabric.pack.FabricPackIntegration
+import io.schemat.displaykit.math.Vec3d
+import io.schemat.displaykit.pack.SpriteFontProvider
+import io.schemat.displaykit.render.Billboard
+import io.schemat.displaykit.render.Brightness
+import io.schemat.displaykit.render.DkColor
+import io.schemat.displaykit.render.VirtualTextDisplay
+import io.schemat.displaykit.sprite.SpriteCanvas
+import io.schemat.displaykit.sprite.SpriteGlyphs
+import io.schemat.displaykit.sprite.SpriteId
+import io.schemat.displaykit.sprite.SpriteIndex
+import net.minecraft.network.chat.Component
+import net.minecraft.server.level.ServerPlayer
+
+/**
+ * `/dk demo terminal` and `/dk demo grid` — the compositor render mode.
+ */
+object CanvasDemos {
+
+    private const val LIFETIME_TICKS = 20L * 60
+
+    fun register() {
+        ShowcaseMod.registerDemo("terminal", ::demoTerminal)
+        ShowcaseMod.registerDemo("grid", ::demoGrid)
+    }
+
+    /** A monospace terminal composed of sprite glyphs, in one entity. */
+    private fun demoTerminal(player: ServerPlayer) {
+        val canvas = SpriteCanvas(widthPx = 320, heightPx = 180)
+        val lines = listOf(
+            "DisplayKit terminal",
+            "composited into ONE text display",
+            "x via spacing advances",
+            "y via per-glyph ascent"
+        )
+        lines.forEachIndexed { row, line ->
+            canvas.text(line, x = 0, y = row * 10, tint = DkColor.fromRGB(0, 255, 136))
+        }
+
+        FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
+        FabricPackIntegration.rebuildAndResendToAll()
+
+        val display = VirtualTextDisplay().apply {
+            position = Vec3d(player.x, player.y + 2.0, player.z + 4.0)
+            text = canvas.toTextComponent()
+            billboard = Billboard.CENTER
+            backgroundColor = DkColor(200, 15, 20, 18)
+            brightness = Brightness.FULL
+            hasShadow = false
+        }
+        spawn(display, player)
+        player.sendSystemMessage(Component.literal("Terminal: 1 entity for ${lines.size} lines."))
+    }
+
+    /**
+     * The GridMapTab comparison: a 25x25 minimap as 625 panel entities beside
+     * the same image as a single composited display.
+     */
+    private fun demoGrid(player: ServerPlayer) {
+        val cell = SpriteIndex.bundled.all()
+            .firstOrNull { it.greyscale && it.glyphEligible && it.width <= 16 }
+            ?: run {
+                player.sendSystemMessage(Component.literal("No suitable greyscale cell sprite"))
+                return
+            }
+
+        val canvas = SpriteCanvas(widthPx = 25 * cell.width, heightPx = 25 * cell.height)
+        val palette = listOf(
+            DkColor.fromRGB(0, 255, 136),
+            DkColor.fromRGB(0, 200, 255),
+            DkColor.fromRGB(250, 204, 21)
+        )
+        for (cz in 0 until 25) {
+            for (cx in 0 until 25) {
+                canvas.draw(
+                    cell,
+                    x = cx * cell.width,
+                    y = cz * cell.height,
+                    tint = palette[(cx + cz) % palette.size]
+                )
+            }
+        }
+
+        FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
+        FabricPackIntegration.rebuildAndResendToAll()
+
+        val display = VirtualTextDisplay().apply {
+            position = Vec3d(player.x, player.y + 2.0, player.z + 6.0)
+            text = canvas.toTextComponent()
+            billboard = Billboard.CENTER
+            backgroundColor = DkColor.TRANSPARENT
+            brightness = Brightness.FULL
+            hasShadow = false
+        }
+        spawn(display, player)
+
+        player.sendSystemMessage(
+            Component.literal(
+                "25x25 minimap. GridMapTab spawns 625 entities for this; " +
+                    "the compositor uses 1. Glyph variants allocated: " +
+                    "${SpriteGlyphs.requested().size}"
+            )
+        )
+    }
+
+    private fun spawn(display: VirtualTextDisplay, player: ServerPlayer) {
+        val viewers = setOf(player.uuid)
+        DisplayKit.platform.packetSender.spawnEntity(display, viewers)
+        DisplayKit.platform.packetSender.updateMetadata(display, viewers)
+        DisplayKit.platform.scheduler.scheduleDelayed(LIFETIME_TICKS) {
+            DisplayKit.platform.packetSender.destroyEntities(listOf(display.entityId), viewers)
+        }
+    }
+}
