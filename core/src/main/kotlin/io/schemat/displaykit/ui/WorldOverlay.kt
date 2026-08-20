@@ -218,13 +218,23 @@ class WorldOverlay(
                 // Spawn new entity with scale-up animation
                 spawnCell(key, cell, viewers)
             } else if (existing.cell.material != cell.material) {
-                // Material changed — a block display and a text display are
-                // different entity types, so a general material change swaps
-                // the entity. destroy the old one and respawn.
+                // Material changed. Delegate to swapMaterial: it already has
+                // the correct in-place block -> block fast path
+                // (interpolationDuration = 2, no respawn pop) and only
+                // destroys/respawns for a cross-type change (e.g. a swap
+                // to/from Sprite or Solid).
+                //
+                // A cell that changes material while it is the one currently
+                // hovered keeps its hover material rather than snapping to
+                // the base material and waiting for the next hover tick.
+                val hoverMaterial = cell.hoverMaterial
+                val target = if (key == hoveredKey && hoverMaterial != null && cell.interactive) {
+                    hoverMaterial
+                } else {
+                    cell.material
+                }
+                swapMaterial(key, target, viewers)
                 existing.cell = cell
-                platform.packetSender.destroyEntities(listOf(existing.entity.entityId), viewers)
-                activeEntities.remove(key)
-                spawnCell(key, cell, viewers)
             }
         }
     }
@@ -232,10 +242,18 @@ class WorldOverlay(
     private fun spawnCell(key: String, cell: OverlayCell, viewers: Collection<UUID>) {
         val entity = materialEntity(cell, cell.material)
 
-        // Start small, then interpolate to full size.
-        entity.transformation = Mat4f.scaling(0.1f, 0.02f, 0.1f)
-        entity.interpolationDuration = 0
-        entity.startInterpolation = 0
+        // The scale-up spawn animation only applies to block displays. A
+        // sprite or solid (text-display-backed) entity's transformation is
+        // produced by materialEntity/SpriteGeometry and must be left intact —
+        // forcing it through the 0.1x0.02x0.1 pop and then a cellSize
+        // rescale (which only makes sense for a 1x1x1 block model) discards
+        // that geometry permanently, since nothing else ever restores it.
+        if (entity is VirtualBlockDisplay) {
+            // Start small, then interpolate to full size.
+            entity.transformation = Mat4f.scaling(0.1f, 0.02f, 0.1f)
+            entity.interpolationDuration = 0
+            entity.startInterpolation = 0
+        }
 
         platform.packetSender.spawnEntity(entity, viewers)
         platform.packetSender.updateMetadata(entity, viewers)
@@ -274,7 +292,12 @@ class WorldOverlay(
 
         platform.packetSender.destroyEntities(listOf(current.entityId), viewers)
         val replacement = materialEntity(oe.cell, material)
-        replacement.transformation = Mat4f.scaling(oe.cell.cellSize, 0.02f, oe.cell.cellSize)
+        // Only a block display needs to be rescaled from its 1x1x1 model to
+        // the cell footprint. Sprite/Solid entities' geometry already comes
+        // out of materialEntity sized correctly and must not be overwritten.
+        if (replacement is VirtualBlockDisplay) {
+            replacement.transformation = Mat4f.scaling(oe.cell.cellSize, 0.02f, oe.cell.cellSize)
+        }
         platform.packetSender.spawnEntity(replacement, viewers)
         platform.packetSender.updateMetadata(replacement, viewers)
         oe.entity = replacement

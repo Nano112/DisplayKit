@@ -69,7 +69,13 @@ object SpriteGlyphs {
                 "for free positioning."
         }
         return variants.getOrPut(Key(entry.id, yOffset)) {
-            check(next <= MAX_CODEPOINT) { "Exhausted Supplementary PUA-A glyph space" }
+            check(next < SLICE_BASE_CODEPOINT) {
+                "Exhausted whole-sprite glyph space: allocating at codepoint " +
+                    "0x${next.toString(16).uppercase()} would collide with slice " +
+                    "codepoints, which start at 0x${SLICE_BASE_CODEPOINT.toString(16).uppercase()} " +
+                    "(SLICE_BASE_CODEPOINT). At most ${SLICE_BASE_CODEPOINT - BASE_CODEPOINT} " +
+                    "whole-sprite glyph variants are supported."
+            }
             GlyphVariant(entry, yOffset, next++)
         }.codepoint
     }

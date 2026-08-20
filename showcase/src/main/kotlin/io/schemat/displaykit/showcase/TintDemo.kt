@@ -1,6 +1,7 @@
 package io.schemat.displaykit.showcase
 
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration
+import io.schemat.displaykit.pack.SpacingFontProvider
 import io.schemat.displaykit.pack.SpriteFontProvider
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.sprite.SpriteGlyphs
@@ -40,6 +41,7 @@ object TintDemo {
         SpriteGlyphs.request(coloured, 0)
 
         FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
+        FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
         FabricPackIntegration.rebuildAndResendToAll()
 
         val green = Style.EMPTY.withColor(

@@ -51,8 +51,20 @@ object Spacing {
  * costs its own font provider entry.
  *
  * This is the mode that makes 2D sprite content affordable — `GridMapTab`
- * draws a 25x25 minimap with 625 block-display entities today; the same image
- * here is one entity.
+ * draws a 25x25 minimap with 625 block-display entities without it; the same
+ * image here is one entity.
+ *
+ * **Requires the DisplayKit resource pack.** `toTextComponent()` emits
+ * characters from two fonts that only exist once the pack has reached the
+ * client: `displaykit:sprites` (glyphs, written by `SpriteFontProvider`) and
+ * `displaykit:spacing` (X advances, written by `SpacingFontProvider`). Both
+ * must be registered with the pack builder, and the pack itself must be
+ * enabled (`FabricDisplayKit.enableResourcePack`/`glyphsAvailable`). There is
+ * no fallback rendering for a canvas without its fonts — without the pack,
+ * every character this class emits shows as a missing-glyph box. Callers that
+ * need to work with the pack off must branch on `glyphsAvailable` and render
+ * something else entirely (see `GridMapTab`), not rely on this class to
+ * degrade.
  *
  * Integer-pixel and axis-aligned by construction. Sub-pixel or rotated content
  * must use [SpriteDisplay] and pay one entity per quad.

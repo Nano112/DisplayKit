@@ -35,6 +35,19 @@ class FabricDisplayKit : ModInitializer {
         // Static so mods can set this before DisplayKit's entrypoint runs
         var enableResourcePack: Boolean = false
         var sharedPackConfig: PackConfig = PackConfig()
+
+        /**
+         * Whether by-reference sprite glyphs are usable right now.
+         *
+         * `SpriteGlyphs`/`SpriteCanvas`/`SpriteGlyphs`-backed rendering (via
+         * `SpriteFontProvider` and `SpacingFontProvider`) only works once the
+         * DisplayKit resource pack has been pushed to the client, which is
+         * gated on [enableResourcePack]. There is no layout-preserving
+         * fallback for a canvas without its fonts — consumers that want to
+         * degrade gracefully (e.g. `GridMapTab`) must branch on this rather
+         * than assume the compositor is always available.
+         */
+        val glyphsAvailable: Boolean get() = enableResourcePack
     }
 
     var server: MinecraftServer? = null

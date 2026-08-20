@@ -90,4 +90,44 @@ class SpriteGlyphsTest {
         SpriteGlyphs.request(entry("b"), 0)
         assertEquals(3, SpriteGlyphs.requested().size)
     }
+
+    // codepointFor's guard is `check(next < SLICE_BASE_CODEPOINT)`, evaluated
+    // before each allocation and before `next` is incremented. Allocation
+    // starts at BASE_CODEPOINT and advances by exactly 1 per distinct
+    // (sprite, yOffset) variant, so the guard permits exactly
+    // (SLICE_BASE_CODEPOINT - BASE_CODEPOINT) whole-sprite allocations before
+    // it throws. These tests prove that boundary arithmetically rather than
+    // by actually allocating 32768 glyphs.
+
+    @Test
+    fun wholeSpriteGlyphCapacityIsExactlyTheGapBeforeSlices() {
+        val capacity = SpriteGlyphs.SLICE_BASE_CODEPOINT - SpriteGlyphs.BASE_CODEPOINT
+        assertEquals(
+            32768, capacity,
+            "whole-sprite glyph capacity must exactly match the distance to SLICE_BASE_CODEPOINT"
+        )
+    }
+
+    @Test
+    fun theFirstOverCapacityCodepointWouldLandExactlyOnSliceBaseCodepoint() {
+        // Without the `next < SLICE_BASE_CODEPOINT` guard, the
+        // (capacity + 1)-th whole-sprite allocation would be assigned
+        // BASE_CODEPOINT + capacity — i.e. SLICE_BASE_CODEPOINT itself, the
+        // first codepoint slices use. The guard exists precisely to reject
+        // this allocation instead of silently colliding.
+        val capacity = SpriteGlyphs.SLICE_BASE_CODEPOINT - SpriteGlyphs.BASE_CODEPOINT
+        assertEquals(
+            SpriteGlyphs.SLICE_BASE_CODEPOINT,
+            SpriteGlyphs.BASE_CODEPOINT + capacity,
+            "the first over-capacity codepoint must equal SLICE_BASE_CODEPOINT exactly"
+        )
+    }
+
+    @Test
+    fun sliceBaseCodepointLeavesRoomBeforeMaxCodepoint() {
+        assertTrue(
+            SpriteGlyphs.SLICE_BASE_CODEPOINT <= SpriteGlyphs.MAX_CODEPOINT,
+            "the slice range must itself fit inside Supplementary PUA-A"
+        )
+    }
 }

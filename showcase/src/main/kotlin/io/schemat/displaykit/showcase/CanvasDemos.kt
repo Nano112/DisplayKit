@@ -3,6 +3,7 @@ package io.schemat.displaykit.showcase
 import io.schemat.displaykit.DisplayKit
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration
 import io.schemat.displaykit.math.Vec3d
+import io.schemat.displaykit.pack.SpacingFontProvider
 import io.schemat.displaykit.pack.SpriteFontProvider
 import io.schemat.displaykit.render.Billboard
 import io.schemat.displaykit.render.Brightness
@@ -21,6 +22,12 @@ import net.minecraft.server.level.ServerPlayer
 object CanvasDemos {
 
     private const val LIFETIME_TICKS = 20L * 60
+
+    // Pinned to the same sprite GridMapTab uses: vanilla ships no small
+    // greyscale sprite, and glyph tint is multiplicative, so only a uniform
+    // pure-white opaque source reproduces a requested colour exactly.
+    // lightning_rod_on is the one vanilla sprite confirmed to fit.
+    private val CELL_SPRITE_ID = SpriteId("blocks", "block/lightning_rod_on")
 
     fun register() {
         ShowcaseMod.registerDemo("terminal", ::demoTerminal)
@@ -41,6 +48,7 @@ object CanvasDemos {
         }
 
         FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
+        FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
         FabricPackIntegration.rebuildAndResendToAll()
 
         val display = VirtualTextDisplay().apply {
@@ -60,8 +68,7 @@ object CanvasDemos {
      * the same image as a single composited display.
      */
     private fun demoGrid(player: ServerPlayer) {
-        val cell = SpriteIndex.bundled.all()
-            .firstOrNull { it.greyscale && it.glyphEligible && it.width <= 16 }
+        val cell = SpriteIndex.bundled.get(CELL_SPRITE_ID)
             ?: run {
                 player.sendSystemMessage(Component.literal("No suitable greyscale cell sprite"))
                 return
@@ -85,6 +92,7 @@ object CanvasDemos {
         }
 
         FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
+        FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
         FabricPackIntegration.rebuildAndResendToAll()
 
         val display = VirtualTextDisplay().apply {
