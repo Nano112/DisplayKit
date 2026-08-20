@@ -132,10 +132,10 @@ object SpriteIndexGenerator {
         val out = JsonObject()
         if (border != null && border.isJsonObject) {
             val b = border.asJsonObject
-            out.addProperty("left", b.get("left").asInt)
-            out.addProperty("top", b.get("top").asInt)
-            out.addProperty("right", b.get("right").asInt)
-            out.addProperty("bottom", b.get("bottom").asInt)
+            out.addProperty("left", b.get("left")?.asInt ?: 0)
+            out.addProperty("top", b.get("top")?.asInt ?: 0)
+            out.addProperty("right", b.get("right")?.asInt ?: 0)
+            out.addProperty("bottom", b.get("bottom")?.asInt ?: 0)
         } else {
             val n = border?.asInt ?: 0
             out.addProperty("left", n)

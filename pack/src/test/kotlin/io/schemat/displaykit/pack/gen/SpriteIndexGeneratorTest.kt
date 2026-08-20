@@ -76,6 +76,19 @@ class SpriteIndexGeneratorTest {
 
             // minecraft:single source target
             put("assets/minecraft/textures/lone/thing.png", png(32, 32, Color.GREEN))
+
+            // Nine-slice sprite with an object-form border that omits a side
+            // (missing sides default to 0, per the int-form border's convention).
+            put("assets/minecraft/textures/gui/sprites/widget/panel.png", png(100, 40, Color.MAGENTA))
+            put("assets/minecraft/textures/gui/sprites/widget/panel.png.mcmeta",
+                """{"gui":{"scaling":{"type":"nine_slice","width":100,"height":40,
+                    "border":{"top":5,"right":5,"bottom":5}}}}""".toByteArray())
+
+            // Animated sprite with an explicit animation.height that must win
+            // over the width-derived square-frame default.
+            put("assets/minecraft/textures/gui/sprites/anim/campfire.png", png(16, 128, Color.CYAN))
+            put("assets/minecraft/textures/gui/sprites/anim/campfire.png.mcmeta",
+                """{"animation":{"frametime":2,"height":32}}""".toByteArray())
         }
         return path
     }
@@ -142,5 +155,22 @@ class SpriteIndexGeneratorTest {
     @Test
     fun recordsSourceVersion() {
         assertEquals("1.21.11", index().sourceVersion)
+    }
+
+    @Test
+    fun nineSliceBorderObjectDefaultsMissingSideToZero() {
+        val slice = index().get(SpriteId("gui", "widget/panel"))!!.nineSlice!!
+        assertEquals(0, slice.left)
+        assertEquals(5, slice.top)
+        assertEquals(5, slice.right)
+        assertEquals(5, slice.bottom)
+    }
+
+    @Test
+    fun animationExplicitHeightOverridesWidthDerivedDefault() {
+        val campfire = index().get(SpriteId("gui", "anim/campfire"))!!
+        assertEquals(16, campfire.width)
+        assertEquals(32, campfire.height)
+        assertTrue(campfire.animated)
     }
 }
