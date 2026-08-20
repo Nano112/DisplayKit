@@ -11,5 +11,6 @@ object Demos {
         WorldQuadDemos.register()
         TintDemo.register()
         CanvasDemos.register()
+        FrameDemo.register()
     }
 }
