@@ -77,4 +77,16 @@ class SpriteIndexTest {
         assertEquals(2, index.find("GUI").size)
         assertEquals(0, index.find("zzz").size)
     }
+
+    @Test
+    fun bundledIndexLoadsAndMatchesTheTargetVersion() {
+        val index = SpriteIndex.bundled
+        assertEquals("1.21.11", index.sourceVersion)
+        assertTrue(index.all().size > 2000, "expected a full index, got ${index.all().size}")
+
+        // Spot-check a known non-square sprite against the real client jar.
+        val hotbar = index.get(SpriteId("gui", "hud/hotbar"))!!
+        assertEquals(182, hotbar.width)
+        assertEquals(22, hotbar.height)
+    }
 }
