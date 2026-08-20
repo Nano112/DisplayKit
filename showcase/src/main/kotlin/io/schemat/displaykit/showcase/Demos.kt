@@ -9,5 +9,6 @@ package io.schemat.displaykit.showcase
 object Demos {
     fun registerAll() {
         WorldQuadDemos.register()
+        TintDemo.register()
     }
 }

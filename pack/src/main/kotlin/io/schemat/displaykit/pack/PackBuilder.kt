@@ -157,6 +157,14 @@ class PackBuilder(
         return this
     }
 
+    /** JSON previously added at [path], for tests and diagnostics. */
+    fun capturedJson(path: String): String =
+        assets[path]?.toString(Charsets.UTF_8)
+            ?: error("no entry at $path; have: ${assets.keys.sorted()}")
+
+    /** Number of PNG entries staged so far. */
+    fun imageCount(): Int = assets.keys.count { it.endsWith(".png") }
+
     companion object {
         /**
          * Compute SHA-1 hash of pack data.
