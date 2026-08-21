@@ -23,7 +23,9 @@ object DefaultAssets : AssetProvider {
     }
 
     private fun addRoundedCornersShader(builder: PackBuilder) {
-        // TEST: Exact copy of vanilla VSH — no changes at all.
+        // Exact copy of vanilla VSH — no changes. Kept as an override (rather
+        // than not overriding at all) so the pair ships together and the FSH
+        // below can rely on the varyings it produces.
         builder.addMinecraftShader("core", "rendertype_text_background", "vsh", """
             |#version 330
             |
@@ -50,9 +52,18 @@ object DefaultAssets : AssetProvider {
             |}
         """.trimMargin())
 
-        // TEST: Exact copy of vanilla FSH but force bright red color.
-        // If you see red backgrounds → shader override works.
-        // If backgrounds look normal → shader override is broken.
+        // This overrides a VANILLA core shader, so every text-display
+        // background in the game (DisplayKit's own UI, hardwired,
+        // blockbrains, and anything else that draws text backgrounds) goes
+        // through this FSH whenever DisplayKit's pack is loaded.
+        //
+        // The corner-radius / glassmorphism effect this override exists for
+        // is NOT YET IMPLEMENTED. Until it is, this is a straight
+        // pass-through that behaves exactly like vanilla's own FSH: it reads
+        // vertexColor (interpolated from the VSH above), discards
+        // fully-transparent fragments, and applies fog the same way vanilla
+        // does. Whoever picks this up should sample an SDF for rounded
+        // corners here instead of just forwarding vertexColor.
         builder.addMinecraftShader("core", "rendertype_text_background", "fsh", """
             |#version 330
             |
@@ -69,8 +80,14 @@ object DefaultAssets : AssetProvider {
             |out vec4 fragColor;
             |
             |void main() {
-            |    vec4 color = vec4(1.0, 0.0, 0.0, 1.0);
-            |    fragColor = color;
+            |    // TODO(corner-radius): sample an SDF against texCoord0 here and
+            |    // fold the coverage into color.a before the discard/fog below.
+            |    // Until then this is a pass-through matching vanilla exactly.
+            |    vec4 color = vertexColor * ColorModulator;
+            |    if (color.a < 0.1) {
+            |        discard;
+            |    }
+            |    fragColor = apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor);
             |}
         """.trimMargin())
     }

@@ -1,6 +1,7 @@
 package io.schemat.displaykit.surface
 
 import io.schemat.displaykit.sprite.SpriteEntry
+import kotlin.math.ceil
 
 /**
  * One crop of a nine-sliced sprite, placed at a position in the target rect.
@@ -32,6 +33,48 @@ object NineSliceLayout {
     /** Smallest frame this sprite can render: its own dimensions. */
     fun minimumSize(entry: SpriteEntry): Pair<Int, Int> = entry.width to entry.height
 
+    /**
+     * The smallest frame size at least `minWidth` x `minHeight` whose interior
+     * is a whole number of centre tiles on both axes, so [regionsFor] emits no
+     * overlapping tile at that size.
+     *
+     * For a sprite with border `l/t/r/b` and centre `cw x ch`, that is
+     * `l + r + ceil((minWidth - l - r) / cw) * cw` horizontally, and the same
+     * shape vertically. If an axis has no centre tile at all (the border
+     * consumes the whole sprite on that axis), the sprite can't grow on that
+     * axis without overlap, so this returns the sprite's own size for it.
+     *
+     * Prefer sizing frames through this rather than picking numbers by hand:
+     * see the overlap warning on [regionsFor].
+     */
+    fun exactSizeFor(entry: SpriteEntry, minWidth: Int, minHeight: Int): Pair<Int, Int> {
+        val s = entry.nineSlice ?: return maxOf(minWidth, entry.width) to maxOf(minHeight, entry.height)
+        val cw = entry.width - s.left - s.right
+        val ch = entry.height - s.top - s.bottom
+        val w = exactAxis(minWidth, entry.width, s.left, s.right, cw)
+        val h = exactAxis(minHeight, entry.height, s.top, s.bottom, ch)
+        return w to h
+    }
+
+    /** One axis of [exactSizeFor]: round `requested` up to `near + far + k*tile`. */
+    private fun exactAxis(requested: Int, minSize: Int, near: Int, far: Int, tile: Int): Int {
+        if (tile <= 0) return minSize
+        val target = maxOf(requested, minSize)
+        val interior = target - near - far
+        val tiles = ceil(interior.toDouble() / tile).toInt().coerceAtLeast(1)
+        return near + far + tiles * tile
+    }
+
+    /**
+     * Where every crop of a nine-sliced sprite goes when the sprite is
+     * stretched to [width] x [height].
+     *
+     * If `width`/`height` do not tile exactly (see [exactSizeFor]), the final
+     * tile along that axis is placed flush against the far edge and OVERLAPS
+     * its neighbour rather than being cropped — every glyph in a surface is
+     * coplanar, so two overlapping opaque tiles fight for the same depth and
+     * can shimmer. Pass a size from [exactSizeFor] to avoid that entirely.
+     */
     fun regionsFor(entry: SpriteEntry, width: Int, height: Int): List<PlacedRegion> {
         val s = entry.nineSlice ?: return emptyList()
         require(width >= entry.width && height >= entry.height) {

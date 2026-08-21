@@ -8,13 +8,16 @@ import io.schemat.displaykit.pack.SpacingFontProvider
 import io.schemat.displaykit.pack.SpriteFontProvider
 import io.schemat.displaykit.pack.SpriteSliceProvider
 import io.schemat.displaykit.render.DkColor
+import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteGlyphs
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
+import io.schemat.displaykit.surface.NineSliceLayout
 import io.schemat.displaykit.surface.Rect
 import io.schemat.displaykit.surface.Surface
 import io.schemat.displaykit.surface.SurfaceHost
+import io.schemat.displaykit.surface.SurfacePlacement
 import io.schemat.displaykit.surface.button
 import io.schemat.displaykit.surface.scrollThumb
 import io.schemat.displaykit.surface.scrollTrack
@@ -37,19 +40,51 @@ import kotlin.math.atan2
  */
 object PickerWindow {
 
-    private const val W = 320
-    private const val H = 220
+    // Design targets for the frame -- NOT the final pixel size. The frame
+    // sprite (gui/tooltip/background, 100x100, 9px border, 82x82 centre
+    // tile) can only grow in whole centre-tile steps without its final tile
+    // overlapping its neighbour and z-fighting (both tiles are coplanar
+    // glyphs on the same surface), so the actual size below is rounded up by
+    // NineSliceLayout.exactSizeFor to whatever tiles exactly -- 346x264 for
+    // these targets (9 + 4*82 + 9 wide, 9 + 3*82 + 9 tall).
+    private const val MIN_W = 320
+    private const val MIN_H = 220
+
     private const val COLS = 8
     private const val ROWS = 6
     private const val STEP = 20
+    private const val SLOT = 18
     private const val GRID_X = 150
     private const val GRID_Y = 30
-    // Grid's last column runs to x = GRID_X + 7*STEP + 18 = 308; the scroll
-    // track sits clear of it at x=310 (see the reviewed layout note below).
+    // Grid's last column runs to x = GRID_X + 7*STEP + SLOT = 308; the scroll
+    // track sits clear of it at x=310. Track height matches the grid's own
+    // height (ROWS*STEP - (STEP-SLOT) = 118) rather than an arbitrary taller
+    // figure, now that the frame is being resized anyway.
     private const val SCROLL_X = 310
+    private const val TRACK_H = (ROWS - 1) * STEP + SLOT
 
     private val FRAME = SpriteId("gui", "tooltip/background")
     private val ATLASES = listOf("gui", "items", "blocks")
+
+    /** The frame sprite's manifest entry, resolved once. */
+    private val frameEntry: SpriteEntry? by lazy { SpriteIndex.bundled.get(FRAME) }
+
+    /**
+     * The window's actual pixel size: the smallest size at least
+     * [MIN_W]x[MIN_H] that tiles [FRAME] with no overlap. Falls back to the
+     * design target if the frame sprite is somehow missing from the
+     * manifest, so a broken lookup degrades to the old overlap behaviour
+     * rather than crashing the picker.
+     */
+    private val frameSize: Pair<Int, Int> by lazy {
+        frameEntry?.let { NineSliceLayout.exactSizeFor(it, MIN_W, MIN_H) } ?: (MIN_W to MIN_H)
+    }
+    private val W: Int get() = frameSize.first
+    private val H: Int get() = frameSize.second
+
+    /** Comfortable viewing distance scales with the window's own width. */
+    private const val VIEW_DISTANCE_WIDTH_FACTOR = 1.6
+    private const val MIN_VIEW_DISTANCE_BLOCKS = 3.0
 
     private class Session(val host: SurfaceHost, val player: ServerPlayer) {
         var atlas: String = "gui"
@@ -117,16 +152,38 @@ object PickerWindow {
         val ref = FabricPlayerRef(player)
         val eye = ref.eyePosition()
         val look = ref.lookDirection()
-        // place the window 2.5 blocks ahead, top-left offset so it reads centred
-        val pos = Vec3d(eye.x + look.x * 2.5, eye.y + 0.6, eye.z + look.z * 2.5)
 
-        val surface = Surface(W, H, pos, targetWidthBlocks = 3f)
+        val yawDegrees = Math.toDegrees(atan2(look.x, look.z)).toFloat()
+
+        // Position is set below, once the surface's own pixelScale gives us
+        // its real world size; Vec3d.ZERO here is just a placeholder.
+        val surface = Surface(W, H, Vec3d.ZERO, targetWidthBlocks = 3f)
         // Square the window to the player regardless of which way they're
         // facing: an unrotated surface faces -Z (see SurfacePicking), which
         // matches a viewer whose look direction is +Z (atan2(0, 1) == 0), so
         // yawDegrees = atan2(look.x, look.z) turns the surface's front to
         // face wherever the player is looking.
-        surface.yawDegrees = Math.toDegrees(atan2(look.x, look.z)).toFloat()
+        surface.yawDegrees = yawDegrees
+
+        val worldWidth = (surface.widthPx * surface.pixelScale * TextMetrics.PIXEL_SIZE).toDouble()
+        val worldHeight = (surface.heightPx * surface.pixelScale * TextMetrics.PIXEL_SIZE).toDouble()
+
+        // A fixed 2.5-block spawn distance put a 3-block-wide window closer
+        // to the player's face than the window itself was wide. Scale
+        // distance with the window's own width instead, so it clears the
+        // player regardless of how big the frame ends up.
+        val distance = maxOf(worldWidth * VIEW_DISTANCE_WIDTH_FACTOR, MIN_VIEW_DISTANCE_BLOCKS)
+        // Roughly eye height: aim for the window's CENTRE at eye level, not
+        // its top edge.
+        val center = Vec3d(eye.x + look.x * distance, eye.y, eye.z + look.z * distance)
+
+        // Surface.position is the canvas TOP-LEFT corner, so pointing it
+        // straight at `center` would hang the window down-and-right of where
+        // the player is looking. SurfacePlacement shifts the origin back by
+        // half the window's world size -- along the surface's own rotated
+        // right vector for width, since yawDegrees above turns it to face
+        // the player -- so the CENTRE lands on the look ray instead.
+        surface.position = SurfacePlacement.centeredOrigin(center, yawDegrees, worldWidth, worldHeight)
         // Alpha 100-149 and 200-249 are DkColor shader sentinels (glass /
         // corner-radius) -- 190 sits outside both. Dark neutral graphite so
         // the vanilla chrome (frame, tabs, slots) stays legible against it.
@@ -171,7 +228,7 @@ object PickerWindow {
         session.host.surface.paint {
             frameSprite?.let { frame(it, Rect(0, 0, W, H)) }
 
-            titleBar(Rect(10, 10, 300, 16), "Sprites — ${session.atlas} (${all.size})") {
+            titleBar(Rect(10, 10, W - 20, 16), "Sprites — ${session.atlas} (${all.size})") {
                 closeFor(session.player.uuid)
             }
 
@@ -188,7 +245,7 @@ object PickerWindow {
                 val cy = GRID_Y + (i / COLS) * STEP
                 slot(cx, cy)
                 icon(entry, cx + 1, cy + 1)
-                region("cell-$i", Rect(cx, cy, 18, 18)) {
+                region("cell-$i", Rect(cx, cy, SLOT, SLOT)) {
                     session.player.sendSystemMessage(
                         Component.literal("${entry.id}  ${entry.width}x${entry.height}")
                     )
@@ -197,10 +254,12 @@ object PickerWindow {
 
             // Track sits at x=310, clear of the grid's last column (which ends at
             // x=308) — moved right from the original x=304, which overlapped that
-            // column by 4px. 310+6=316 stays inside the 320-wide frame.
-            scrollTrack(Rect(SCROLL_X, GRID_Y, 6, 180))
+            // column by 4px. 310+6=316 stays inside the frame regardless of its
+            // exact width. Track height (TRACK_H) matches the grid's own height
+            // instead of an arbitrary taller figure.
+            scrollTrack(Rect(SCROLL_X, GRID_Y, 6, TRACK_H))
             val thumbY = if (maxScroll == 0) GRID_Y
-                         else GRID_Y + (session.scroll * (180 - 32)) / maxScroll
+                         else GRID_Y + (session.scroll * (TRACK_H - 32)) / maxScroll
             scrollThumb(Rect(SCROLL_X, thumbY, 6, 32))
 
             // scroll by clicking the track above or below the thumb
@@ -208,8 +267,8 @@ object PickerWindow {
                 session.scroll--; repaintAndSync(session)
             }
             val belowY = thumbY + 32
-            if (belowY < GRID_Y + 180) {
-                region("scroll-down", Rect(SCROLL_X, belowY, 6, GRID_Y + 180 - belowY)) {
+            if (belowY < GRID_Y + TRACK_H) {
+                region("scroll-down", Rect(SCROLL_X, belowY, 6, GRID_Y + TRACK_H - belowY)) {
                     session.scroll++; repaintAndSync(session)
                 }
             }

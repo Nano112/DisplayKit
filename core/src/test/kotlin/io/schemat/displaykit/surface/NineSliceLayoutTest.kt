@@ -6,6 +6,7 @@ import io.schemat.displaykit.sprite.SpriteId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class NineSliceLayoutTest {
@@ -102,5 +103,62 @@ class NineSliceLayoutTest {
     fun aSpriteWithoutNineSliceMetadataYieldsNothing() {
         val plain = button.copy(nineSlice = null)
         assertEquals(0, NineSliceLayout.regionsFor(plain, 400, 60).size)
+    }
+
+    // --- exactSizeFor -------------------------------------------------
+
+    @Test
+    fun exactSizeForReturnsTheRequestSizeUnchangedWhenItAlreadyTilesExactly() {
+        // button: border 3, centre 194x14. 3+194+3 = 200 (k=1) already tiles exactly.
+        assertEquals(200 to 20, NineSliceLayout.exactSizeFor(button, 200, 20))
+        // Two centre tiles: 3 + 388 + 3 = 394.
+        assertEquals(394 to 20, NineSliceLayout.exactSizeFor(button, 394, 20))
+    }
+
+    @Test
+    fun exactSizeForRoundsUpWhenTheRequestDoesNotTileExactly() {
+        // Requesting 201 (one more than one exact tile) must round up to the
+        // next whole centre tile: 3 + 2*194 + 3 = 394.
+        val (w, _) = NineSliceLayout.exactSizeFor(button, 201, 20)
+        assertEquals(394, w)
+    }
+
+    @Test
+    fun exactSizeForNeverReturnsLessThanRequested() {
+        for ((minW, minH) in listOf(1 to 1, 200 to 20, 250 to 25, 613 to 137)) {
+            val (w, h) = NineSliceLayout.exactSizeFor(button, minW, minH)
+            assertTrue(w >= minW, "width $w must be >= requested $minW")
+            assertTrue(h >= minH, "height $h must be >= requested $minH")
+        }
+    }
+
+    @Test
+    fun exactSizeForNeverReturnsLessThanTheSpritesOwnMinimum() {
+        val (w, h) = NineSliceLayout.exactSizeFor(button, 1, 1)
+        assertEquals(200, w)
+        assertEquals(20, h)
+    }
+
+    @Test
+    fun aFrameBuiltAtAnExactSizeEmitsNoOverlappingRegions() {
+        for ((minW, minH) in listOf(1 to 1, 200 to 20, 201 to 21, 250 to 30, 613 to 137)) {
+            val (w, h) = NineSliceLayout.exactSizeFor(button, minW, minH)
+            val regions = NineSliceLayout.regionsFor(button, w, h)
+            assertFalse(
+                hasOverlap(regions),
+                "exactSizeFor($minW, $minH) = ${w}x$h must tile with no overlap, regions: $regions"
+            )
+        }
+    }
+
+    /** True if any two regions' destination rects overlap (share a pixel). */
+    private fun hasOverlap(regions: List<PlacedRegion>): Boolean {
+        for (i in regions.indices) for (j in i + 1 until regions.size) {
+            val a = regions[i]; val b = regions[j]
+            val overlapsX = a.dstX < b.dstX + b.srcW && b.dstX < a.dstX + a.srcW
+            val overlapsY = a.dstY < b.dstY + b.srcH && b.dstY < a.dstY + a.srcH
+            if (overlapsX && overlapsY) return true
+        }
+        return false
     }
 }
