@@ -9,6 +9,10 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Kept out of [SurfaceHost] because a viewer has one pointer across all their
  * surfaces, while a host is one window.
+ *
+ * Accessed from both the server tick thread and the netty packet thread (a
+ * hotbar-scroll mixin consults [isScrollArmed] before the packet is rescheduled
+ * onto the main thread), which is why [Entry]'s fields are volatile.
  */
 object SurfaceFocus {
 
@@ -19,9 +23,14 @@ object SurfaceFocus {
     )
 
     private class Entry {
-        var hovered: SurfaceNode? = null
-        var grabbed: SurfaceNode? = null
-        var scrollArmed: Boolean = false
+        // @Volatile on all three: these are written from the server tick thread
+        // and read from the netty thread, where a packet mixin decides whether to
+        // intercept hotbar scrolling. ConcurrentHashMap only orders the map
+        // operations, not in-place mutation of the value it hands back, so
+        // without this a reader can see arbitrarily stale state.
+        @Volatile var hovered: SurfaceNode? = null
+        @Volatile var grabbed: SurfaceNode? = null
+        @Volatile var scrollArmed: Boolean = false
     }
 
     private val entries = ConcurrentHashMap<UUID, Entry>()
