@@ -55,10 +55,22 @@ class FlexNode(
                 val take = minOf(remainder, child.flexGrow)
                 give += take
                 remainder -= take
+                // Loosen the cross axis unless the caller asked to stretch --
+                // otherwise a growing child is force-filled on the cross axis
+                // and CENTER/END can never move it.
+                val stretch = crossAxis == CrossAxis.STRETCH
                 val cc = if (isRow) {
-                    PxConstraints(give, give, inner.minH, inner.maxH)
+                    PxConstraints(
+                        give, give,
+                        if (stretch) inner.minH else 0,
+                        inner.maxH
+                    )
                 } else {
-                    PxConstraints(inner.minW, inner.maxW, give, give)
+                    PxConstraints(
+                        if (stretch) inner.minW else 0,
+                        inner.maxW,
+                        give, give
+                    )
                 }
                 sizes[i] = child.measure(cc)
             }
@@ -92,9 +104,10 @@ class FlexNode(
             MainAxis.CENTER -> slack / 2
             MainAxis.END -> slack
         }
-        val between = if (mainAxis == MainAxis.SPACE_BETWEEN && _children.size > 1) {
-            slack / (_children.size - 1)
-        } else 0
+        val gaps = if (_children.size > 1) _children.size - 1 else 0
+        val betweenBase = if (mainAxis == MainAxis.SPACE_BETWEEN && gaps > 0) slack / gaps else 0
+        var betweenRemainder =
+            if (mainAxis == MainAxis.SPACE_BETWEEN && gaps > 0) slack - betweenBase * gaps else 0
 
         for ((i, child) in _children.withIndex()) {
             val cs = childSizes[i]
@@ -109,7 +122,15 @@ class FlexNode(
                 PxOffset(padding.left + crossPos, padding.top + cursor)
             }
             child.place(childOffset)
-            cursor += main(cs) + gap + between
+            cursor += main(cs) + gap
+            if (i < _children.size - 1) {
+                // One pixel at a time to the earliest gaps, so the sum of
+                // gaps is exactly `slack` and the last child reaches the far
+                // edge instead of stopping short from truncation.
+                var extra = betweenBase
+                if (betweenRemainder > 0) { extra += 1; betweenRemainder -= 1 }
+                cursor += extra
+            }
         }
     }
 }

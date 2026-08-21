@@ -92,4 +92,30 @@ class FlexNodeTest {
         row.place(PxOffset.Zero)
         assertEquals(10, a.rect().y)
     }
+
+    @Test
+    fun spaceBetweenDistributesLeftoverGapPixelsExactly() {
+        // slack that does not divide evenly must still reach the far edge.
+        val row = FlexNode("row", FlexDirection.ROW, mainAxis = MainAxis.SPACE_BETWEEN)
+        val kids = (0 until 3).map { Fixed("k$it", 10, 10) }
+        kids.forEach { row.addChild(it) }
+        row.measure(PxConstraints.exactly(35, 10))   // 35 - 30 = 5 slack across 2 gaps
+        row.place(PxOffset.Zero)
+        assertEquals(0, kids[0].rect().x)
+        assertEquals(35, kids[2].rect().right, "last child must reach the far edge")
+    }
+
+    @Test
+    fun crossAxisCenterAppliesToAGrowingChildToo() {
+        // A growing child must not be force-filled on the cross axis, or
+        // CENTER/END silently do nothing to it.
+        val row = FlexNode("row", FlexDirection.ROW, crossAxis = CrossAxis.CENTER)
+        val a = Fixed("a", 0, 10).also { it.flexGrow = 1 }
+        row.addChild(a)
+        row.measure(PxConstraints.exactly(100, 30))
+        row.place(PxOffset.Zero)
+        assertEquals(100, a.rect().w, "still grows on the main axis")
+        assertEquals(10, a.rect().h, "keeps its natural cross size")
+        assertEquals(10, a.rect().y, "and is centred within the 30px line")
+    }
 }
