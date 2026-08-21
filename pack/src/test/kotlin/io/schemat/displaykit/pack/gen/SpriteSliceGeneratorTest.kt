@@ -12,6 +12,7 @@ import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class SpriteSliceGeneratorTest {
@@ -53,6 +54,45 @@ class SpriteSliceGeneratorTest {
            "nineSlice":{"left":2,"top":2,"right":2,"bottom":0,"stretchInner":false}},
           {"atlas":"gui","sprite":"hud/hotbar","width":182,"height":22,
            "texture":"minecraft:gui/sprites/hud/hotbar.png"}
+        ]}
+    """.trimIndent()
+
+    // Same three sprites as [index], listed in a different order. Used to
+    // prove the generator's explicit sort — not incidental map/JSON order —
+    // is what makes output deterministic.
+    private val indexReordered = """
+        {"sourceVersion":"1.21.11","sprites":[
+          {"atlas":"gui","sprite":"hud/hotbar","width":182,"height":22,
+           "texture":"minecraft:gui/sprites/hud/hotbar.png"},
+          {"atlas":"gui","sprite":"widget/tab","width":130,"height":24,
+           "texture":"minecraft:gui/sprites/widget/tab.png",
+           "nineSlice":{"left":2,"top":2,"right":2,"bottom":0,"stretchInner":false}},
+          {"atlas":"gui","sprite":"widget/button","width":200,"height":20,
+           "texture":"minecraft:gui/sprites/widget/button.png",
+           "nineSlice":{"left":3,"top":3,"right":3,"bottom":3,"stretchInner":false}}
+        ]}
+    """.trimIndent()
+
+    // Two distinct sprite ids whose `/`-to-`_` normalisation collides:
+    // "a/b_c" and "a_b/c" both become "a_b_c".
+    private fun collidingJar(): Path {
+        val p = Files.createTempFile("slice-gen-collision", ".jar").also { temps.add(it) }
+        ZipOutputStream(Files.newOutputStream(p)).use { z ->
+            fun put(n: String, b: ByteArray) { z.putNextEntry(ZipEntry(n)); z.write(b); z.closeEntry() }
+            put("assets/minecraft/textures/gui/sprites/a/b_c.png", png(10, 10, Color.BLUE))
+            put("assets/minecraft/textures/gui/sprites/a_b/c.png", png(10, 10, Color.GREEN))
+        }
+        return p
+    }
+
+    private val collidingIndex = """
+        {"sourceVersion":"1.21.11","sprites":[
+          {"atlas":"gui","sprite":"a/b_c","width":10,"height":10,
+           "texture":"minecraft:gui/sprites/a/b_c.png",
+           "nineSlice":{"left":1,"top":1,"right":1,"bottom":1,"stretchInner":false}},
+          {"atlas":"gui","sprite":"a_b/c","width":10,"height":10,
+           "texture":"minecraft:gui/sprites/a_b/c.png",
+           "nineSlice":{"left":1,"top":1,"right":1,"bottom":1,"stretchInner":false}}
         ]}
     """.trimIndent()
 
@@ -114,10 +154,26 @@ class SpriteSliceGeneratorTest {
         val out1 = Files.createTempDirectory("s1").also { temps.add(it) }
         val out2 = Files.createTempDirectory("s2").also { temps.add(it) }
         val j = jar()
+        // Same sprites, different declaration order — this only passes if the
+        // generator's own sort (not incidental input order) drives output
+        // order. Without that sort, this would fail even though a same-input
+        // rerun would still trivially match.
         SpriteSliceGenerator.generate(j, index, out1)
-        SpriteSliceGenerator.generate(j, index, out2)
+        SpriteSliceGenerator.generate(j, indexReordered, out2)
         val a = Files.readString(out1.resolve("manifest.json"))
         val b = Files.readString(out2.resolve("manifest.json"))
-        assertEquals(a, b, "manifest must be byte-identical across runs")
+        assertEquals(a, b, "manifest must be byte-identical regardless of input sprite order")
+    }
+
+    @Test
+    fun collidingCropFilenamesThrowNamingBothSprites() {
+        val out = Files.createTempDirectory("collide").also { temps.add(it) }
+        val ex = assertFailsWith<IllegalStateException> {
+            SpriteSliceGenerator.generate(collidingJar(), collidingIndex, out)
+        }
+        assertTrue(ex.message?.contains("a/b_c") == true,
+            "message should name the first sprite id: ${ex.message}")
+        assertTrue(ex.message?.contains("a_b/c") == true,
+            "message should name the second sprite id: ${ex.message}")
     }
 }

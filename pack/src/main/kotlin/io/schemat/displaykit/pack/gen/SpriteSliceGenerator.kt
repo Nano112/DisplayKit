@@ -5,6 +5,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteIndex
+import io.schemat.displaykit.sprite.SpriteId
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.ZipFile
@@ -34,6 +35,11 @@ object SpriteSliceGenerator {
 
         var sprites = 0; var crops = 0; var skipped = 0
         val manifestSprites = JsonArray()
+        // Guards against two distinct SpriteIds normalising to the same crop
+        // filename (e.g. "a/b_c" and "a_b/c" both become "a_b_c"). Silent
+        // overwrite would be the worst failure shape, so this fails loudly
+        // instead — see task-2 review.
+        val claimedNames = mutableMapOf<String, SpriteId>()
 
         ZipFile(clientJar.toFile()).use { zip ->
             // sorted for deterministic output
@@ -51,8 +57,14 @@ object SpriteSliceGenerator {
                 val cropArr = JsonArray()
                 for ((oy, h) in ys) for ((ox, w) in xs) {
                     if (w <= 0 || h <= 0) { skipped++; continue }
-                    val sub = img.getSubimage(ox, oy, w, h)
                     val name = cropName(entry, ox, oy)
+                    val claimant = claimedNames.putIfAbsent(name, entry.id)
+                    check(claimant == null || claimant == entry.id) {
+                        "crop filename collision: \"$name\" is claimed by both " +
+                            "sprite \"$claimant\" and sprite \"${entry.id}\" — " +
+                            "their sprite ids normalise to the same crop filename"
+                    }
+                    val sub = img.getSubimage(ox, oy, w, h)
                     ImageIO.write(sub, "png", outDir.resolve(name).toFile())
                     cropArr.add(JsonObject().apply {
                         addProperty("x", ox); addProperty("y", oy)
