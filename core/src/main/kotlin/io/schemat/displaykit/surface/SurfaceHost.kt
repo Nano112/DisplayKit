@@ -5,6 +5,7 @@ import io.schemat.displaykit.platform.PlayerRef
 import io.schemat.displaykit.render.VirtualBlockDisplay
 import io.schemat.displaykit.render.VirtualEntity
 import io.schemat.displaykit.render.VirtualTextDisplay
+import io.schemat.displaykit.surface.layout.SurfaceNode
 
 /**
  * Owns a surface's entity lifecycle for one viewer.
@@ -74,8 +75,14 @@ class SurfaceHost(
         }
     }
 
-    /** Returns true when the click landed on a region and was consumed. */
-    fun handleClick(): Boolean {
+    /**
+     * Returns true when the click landed on a region and was consumed.
+     *
+     * Kept for surfaces built with [Surface.region] and no layout tree at
+     * all -- [handleClick] falls back to this when the tree doesn't consume
+     * the click (or has no root).
+     */
+    private fun handleClickLegacy(): Boolean {
         val hit = SurfacePicking.hit(surface, owner.eyePosition(), owner.lookDirection()) ?: return false
         hit.onClick()
         return true
@@ -87,6 +94,85 @@ class SurfaceHost(
         if (id == hovered) return false
         hovered = id
         return true
+    }
+
+    /**
+     * One tick of pointer work for this surface: raycast, move the cursor,
+     * fire enter/exit and move events, and feed an active grab.
+     *
+     * Returns true if the surface was repainted, so the caller can avoid
+     * repainting twice. Repaint happens ONLY on a hover change -- every tick
+     * would be ~140 metadata packets a second per viewer.
+     */
+    fun tick(): Boolean {
+        val point = SurfacePicking.localPixel(surface, owner.eyePosition(), owner.lookDirection())
+        val player = owner.uuid
+
+        if (point == null) {
+            hidePointer()
+            val changed = SurfaceFocus.pointerLost(player)
+            if (changed) {
+                surface.root?.let { SurfaceEvents.dispatch(it, SurfaceEvent.PointerExit(0, 0)) }
+                repaint()
+            }
+            return changed
+        }
+
+        val (px, py) = point
+        showPointer(px, py)
+
+        // A grab keeps receiving movement even over other nodes; that is the
+        // point of grabbing.
+        SurfaceFocus.grabbed(player)?.let { it.onGrabMove?.invoke(px, py) }
+
+        val node = surface.nodeAt(px, py)
+        val previous = SurfaceFocus.hovered(player)
+        val changed = SurfaceFocus.pointerAt(player, node)
+        if (changed) {
+            previous?.let { surface.dispatch(SurfaceEvent.PointerExit(px, py), target = it) }
+            node?.let { surface.dispatch(SurfaceEvent.PointerEnter(px, py), target = it) }
+            repaint()
+        }
+        surface.dispatch(SurfaceEvent.PointerMove(px, py))
+        return changed
+    }
+
+    /** Route a click. Returns true when the surface consumed it. */
+    fun handleClick(button: PointerButton): Boolean {
+        val point = SurfacePicking.localPixel(surface, owner.eyePosition(), owner.lookDirection())
+            ?: return false
+        val (px, py) = point
+        val player = owner.uuid
+
+        // Click-to-grab, click-to-release: there is no reliable press-and-hold
+        // against a floating entity -- START_DESTROY_BLOCK/STOP_DESTROY_BLOCK
+        // only fire against blocks, and swing rate against open-air entities
+        // is client- and latency-dependent.
+        if (SurfaceFocus.grabbed(player) != null) {
+            SurfaceFocus.release(player)
+            return true
+        }
+        val node = surface.nodeAt(px, py)
+        if (node != null && node.onGrabMove != null && SurfaceFocus.grab(player, node)) {
+            return true
+        }
+
+        if (surface.dispatch(SurfaceEvent.Click(px, py, button)) != null) {
+            repaint()
+            return true
+        }
+        // Fall back to the pre-tree region list so existing surfaces still work.
+        return handleClickLegacy()
+    }
+
+    /** Route a scroll notch. Returns true when the surface consumed it. */
+    fun handleScroll(delta: Int): Boolean {
+        val point = SurfacePicking.localPixel(surface, owner.eyePosition(), owner.lookDirection())
+            ?: return false
+        val (px, py) = point
+        val consumed = surface.dispatch(SurfaceEvent.Scroll(px, py, delta)) != null
+        if (consumed) repaint()
+        return consumed
     }
 
     /** Show or move the cursor to canvas ([px], [py]). */

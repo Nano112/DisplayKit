@@ -81,8 +81,13 @@ object InteractionRouter {
         activeSurfaces[playerUUID]?.toList() ?: emptyList()
 
     /** Returns true when a surface consumed the click. */
-    fun handleSurfaceClick(playerUUID: UUID): Boolean =
-        getSurfaces(playerUUID).any { it.handleClick() }
+    fun handleSurfaceClick(playerUUID: UUID, isRightClick: Boolean = false): Boolean =
+        getSurfaces(playerUUID).any {
+            it.handleClick(
+                if (isRightClick) io.schemat.displaykit.surface.PointerButton.RIGHT
+                else io.schemat.displaykit.surface.PointerButton.LEFT
+            )
+        }
 
     fun hasHoveredOverlay(playerUUID: UUID): Boolean {
         val overlays = activeOverlays[playerUUID] ?: return false
@@ -166,7 +171,7 @@ object InteractionRouter {
 
         // A surface is a foreground window, so it consumes the click before UI/overlay
         // dispatch even gets a chance to raycast.
-        if (handleSurfaceClick(playerUUID)) {
+        if (handleSurfaceClick(playerUUID, isRightClick)) {
             if (debug) onDebugClick?.invoke(playerUUID, "$side:surface")
             return true
         }
@@ -224,6 +229,7 @@ object InteractionRouter {
         // until the player relogs — close every surface the player still has
         // open before discarding the entry.
         activeSurfaces.remove(playerUUID)?.forEach { it.close() }
+        io.schemat.displaykit.surface.SurfaceFocus.clear(playerUUID)
     }
 
     fun closeAll() {
