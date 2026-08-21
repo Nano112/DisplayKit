@@ -5,6 +5,7 @@ import io.schemat.displaykit.fabric.FabricDisplayKit
 import io.schemat.displaykit.fabric.text.Chat
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteIndex
+import io.schemat.displaykit.surface.RenderMode
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.minecraft.commands.CommandSourceStack
@@ -70,29 +71,17 @@ object ShowcaseMod : ModInitializer {
                     )
                     .then(
                         Commands.literal("picker")
-                            .executes { ctx ->
-                                val p = ctx.source.player
-                                if (p == null) {
-                                    ctx.source.sendFailure(Component.literal("Picker requires a player"))
-                                    0
-                                } else {
-                                    // TEMPORARY DIAGNOSTIC: Minecraft's command
-                                    // dispatcher reports "an unexpected error" and
-                                    // logs through an appender whose buffer we could
-                                    // not flush. Write the trace straight to a file.
-                                    try {
-                                        PickerWindow.open(p)
-                                    } catch (t: Throwable) {
-                                        java.io.File("/tmp/dk-picker-error.txt")
-                                            .writeText(t.stackTraceToString())
-                                        p.sendSystemMessage(
-                                            Component.literal("picker failed: ${t::class.java.simpleName}: ${t.message}")
-                                        )
-                                        throw t
-                                    }
-                                    1
-                                }
-                            }
+                            .executes { ctx -> openPicker(ctx.source, RenderMode.AUTO) }
+                            .then(
+                                // Proves the sprite primitives work with ZERO
+                                // resource pack: opens the same picker with
+                                // renderMode = ENTITIES, so every sprite in
+                                // the grid renders as vanilla's own
+                                // atlas-sprite entity instead of a
+                                // DisplayKit-generated glyph.
+                                Commands.literal("nopack")
+                                    .executes { ctx -> openPicker(ctx.source, RenderMode.ENTITIES) }
+                            )
                     )
                     .then(
                         Commands.literal("closepicker")
@@ -105,6 +94,27 @@ object ShowcaseMod : ModInitializer {
         }
 
         logger.info("DisplayKit Showcase initialized ({} demos)", demos.size)
+    }
+
+    private fun openPicker(source: CommandSourceStack, renderMode: RenderMode): Int {
+        val p = source.player
+        if (p == null) {
+            source.sendFailure(Component.literal("Picker requires a player"))
+            return 0
+        }
+        // TEMPORARY DIAGNOSTIC: Minecraft's command dispatcher reports "an
+        // unexpected error" and logs through an appender whose buffer we
+        // could not flush. Write the trace straight to a file.
+        try {
+            PickerWindow.open(p, renderMode)
+        } catch (t: Throwable) {
+            java.io.File("/tmp/dk-picker-error.txt").writeText(t.stackTraceToString())
+            p.sendSystemMessage(
+                Component.literal("picker failed: ${t::class.java.simpleName}: ${t.message}")
+            )
+            throw t
+        }
+        return 1
     }
 
     private fun querySprites(source: CommandSourceStack, query: String): Int {

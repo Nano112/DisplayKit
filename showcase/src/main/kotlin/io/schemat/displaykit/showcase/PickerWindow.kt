@@ -19,6 +19,7 @@ import io.schemat.displaykit.surface.EventResult
 import io.schemat.displaykit.surface.NineSliceLayout
 import io.schemat.displaykit.surface.NineSlicePainter
 import io.schemat.displaykit.surface.Rect
+import io.schemat.displaykit.surface.RenderMode
 import io.schemat.displaykit.surface.Surface
 import io.schemat.displaykit.surface.SurfaceEvent
 import io.schemat.displaykit.surface.SurfaceFocus
@@ -126,7 +127,21 @@ object PickerWindow {
     private const val VIEW_DISTANCE_WIDTH_FACTOR = 1.6
     private const val MIN_VIEW_DISTANCE_BLOCKS = 3.0
 
-    private class Session(val host: SurfaceHost, val player: ServerPlayer) {
+    private class Session(
+        val host: SurfaceHost,
+        val player: ServerPlayer,
+        /**
+         * True for `/dk picker nopack`. Skips every step that only exists to
+         * feed the generated resource pack (asset-provider registration,
+         * glyph/slice pre-warming, the `whenPackApplied` open gate) -- none of
+         * which [RenderMode.ENTITIES] ever allocates into in the first place,
+         * so running them anyway would be dead work at best and, for the pack
+         * registration, would make THIS session's `/dk picker nopack` still
+         * require every OTHER connected player to download a pack it never
+         * uses.
+         */
+        val entitiesMode: Boolean = false
+    ) {
         var atlas: String = ATLASES.first()
     }
 
@@ -192,7 +207,11 @@ object PickerWindow {
         val slicesBefore = SpriteSliceProvider.variantCount()
 
         repaint(session)
-        prewarmCursor()
+        // Both are pack-only bookkeeping (SpriteGlyphs/SliceGlyphSource
+        // codepoint allocation) that RenderMode.ENTITIES never touches --
+        // running them for a nopack session would grow tables nobody
+        // downloads and cost nothing but wasted table entries.
+        if (!session.entitiesMode) prewarmCursor()
         session.host.repaint()
 
         syncPackIfGlyphsGrew(glyphsBefore, slicesBefore)
@@ -227,14 +246,29 @@ object PickerWindow {
         syncPackIfGlyphsGrew(glyphsBefore, slicesBefore)
     }
 
-    fun open(player: ServerPlayer) {
+    /**
+     * @param renderMode [RenderMode.AUTO] (the default) behaves exactly as
+     *   before -- COMPOSITED once the pack has landed. `/dk picker nopack`
+     *   passes [RenderMode.ENTITIES] explicitly, which skips the pack
+     *   entirely: no asset-provider registration, no glyph/slice pre-warm, no
+     *   `whenPackApplied` wait -- the window opens on the very next tick,
+     *   rendered from vanilla's own atlas-sprite entities. Passing
+     *   [RenderMode.COMPOSITED] explicitly is legal but pointless here: the
+     *   picker never varies pack availability per-player, so it behaves
+     *   identically to [RenderMode.AUTO] once the pack it already registers
+     *   has landed.
+     */
+    fun open(player: ServerPlayer, renderMode: RenderMode = RenderMode.AUTO) {
         closeFor(player.uuid)
         installDisconnectHook()
 
-        // The chrome needs slices, glyphs and spacing; register and push once.
-        FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
-        FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
-        FabricPackIntegration.registerAssetProvider(SpriteSliceProvider)
+        val entitiesMode = renderMode == RenderMode.ENTITIES
+        if (!entitiesMode) {
+            // The chrome needs slices, glyphs and spacing; register and push once.
+            FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
+            FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
+            FabricPackIntegration.registerAssetProvider(SpriteSliceProvider)
+        }
 
         val ref = FabricPlayerRef(player)
         val eye = ref.eyePosition()
@@ -248,6 +282,7 @@ object PickerWindow {
         // Position is set below, once the surface's own pixelScale gives us
         // its real world size; Vec3d.ZERO here is just a placeholder.
         val surface = Surface(W, H, Vec3d.ZERO, targetWidthBlocks = 3f)
+        surface.renderMode = renderMode
         // Square the window to the player regardless of which way they face.
         surface.yawDegrees = yawDegrees
 
@@ -279,28 +314,38 @@ object PickerWindow {
         // decals against the sky rather than one panel.
         surface.backingBlock = BlockStateRef.BLACK_CONCRETE
         val host = SurfaceHost(DisplayKit.platform, ref, surface)
-        val session = Session(host, player)
+        val session = Session(host, player, entitiesMode = entitiesMode)
         open[player.uuid] = session
 
-        // Paint and sync the pack BEFORE spawning: host.repaint() is a no-op
-        // until open(), so this fills the canvas and rebuilds the pack.
-        repaintAndSync(session)
-        // Then WAIT for the client to actually apply that pack. Spawning
-        // straight away renders every newly-allocated codepoint as a
-        // missing-glyph box, whose advance is the font default rather than the
-        // sprite's -- so the rows measure wrong, the block measures wrong, and
-        // the layers scatter. That is why opening the picker a second time
-        // always looked right: the pack had landed by then.
-        FabricPackIntegration.whenPackApplied(player.uuid) {
-            // The player may have closed it (or logged out) while the pack was
-            // downloading; only spawn if this session is still the live one.
-            if (open[player.uuid] !== session) return@whenPackApplied
+        if (entitiesMode) {
+            // No pack, no wait: RenderMode.ENTITIES paints straight into
+            // vanilla atlas-sprite entities, which every client already has,
+            // so there is nothing to download and nothing to gate opening on.
+            repaint(session)
             host.open()
             InteractionRouter.registerSurface(player.uuid, host)
+        } else {
+            // Paint and sync the pack BEFORE spawning: host.repaint() is a no-op
+            // until open(), so this fills the canvas and rebuilds the pack.
+            repaintAndSync(session)
+            // Then WAIT for the client to actually apply that pack. Spawning
+            // straight away renders every newly-allocated codepoint as a
+            // missing-glyph box, whose advance is the font default rather than the
+            // sprite's -- so the rows measure wrong, the block measures wrong, and
+            // the layers scatter. That is why opening the picker a second time
+            // always looked right: the pack had landed by then.
+            FabricPackIntegration.whenPackApplied(player.uuid) {
+                // The player may have closed it (or logged out) while the pack was
+                // downloading; only spawn if this session is still the live one.
+                if (open[player.uuid] !== session) return@whenPackApplied
+                host.open()
+                InteractionRouter.registerSurface(player.uuid, host)
+            }
         }
 
+        val modeNote = if (entitiesMode) " (nopack: no resource pack, one entity per sprite)" else ""
         player.sendSystemMessage(
-            Component.literal("Picker open. Click a slot to copy its id; the cross closes it.")
+            Component.literal("Picker open$modeNote. Click a slot to copy its id; the cross closes it.")
         )
     }
 
@@ -522,8 +567,13 @@ object PickerWindow {
             column.addChild(body)
             root.addChild(column)
         }
-        prewarmGrid(all, firstCell)
-        prewarmScrollThumb(bar, pane)
+        // Both allocate SpriteGlyphs/SliceGlyphSource codepoints for the
+        // pack build -- meaningless (and wasted) work under RenderMode.ENTITIES,
+        // which never emits a glyph codepoint at all; see Session.entitiesMode.
+        if (!session.entitiesMode) {
+            prewarmGrid(all, firstCell)
+            prewarmScrollThumb(bar, pane)
+        }
         session.host.surface.paintTree()
     }
 

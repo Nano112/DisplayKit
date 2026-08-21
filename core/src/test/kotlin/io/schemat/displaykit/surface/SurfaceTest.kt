@@ -19,8 +19,14 @@ import kotlin.test.assertTrue
 
 class SurfaceTest {
 
+    // This whole file exercises the composited canvas directly (canvasItemCount,
+    // toEntity's own pack-fallback text) and predates RenderMode, so it forces
+    // COMPOSITED explicitly rather than drifting with whatever renderMode's
+    // default (AUTO) happens to resolve to with no SliceGlyphSource installed --
+    // RenderModeTest / EntitiesRenderModeTest own that behaviour instead.
     private fun surface(w: Int = 200, h: Int = 120) =
         Surface(widthPx = w, heightPx = h, position = Vec3d(0.0, 70.0, 0.0), targetWidthBlocks = 2f)
+            .apply { renderMode = RenderMode.COMPOSITED }
 
     // A canvas that requires no pack at all to render (font = null throughout) is
     // exactly what the fallback in toEntity() must never discard, so these tests

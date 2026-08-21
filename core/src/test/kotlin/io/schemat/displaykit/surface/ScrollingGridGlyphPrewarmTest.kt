@@ -56,6 +56,11 @@ class ScrollingGridGlyphPrewarmTest {
      * down to the `r.x + 1, r.y + 1` inset [Surface.iconFitted] draws at.
      */
     private fun buildGrid(surface: Surface, sprites: List<SpriteEntry>): ScrollNode {
+        // This test is entirely about COMPOSITED's glyph-allocation mechanics
+        // (SpriteGlyphs growth), which RenderMode.ENTITIES never touches --
+        // force COMPOSITED rather than drifting with AUTO's no-SliceGlyphSource
+        // default.
+        surface.renderMode = RenderMode.COMPOSITED
         lateinit var pane: ScrollNode
         surface.layout { root ->
             pane = ScrollNode("grid")

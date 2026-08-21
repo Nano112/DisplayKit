@@ -168,6 +168,18 @@ class Surface(
         /** Test seam for the missing-sprite path. */
         @JvmStatic
         var pointerSpriteOverride: SpriteId? = null
+
+        /**
+         * Width AND height, in font pixels, of vanilla's atlas-sprite text
+         * component glyph -- decompiled from the 1.21.11 client:
+         * `PlainTextRenderable.width()/height()/ascent()` on an `AtlasSprite`
+         * content all return `8.0f`, backed by one shared
+         * `AtlasGlyphProvider.GLYPH_INFO = GlyphInfo.simple(8.0f)`. Fixed and
+         * client-built-in -- unrelated to the sprite's own pixel dimensions
+         * or to any resource pack -- which is exactly why [RenderMode.ENTITIES]
+         * has to recover size and aspect with an entity-level scale instead.
+         */
+        internal const val ATLAS_SPRITE_GLYPH_PX = 8f
     }
 
     init {
@@ -177,6 +189,17 @@ class Surface(
             "Surface targetWidthBlocks must be positive (got $targetWidthBlocks)."
         }
     }
+
+    /**
+     * How this surface turns painted content into entities -- see
+     * [RenderMode]. Defaults to [RenderMode.AUTO], which renders with the
+     * generated resource pack when one is installed and degrades to
+     * zero-pack atlas-sprite entities when it is not.
+     */
+    var renderMode: RenderMode = RenderMode.AUTO
+
+    /** [renderMode] with [RenderMode.AUTO] resolved against [SliceGlyphSource.installed]. */
+    internal fun effectiveRenderMode(): RenderMode = RenderMode.resolve(renderMode)
 
     /**
      * Optional solid panel behind the whole composition. Null (the default)
@@ -287,6 +310,23 @@ class Surface(
     private val rects = mutableListOf<HitRect>()
     private val slots = mutableListOf<Pair<Rect, ItemRef>>()
 
+    /**
+     * What [Painter] recorded this paint, for [RenderMode.ENTITIES]. Empty
+     * (and untouched) under [RenderMode.COMPOSITED], which paints into
+     * [canvas] instead -- see [toEntitiesFlat].
+     */
+    private val elements = mutableListOf<EntityElement>()
+
+    /**
+     * Test seam: the sprite rects [RenderMode.ENTITIES] recorded from the
+     * most recent [paint], in paint order -- e.g. for [SurfacePainter.frame],
+     * the four corners followed by the background/edge fills (see
+     * [recordFrame]). Lets a test assert the corner-occlusion geometry
+     * directly, without a client to actually render it.
+     */
+    internal fun paintedSpriteRectsForTest(): List<Rect> =
+        elements.filterIsInstance<EntityElement.SpriteEl>().map { it.rect }
+
     fun canvasItemCount(): Int = canvas.itemCount()
     fun canvasItemPositions(): List<Pair<Int, Int>> = canvas.itemPositions()
     fun hitRects(): List<HitRect> = rects.toList()
@@ -363,7 +403,7 @@ class Surface(
      */
     fun paint(block: SurfacePainter.() -> Unit) {
         canvas.anchorToBounds = true
-        canvas.clear(); rects.clear(); slots.clear()
+        canvas.clear(); rects.clear(); slots.clear(); elements.clear()
         Painter().block()
     }
 
@@ -375,18 +415,29 @@ class Surface(
      * different width and they slide apart horizontally.
      */
     internal fun describeLayersForDebug(spawned: List<VirtualTextDisplay>): String {
+        val mode = effectiveRenderMode()
         val sb = StringBuilder()
-        sb.append("[DisplayKit] surface ${widthPx}x${heightPx} yaw=${"%.1f".format(yawDegrees)} ")
-        sb.append("pixelScale=${"%.5f".format(pixelScale)} block=${blockWidthPx()}x${blockHeightPx()}\n")
+        sb.append("[DisplayKit] surface ${widthPx}x${heightPx} mode=$mode yaw=${"%.1f".format(yawDegrees)} ")
+        sb.append("pixelScale=${"%.5f".format(pixelScale)} entities=${spawned.size}\n")
         sb.append("[DisplayKit]   position=${position}\n")
-        for ((i, layer) in canvas.layers().withIndex()) {
-            val rows = canvas.layerRowWidths(layer)
-            val e = spawned.getOrNull(i)
-            sb.append(
-                "[DisplayKit]   layer=$layer ordinal=$i maxRow=${rows.maxOrNull()} " +
-                    "rows=${rows.size} items=${canvas.layerItemCount(layer)} " +
-                    "pos=${e?.position} lineWidth=${e?.lineWidth}\n"
-            )
+        if (mode == RenderMode.COMPOSITED) {
+            sb.append("[DisplayKit]   block=${blockWidthPx()}x${blockHeightPx()}\n")
+            for ((i, layer) in canvas.layers().withIndex()) {
+                val rows = canvas.layerRowWidths(layer)
+                val e = spawned.getOrNull(i)
+                sb.append(
+                    "[DisplayKit]   layer=$layer ordinal=$i maxRow=${rows.maxOrNull()} " +
+                        "rows=${rows.size} items=${canvas.layerItemCount(layer)} " +
+                        "pos=${e?.position} lineWidth=${e?.lineWidth}\n"
+                )
+            }
+        } else {
+            // ENTITIES: one entity per painted element -- no shared canvas
+            // layers to describe, just the resulting entity count, which is
+            // the whole point of measuring this mode against COMPOSITED's.
+            for ((i, e) in spawned.withIndex()) {
+                sb.append("[DisplayKit]   entity=$i pos=${e.position} lineWidth=${e.lineWidth}\n")
+            }
         }
         return sb.toString().trimEnd()
     }
@@ -490,6 +541,60 @@ class Surface(
     internal fun planePointForTest(px: Int, py: Int, depth: Float = 0f): Vec3d = planePoint(px, py, depth)
 
     /**
+     * [entityOrigin]'s formula, generalised to an independent scale per axis.
+     *
+     * [entityOrigin] folds the client's block-centring translate and its own
+     * scale into ONE `unit`, because every [RenderMode.COMPOSITED] layer is
+     * stretched uniformly. A [RenderMode.ENTITIES] sprite is not: recovering
+     * its aspect ratio needs `targetW/8` on x and `targetH/8` on y
+     * independently (see [RenderMode.ENTITIES]'s KDoc), so the translate's x
+     * half must scale by [scaleX] and its y half by [scaleY] separately.
+     * [yawDegrees] still rotates x/z together exactly as [entityOrigin]
+     * does -- a text display's local y axis is never touched by rotateY --
+     * so this is the same rotation, just fed two units instead of one.
+     *
+     * With `scaleX == scaleY == pixelScale` and a [blockWidthPx]/[blockHeightPx]
+     * pair taken from a real canvas, this reduces to exactly [entityOrigin]'s
+     * result -- it is a strict generalisation, not a parallel formula.
+     *
+     * @param base World point [SurfacePicking] would resolve this element's
+     *   anchor pixel to -- i.e. [planePoint] at that pixel, ZERO depth (depth
+     *   is applied here, not baked into [base]), matching how [pointerEntityAt]
+     *   already splits `base` from `depth` for its own single-glyph entity.
+     * @param depth World-block offset toward the viewer, already resolved --
+     *   same contract as [entityOrigin]'s `depth`.
+     */
+    private fun elementOrigin(
+        base: Vec3d,
+        blockWidthPx: Int,
+        blockHeightPx: Int,
+        scaleX: Float,
+        scaleY: Float,
+        depth: Float = 0f
+    ): Vec3d {
+        val unitX = TextMetrics.PIXEL_SIZE * scaleX.toDouble()
+        val unitY = TextMetrics.PIXEL_SIZE * scaleY.toDouble()
+        val localX = unitX * (1.0 - blockWidthPx / 2.0)
+        val localY = unitY * blockHeightPx.toDouble()
+        val theta = Math.toRadians(yawDegrees.toDouble())
+        val cos = cos(theta)
+        val sin = sin(theta)
+        return Vec3d(
+            base.x - (localX * cos) + depth * sin,
+            base.y - localY,
+            base.z - (localX * -sin) + depth * cos
+        )
+    }
+
+    /** Test seam for [elementOrigin] + [planePoint] together, matching how [spriteEntity]/[labelEntity] compose them. */
+    internal fun elementOriginForTest(
+        px: Int, py: Int,
+        blockWidthPx: Int, blockHeightPx: Int,
+        scaleX: Float, scaleY: Float,
+        depth: Float = 0f
+    ): Vec3d = elementOrigin(planePoint(px, py), blockWidthPx, blockHeightPx, scaleX, scaleY, depth)
+
+    /**
      * One text display per depth layer, back to front.
      *
      * Everything inside a single text display is coplanar, so wherever the UI
@@ -502,7 +607,13 @@ class Surface(
      * [SpriteCanvas.emittedRowCount] are canvas-level, not per-layer), so they
      * all resolve the same [entityOrigin] and stack exactly.
      */
-    fun toEntities(): List<VirtualTextDisplay> {
+    fun toEntities(): List<VirtualTextDisplay> = when (effectiveRenderMode()) {
+        RenderMode.COMPOSITED -> toEntitiesComposited()
+        RenderMode.ENTITIES, RenderMode.AUTO -> toEntitiesFlat()
+    }
+
+    /** [RenderMode.COMPOSITED]: one text display per depth layer -- the original [toEntities] body. */
+    private fun toEntitiesComposited(): List<VirtualTextDisplay> {
         val layers = canvas.layers()
         if (layers.isEmpty()) return listOf(toEntity())
         // Depth is the layer's ORDINAL, not its raw index. Layer numbers are
@@ -510,6 +621,90 @@ class Surface(
         // stepping by the raw value would pile up depth the UI never asked
         // for, eventually opening a visible gap between front and back.
         return layers.mapIndexed { ordinal, layer -> toEntity(layer, ordinal) }
+    }
+
+    /**
+     * [RenderMode.ENTITIES]: one text display per painted [EntityElement]
+     * instead of per depth layer -- see [RenderMode.ENTITIES]'s KDoc.
+     *
+     * Ordered back-to-front by each element's `depthKey` (a stable sort, so
+     * two elements at the same key keep their paint order as the tiebreak --
+     * the same painter's-algorithm rule [Surface.KIND_CHROME] etc. already
+     * encode for [RenderMode.COMPOSITED]), then stepped by [LAYER_Z_STEP] per
+     * ordinal exactly like [toEntitiesComposited] steps whole layers, so
+     * overlapping elements never share a depth.
+     */
+    private fun toEntitiesFlat(): List<VirtualTextDisplay> {
+        val ordered = elements.sortedBy { it.depthKey }
+        return ordered.mapIndexed { ordinal, el ->
+            val depth = ordinal * LAYER_Z_STEP
+            when (el) {
+                is EntityElement.SpriteEl -> spriteEntity(el, depth)
+                is EntityElement.LabelEl -> labelEntity(el, depth)
+            }
+        }
+    }
+
+    /**
+     * One [RenderMode.ENTITIES] sprite entity: vanilla's native atlas-sprite
+     * text-component content ([TextComponent.sprite]), a client-fixed 8x8
+     * quad, stretched to [EntityElement.SpriteEl.rect] with a NON-UNIFORM
+     * scale so the sprite's real aspect ratio survives rather than being
+     * squashed into a square. See [elementOrigin] for why the anchor maths
+     * cannot reuse [entityOrigin] unchanged once the two axes scale
+     * differently.
+     */
+    private fun spriteEntity(el: EntityElement.SpriteEl, depth: Float): VirtualTextDisplay {
+        val base = planePoint(el.rect.x, el.rect.y)
+        val sx = pixelScale * (el.rect.w / ATLAS_SPRITE_GLYPH_PX)
+        val sy = pixelScale * (el.rect.h / ATLAS_SPRITE_GLYPH_PX)
+        val pos = elementOrigin(
+            base = base,
+            blockWidthPx = ATLAS_SPRITE_GLYPH_PX.toInt(),
+            blockHeightPx = TextMetrics.FONT_LINE_HEIGHT_PX - 1,
+            scaleX = sx,
+            scaleY = sy,
+            depth = depth
+        )
+        return VirtualTextDisplay().also { d ->
+            d.position = pos
+            d.billboard = orientation
+            d.backgroundColor = DkColor.TRANSPARENT
+            d.brightness = Brightness.FULL
+            d.hasShadow = false
+            d.textAlignment = TextAlignment.LEFT
+            d.lineWidth = ATLAS_SPRITE_GLYPH_PX.toInt() + LINE_WIDTH_MARGIN_PX
+            d.transformation = Mat4f(
+                Matrix4f()
+                    .rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat())
+                    .scale(sx, sy, pixelScale)
+            )
+            val sprite = TextComponent.sprite(el.entry.id.atlas, el.entry.id.sprite)
+            d.text = if (el.tint != null) sprite.withColor(el.tint) else sprite
+        }
+    }
+
+    /** One [RenderMode.ENTITIES] label entity: one line of plain vanilla text, no pack required. */
+    private fun labelEntity(el: EntityElement.LabelEl, depth: Float): VirtualTextDisplay {
+        val base = planePoint(el.x, el.y)
+        val blockW = TextMetrics.textWidthPx(el.text)
+        val blockH = TextMetrics.lineCount(el.text) * TextMetrics.FONT_LINE_HEIGHT_PX - 1
+        val s = pixelScale
+        val pos = elementOrigin(base, blockWidthPx = blockW, blockHeightPx = blockH, scaleX = s, scaleY = s, depth = depth)
+        return VirtualTextDisplay().also { d ->
+            d.position = pos
+            d.billboard = orientation
+            d.backgroundColor = DkColor.TRANSPARENT
+            d.brightness = Brightness.FULL
+            d.hasShadow = false
+            d.textAlignment = TextAlignment.LEFT
+            d.lineWidth = blockW + LINE_WIDTH_MARGIN_PX
+            d.transformation = Mat4f(
+                Matrix4f().rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat()).scale(s, s, s)
+            )
+            val text = TextComponent.of(el.text)
+            d.text = if (el.color != null) text.withColor(el.color) else text
+        }
     }
 
     @JvmOverloads
@@ -653,6 +848,9 @@ class Surface(
          */
         private var elevation = 0
 
+        /** Resolved once per paint, not per call -- see [Surface.effectiveRenderMode]. */
+        private val mode = effectiveRenderMode()
+
         private fun depth(kind: Int) = elevation * KINDS_PER_ELEVATION + kind
 
         override fun elevate(delta: Int, block: SurfacePainter.() -> Unit) {
@@ -666,11 +864,25 @@ class Surface(
         }
 
         override fun frame(entry: SpriteEntry, rect: Rect, tint: DkColor?) {
+            if (mode == RenderMode.ENTITIES) {
+                recordFrame(entry, rect, tint, depth(KIND_CHROME).toDouble())
+                return
+            }
             canvas.currentLayer = depth(KIND_CHROME)
             NineSlicePainter.paint(canvas, entry, rect, tint)
         }
 
         override fun fill(color: DkColor, rect: Rect) {
+            if (mode == RenderMode.ENTITIES) {
+                val e = resolveSprite(FILL_SPRITE, "a colour fill") ?: return
+                // Stretched, not tiled: one entity for the whole rect. Tiling
+                // exists only to keep a bitmap glyph's own pixels crisp under
+                // the composited canvas; a fill sprite is uniform colour, so
+                // stretching it is visually identical and costs one entity
+                // instead of a grid of them.
+                elements += EntityElement.SpriteEl(e, rect, color, depth(KIND_CHROME).toDouble())
+                return
+            }
             canvas.currentLayer = depth(KIND_CHROME)
             val e = resolveSprite(FILL_SPRITE, "a colour fill") ?: return
             require(e.width > 0 && e.height > 0) {
@@ -696,29 +908,47 @@ class Surface(
             boxH: Int,
             tint: DkColor?
         ): Pair<Int, Int> {
-            canvas.currentLayer = depth(KIND_ICON)
             val h = entry.fitHeight(boxW, boxH)
             val w = entry.scaledWidth(h)
             // Centre in the box so a wide sprite and a tall one both sit in
             // the middle of their cell rather than hugging its corner.
-            canvas.draw(entry, x + (boxW - w) / 2, y + (boxH - h) / 2, tint, renderHeight = h)
+            val rx = x + (boxW - w) / 2
+            val ry = y + (boxH - h) / 2
+            if (mode == RenderMode.ENTITIES) {
+                elements += EntityElement.SpriteEl(entry, Rect(rx, ry, w, h), tint, depth(KIND_ICON).toDouble())
+                return w to h
+            }
+            canvas.currentLayer = depth(KIND_ICON)
+            canvas.draw(entry, rx, ry, tint, renderHeight = h)
             return w to h
         }
 
         override fun icon(entry: SpriteEntry, x: Int, y: Int, tint: DkColor?) {
+            if (mode == RenderMode.ENTITIES) {
+                elements += EntityElement.SpriteEl(entry, Rect(x, y, entry.width, entry.height), tint, depth(KIND_ICON).toDouble())
+                return
+            }
             canvas.currentLayer = depth(KIND_ICON)
             canvas.draw(entry, x, y, tint)
         }
 
         override fun label(text: String, x: Int, y: Int, color: DkColor?) {
+            if (mode == RenderMode.ENTITIES) {
+                elements += EntityElement.LabelEl(text, x, y, color, depth(KIND_TEXT).toDouble())
+                return
+            }
             canvas.currentLayer = depth(KIND_TEXT)
             canvas.text(text, x, y, color)
         }
 
         override fun slot(x: Int, y: Int, item: ItemRef?) {
-            canvas.currentLayer = depth(KIND_SLOT)
             val e = resolveSprite(SLOT_SPRITE, "a slot") ?: return
-            canvas.draw(e, x, y)
+            if (mode == RenderMode.ENTITIES) {
+                elements += EntityElement.SpriteEl(e, Rect(x, y, e.width, e.height), null, depth(KIND_SLOT).toDouble())
+            } else {
+                canvas.currentLayer = depth(KIND_SLOT)
+                canvas.draw(e, x, y)
+            }
             if (item != null) slots += Rect(x, y, 18, 18) to item
         }
 
@@ -734,6 +964,115 @@ class Surface(
             rects += HitRect(id, rect, onClick)
         }
     }
+
+    /**
+     * [RenderMode.ENTITIES] rendering of [SurfacePainter.frame].
+     *
+     * True nine-slice needs a CROP of the source texture, and vanilla's
+     * atlas-sprite glyph has no sub-region mechanism -- it always draws the
+     * WHOLE sprite (see [RenderMode.ENTITIES]'s KDoc). Cropping is recovered
+     * by POSITION and OCCLUSION instead of pixels:
+     *
+     * 1. The frame sprite is drawn at its native size, once per corner, each
+     *    anchored so that corner's TRUE nine-slice corner (the sprite's own
+     *    `left x top` block, etc. -- [SpriteEntry.nineSlice]) lands exactly
+     *    on the target rect's corner. The rest of that native-size copy --
+     *    the part that is really centre/edge art, not corner art -- spills
+     *    INWARD, over the window's interior.
+     * 2. A tinted fill sprite is drawn IN FRONT of the corners (`baseKey +
+     *    0.5`, strictly between this frame's own KIND_CHROME depth and the
+     *    next KIND above it), inset by the nine-slice borders on all four
+     *    sides PLUS flat border strips between the corners. Between them
+     *    they cover exactly the area the corners spilled over, hiding it.
+     *
+     * Because every corner is anchored at the corner it belongs to and
+     * grows inward, nothing ever spills OUTSIDE the window -- only over
+     * area this function immediately re-covers.
+     *
+     * The border strips are a flat fill in the tint colour, not the sprite's
+     * real edge art -- exact for a uniform-band sprite like
+     * `gui:tooltip/background`, an approximation for one with a patterned
+     * edge. A patterned edge would need its own tiled, overlap-hiding
+     * copies (the same trick as the corners, repeated along each edge) and
+     * that is deliberately NOT implemented here.
+     *
+     * Falls back to a single tinted whole-sprite stretch -- no corners
+     * recovered at all -- when the sprite carries no [SpriteEntry.nineSlice]
+     * metadata, or when [rect] is smaller than the sprite's own native size
+     * (too small for all four corners to be placed without overlapping each
+     * other, the same minimum [NineSliceLayout] imposes on the composited
+     * path).
+     */
+    private fun recordFrame(entry: SpriteEntry, rect: Rect, tint: DkColor?, baseKey: Double) {
+        val slice = entry.nineSlice
+        if (slice == null || rect.w < entry.width || rect.h < entry.height) {
+            elements += EntityElement.SpriteEl(entry, rect, tint, baseKey)
+            return
+        }
+        val l = slice.left; val t = slice.top; val r = slice.right; val b = slice.bottom
+
+        // Corners: native size, anchored so their spill runs inward, never
+        // outside the rect.
+        elements += EntityElement.SpriteEl(entry, Rect(rect.x, rect.y, entry.width, entry.height), tint, baseKey)
+        elements += EntityElement.SpriteEl(
+            entry, Rect(rect.right - entry.width, rect.y, entry.width, entry.height), tint, baseKey
+        )
+        elements += EntityElement.SpriteEl(
+            entry, Rect(rect.x, rect.bottom - entry.height, entry.width, entry.height), tint, baseKey
+        )
+        elements += EntityElement.SpriteEl(
+            entry, Rect(rect.right - entry.width, rect.bottom - entry.height, entry.width, entry.height), tint, baseKey
+        )
+
+        // Background + edge strips occlude the inward spill. One depth step
+        // in FRONT of the corners (still behind the next KIND up), or the
+        // occlusion is a coin flip instead of a guarantee -- see this
+        // function's own KDoc.
+        val fillKey = baseKey + 0.5
+        val fill = resolveSprite(FILL_SPRITE, "a frame background") ?: return
+        val innerW = rect.w - l - r
+        val innerH = rect.h - t - b
+        if (innerW > 0 && innerH > 0) {
+            elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y + t, innerW, innerH), tint, fillKey)
+        }
+        if (innerW > 0 && t > 0) elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y, innerW, t), tint, fillKey)
+        if (innerW > 0 && b > 0) {
+            elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.bottom - b, innerW, b), tint, fillKey)
+        }
+        if (innerH > 0 && l > 0) elements += EntityElement.SpriteEl(fill, Rect(rect.x, rect.y + t, l, innerH), tint, fillKey)
+        if (innerH > 0 && r > 0) {
+            elements += EntityElement.SpriteEl(fill, Rect(rect.right - r, rect.y + t, r, innerH), tint, fillKey)
+        }
+    }
+}
+
+/**
+ * One call to a [SurfacePainter] method, recorded instead of drawn, for
+ * [RenderMode.ENTITIES]. [Surface.toEntitiesFlat] turns each of these into
+ * its own entity; [Surface.recordFrame] is the one call site that emits
+ * several from a single painter call.
+ *
+ * @param depthKey Back-to-front sort key -- see [Surface.toEntitiesFlat].
+ *   A [Double], not the [Int] depth [Surface.KIND_CHROME] etc. use for
+ *   [RenderMode.COMPOSITED]'s canvas layers, because [Surface.recordFrame]
+ *   needs a background to sit strictly BETWEEN two elements that would
+ *   otherwise share one integer kind.
+ */
+private sealed class EntityElement(val depthKey: Double) {
+    class SpriteEl(
+        val entry: SpriteEntry,
+        val rect: Rect,
+        val tint: DkColor?,
+        depthKey: Double
+    ) : EntityElement(depthKey)
+
+    class LabelEl(
+        val text: String,
+        val x: Int,
+        val y: Int,
+        val color: DkColor?,
+        depthKey: Double
+    ) : EntityElement(depthKey)
 }
 
 /**
