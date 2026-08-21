@@ -10,7 +10,9 @@ import kotlin.math.sin
 /**
  * Turns a look ray into a pixel on a surface.
  *
- * A FIXED surface lies in the world XY plane facing -Z, matching an unrotated
+ * A FIXED surface lies in the world XY plane. Its readable side is +Z (the
+ * client's built-in rotateY(PI); see Surface.yawFacing), but this maths is
+ * side-agnostic -- only the plane and the local axes matter. Matching an unrotated
  * text display. Canvas pixel (0,0) is its TOP-LEFT, so canvas y runs opposite
  * to world y.
  *
@@ -43,7 +45,7 @@ object SurfacePicking {
         // Surface.toEntity() rotates the whole surface by yawDegrees about
         // its own position. Counter-rotating the incoming ray by the same
         // angle, about the same point, maps it into the surface's local
-        // (unrotated, -Z-facing) space, where the rest of this method's
+        // (unrotated) space, where the rest of this method's
         // planar maths — unchanged since before yaw existed — applies as-is.
         val (localEye, localLook) = rotateIntoSurfaceLocalSpace(surface, eye, look)
 

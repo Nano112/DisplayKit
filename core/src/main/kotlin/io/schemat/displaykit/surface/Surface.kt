@@ -17,6 +17,7 @@ import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
 import org.joml.Matrix4f
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -56,6 +57,28 @@ class Surface(
     companion object {
         /** The single depth step for anything that must sit in front of the plane. */
         const val OVERLAY_Z_STEP = 0.005f
+
+        /**
+         * Yaw, in degrees, that turns a surface's readable side toward a
+         * viewer looking along [look].
+         *
+         * A text display's readable side is local **+Z**, not -Z. The client
+         * bakes a `Matrix4f.rotate(PI, 0, 1, 0)` into every text display
+         * before its `-0.025` scale (`DisplayRenderer$TextDisplayRenderer`,
+         * offset 137), so the glyphs face the opposite way from the naive
+         * expectation. Turning `atan2(look.x, look.z)` toward the viewer
+         * therefore presents the surface's BACK, and anything placed at +Z to
+         * sit "behind" the plane lands in front of it instead.
+         *
+         * The same 180-degree correction was previously discovered and
+         * patched locally in the world-quad demos; it belongs here so every
+         * call site gets it.
+         *
+         * See `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`.
+         */
+        @JvmStatic
+        fun yawFacing(look: Vec3d): Float =
+            Math.toDegrees(atan2(look.x, look.z)).toFloat() + 180f
 
         /** Uniform, fully opaque, pure white — the only vanilla sprite that tints exactly. */
         val FILL_SPRITE = SpriteId("blocks", "block/lightning_rod_on")
@@ -128,6 +151,11 @@ class Surface(
      * [OVERLAY_Z_STEP] before scaling, so it spans exactly the canvas bounds
      * and sits one depth step behind the glyphs — far enough not to z-fight,
      * close enough not to show an air gap.
+     *
+     * "Behind" is local NEGATIVE Z, because a text display's readable side is
+     * local +Z (see [yawFacing]). Putting the slab at +Z parks it between the
+     * viewer and the glyphs, which hides the entire UI behind a blank
+     * panel.
      */
     fun toBackingEntity(): VirtualBlockDisplay? {
         val block = backingBlock ?: return null
@@ -141,7 +169,7 @@ class Surface(
             d.transformation = Mat4f(
                 Matrix4f()
                     .rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat())
-                    .translate(0f, -h, OVERLAY_Z_STEP)
+                    .translate(0f, -h, -(OVERLAY_Z_STEP + backingThicknessBlocks))
                     .scale(w, h, backingThicknessBlocks)
             )
         }
@@ -151,7 +179,9 @@ class Surface(
      * Y-axis rotation applied to the whole surface, in degrees, composed with
      * [toEntity]'s scale.
      *
-     * An unrotated ([yawDegrees] `== 0f`) surface faces -Z (see
+     * An unrotated ([yawDegrees] `== 0f`) surface's readable side faces +Z
+     * — the client's built-in `rotateY(PI)` flips it (see [yawFacing]). Use
+     * [yawFacing] rather than deriving this angle by hand. (See
      * [SurfacePicking]'s KDoc). [SurfacePicking.localPixel] counter-rotates
      * the incoming eye/look by `-yawDegrees` about [position] before its
      * planar maths, so the two must stay in lockstep — this is the only

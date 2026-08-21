@@ -30,7 +30,6 @@ import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.atan2
 
 /**
  * A sprite picker built entirely from surface parts.
@@ -161,16 +160,15 @@ object PickerWindow {
         val eye = ref.eyePosition()
         val look = ref.lookDirection()
 
-        val yawDegrees = Math.toDegrees(atan2(look.x, look.z)).toFloat()
+        // Not atan2 alone: the client's built-in rotateY(PI) makes a text
+        // display's readable side local +Z, so the bare angle presents the
+        // window's back. Surface.yawFacing carries the correction.
+        val yawDegrees = Surface.yawFacing(look)
 
         // Position is set below, once the surface's own pixelScale gives us
         // its real world size; Vec3d.ZERO here is just a placeholder.
         val surface = Surface(W, H, Vec3d.ZERO, targetWidthBlocks = 3f)
-        // Square the window to the player regardless of which way they're
-        // facing: an unrotated surface faces -Z (see SurfacePicking), which
-        // matches a viewer whose look direction is +Z (atan2(0, 1) == 0), so
-        // yawDegrees = atan2(look.x, look.z) turns the surface's front to
-        // face wherever the player is looking.
+        // Square the window to the player regardless of which way they face.
         surface.yawDegrees = yawDegrees
 
         val worldWidth = (surface.widthPx * surface.pixelScale * TextMetrics.PIXEL_SIZE).toDouble()

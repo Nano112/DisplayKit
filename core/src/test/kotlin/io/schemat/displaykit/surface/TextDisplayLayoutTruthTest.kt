@@ -1,6 +1,7 @@
 package io.schemat.displaykit.surface
 
 import io.schemat.displaykit.math.Vec3d
+import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.SpriteEntry
@@ -113,4 +114,33 @@ class TextDisplayLayoutTruthTest {
         val b = surface().apply { paint { label("a much longer label", 0, 0, DkColor.WHITE) } }
         assertEquals(a.entityOrigin(), b.entityOrigin())
     }
+    // --- Fact 4: the readable side is +Z, because of the built-in rotateY(PI) ---
+
+    @Test
+    fun yawFacingTurnsTheReadableSideTowardTheViewer() {
+        // A viewer looking along +Z must end up on the surface's +Z side, so
+        // the surface is turned a half-turn from the naive atan2 angle.
+        assertEquals(180f, Surface.yawFacing(Vec3d(0.0, 0.0, 1.0)))
+        // ...and a viewer looking along +X gets 90 + 180.
+        assertEquals(270f, Surface.yawFacing(Vec3d(1.0, 0.0, 0.0)))
+    }
+
+    @Test
+    fun theBackingSlabSitsOnTheFarSideOfTheReadableFace() {
+        // Readable side is +Z, so the panel must be at NEGATIVE local z. When
+        // this was +Z the slab parked between the viewer and the glyphs and
+        // the whole UI vanished behind a blank rectangle.
+        val s = surface()
+        s.backingBlock = BlockStateRef.BLACK_CONCRETE
+        s.paint { label("x", 0, 0, DkColor.WHITE) }
+        val m = s.toBackingEntity()!!.transformation.joml
+
+        // Where the slab's front-most corner (unit cube z=1) actually lands.
+        val corner = m.transformPosition(org.joml.Vector3f(0f, 0f, 1f))
+        assertTrue(
+            corner.z() <= 1e-4f,
+            "backing slab must not cross into the readable half-space, got z=" + corner.z()
+        )
+    }
+
 }
