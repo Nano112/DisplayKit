@@ -186,7 +186,7 @@ class TextDisplayLayoutTruthTest {
                         Math.pow(bz - (back.position.z + v.z()), 2.0)
                 )
                 // The only separation allowed is the deliberate depth step.
-                val expected = (Surface.OVERLAY_Z_STEP + s.backingThicknessBlocks).toDouble()
+                val expected = (Surface.LAYER_Z_STEP + s.backingThicknessBlocks).toDouble()
                 assertTrue(
                     Math.abs(gap - expected) < 1e-4,
                     "yaw $yaw corner ($px,$py): slab is $gap from the block, expected $expected"
@@ -210,7 +210,7 @@ class TextDisplayLayoutTruthTest {
 
         // Layers must differ ONLY in depth: same block, same origin, so they
         // stack instead of sliding apart.
-        val step = Surface.OVERLAY_Z_STEP.toDouble()
+        val step = Surface.LAYER_Z_STEP.toDouble()
         for (i in 1 until es.size) {
             val a = es[i - 1].position
             val b = es[i].position

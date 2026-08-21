@@ -45,6 +45,7 @@ loom {
             // quiet but fatal here: the pack never serves, so every sprite
             // glyph renders as a missing-glyph box.
             vmArg("-Ddisplaykit.pack.port=8099")
+            vmArg("-Ddisplaykit.debug.layers=true")
         }
     }
 }

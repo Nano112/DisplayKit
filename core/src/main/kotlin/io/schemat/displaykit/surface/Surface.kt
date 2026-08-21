@@ -68,6 +68,18 @@ class Surface(
         const val OVERLAY_Z_STEP = 0.005f
 
         /**
+         * Depth between consecutive surface layers, in blocks.
+         *
+         * Deliberately larger than [OVERLAY_Z_STEP]. The client renders
+         * text-display glyphs through `Font$DisplayMode.POLYGON_OFFSET`, which
+         * already biases their depth; a separation of the same order as that
+         * bias does not reliably win, and the layers keep fighting. 2cm across
+         * a metres-wide panel is far below what reads as an air gap while
+         * being unambiguous to the depth buffer.
+         */
+        const val LAYER_Z_STEP = 0.02f
+
+        /**
          * Depth layers, back to front. Each becomes its own text display,
          * stepped [OVERLAY_Z_STEP] nearer the viewer than the one below, so
          * overlapping glyphs have real depth between them instead of
@@ -208,7 +220,7 @@ class Surface(
                     // The client's own x translate carries a +1 nudge
                     // (`1.0f - blockWidth / 2.0f`); match it or the slab sits
                     // a pixel off.
-                    .translate(unit * (1f - blockW / 2f), 0f, -(OVERLAY_Z_STEP + backingThicknessBlocks))
+                    .translate(unit * (1f - blockW / 2f), 0f, -(LAYER_Z_STEP + backingThicknessBlocks))
                     .scale(unit * blockW, unit * blockH, backingThicknessBlocks)
             )
         }
@@ -335,14 +347,19 @@ class Surface(
 
     @JvmOverloads
     fun toEntity(layer: Int? = null, depthIndex: Int = 0): VirtualTextDisplay = VirtualTextDisplay().also { d ->
-        d.position = entityOrigin(depthIndex * OVERLAY_Z_STEP)
+        d.position = entityOrigin(depthIndex * LAYER_Z_STEP)
         d.billboard = orientation
         // ONLY the bottom layer. A text display paints its background across
         // the whole measured block, so giving every layer one stacks N opaque
         // quads and each hides the glyphs of the layer beneath it -- which
         // reads exactly like z-fighting but is pure occlusion.
         val isBottomLayer = layer == null || layer == canvas.layers().firstOrNull()
-        d.backgroundColor = if (isBottomLayer) backdrop ?: DkColor.TRANSPARENT else DkColor.TRANSPARENT
+        // A backing block already paints an opaque panel behind everything, so
+        // the backdrop would only add a translucent quad a few millimetres in
+        // front of it. Translucent geometry does not write depth, so stacking
+        // it against the slab is exactly the sorting mess it looks like.
+        val wantsBackdrop = isBottomLayer && backingBlock == null
+        d.backgroundColor = if (wantsBackdrop) backdrop ?: DkColor.TRANSPARENT else DkColor.TRANSPARENT
         d.brightness = Brightness.FULL
         d.hasShadow = false
         val s = pixelScale
