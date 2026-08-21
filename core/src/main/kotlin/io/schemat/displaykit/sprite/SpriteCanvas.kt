@@ -154,6 +154,25 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         )
     }
 
+    /** Number of drawn items. For tests and diagnostics. */
+    fun itemCount(): Int = items.size
+
+    /** Positions of drawn items, in insertion order. For tests and diagnostics. */
+    fun itemPositions(): List<Pair<Int, Int>> = items.map { it.x to it.y }
+
+    /**
+     * Draw pre-resolved glyph characters at a pixel position.
+     *
+     * Used by the nine-slice painter, which resolves its own codepoints from a
+     * [io.schemat.displaykit.surface.SliceGlyphSource] rather than from
+     * [SpriteGlyphs], because slice crops are not whole sprites.
+     */
+    fun drawGlyph(chars: String, x: Int, y: Int, advanceWidth: Int, tint: DkColor? = null) {
+        require(y >= 0) { "Canvas y must be >= 0 (got $y); the canvas origin is its top-left." }
+        items += Item(content = chars, font = SpriteGlyphs.SLICE_FONT_ID, x = x, y = y,
+                      advanceWidth = advanceWidth, tint = tint)
+    }
+
     fun clear() = items.clear()
 
     /**

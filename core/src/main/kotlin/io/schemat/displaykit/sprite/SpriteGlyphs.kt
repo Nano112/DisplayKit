@@ -20,6 +20,9 @@ object SpriteGlyphs {
 
     const val FONT_ID = "displaykit:sprites"
 
+    /** Font id for cropped nine-slice regions, written by SpriteSliceProvider. */
+    const val SLICE_FONT_ID = "displaykit:sprite_slices"
+
     /** First codepoint in Supplementary PUA-A. */
     const val BASE_CODEPOINT = 0xF0000
 
