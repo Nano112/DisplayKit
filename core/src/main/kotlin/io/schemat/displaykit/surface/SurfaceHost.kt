@@ -36,13 +36,7 @@ class SurfaceHost(
             platform.packetSender.updateMetadata(b, viewers)
         }
         layers = surface.toEntities()
-        if (DEBUG_LAYERS) {
-            println(
-                "[DisplayKit] surface open: ${layers.size} text layers + " +
-                    "${if (backing != null) 1 else 0} backing; " +
-                    layers.joinToString(" | ") { "id=${it.entityId} z=${"%.4f".format(it.position.z)}" }
-            )
-        }
+        if (DEBUG_LAYERS) println(surface.describeLayersForDebug(layers))
         for (e in layers) {
             platform.packetSender.spawnEntity(e, viewers)
             platform.packetSender.updateMetadata(e, viewers)

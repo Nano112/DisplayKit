@@ -297,6 +297,30 @@ class Surface(
      *
      * See `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`.
      */
+    /**
+     * Everything the layer geometry depends on, for `-Ddisplaykit.debug.layers`.
+     *
+     * Per-layer row width is the value the client is expected to measure the
+     * block at. If these differ between layers, each layer centres on a
+     * different width and they slide apart horizontally.
+     */
+    internal fun describeLayersForDebug(spawned: List<VirtualTextDisplay>): String {
+        val sb = StringBuilder()
+        sb.append("[DisplayKit] surface ${widthPx}x${heightPx} yaw=${"%.1f".format(yawDegrees)} ")
+        sb.append("pixelScale=${"%.5f".format(pixelScale)} block=${blockWidthPx()}x${blockHeightPx()}\n")
+        sb.append("[DisplayKit]   position=${position}\n")
+        for ((i, layer) in canvas.layers().withIndex()) {
+            val rows = canvas.layerRowWidths(layer)
+            val e = spawned.getOrNull(i)
+            sb.append(
+                "[DisplayKit]   layer=$layer ordinal=$i maxRow=${rows.maxOrNull()} " +
+                    "rows=${rows.size} items=${canvas.layerItemCount(layer)} " +
+                    "pos=${e?.position} lineWidth=${e?.lineWidth}\n"
+            )
+        }
+        return sb.toString().trimEnd()
+    }
+
     /** Width of the text block the client will measure, in canvas pixels. */
     internal fun blockWidthPx(): Int = canvas.blockWidthPx()
 

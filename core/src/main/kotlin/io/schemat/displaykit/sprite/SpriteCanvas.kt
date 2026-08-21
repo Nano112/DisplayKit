@@ -287,6 +287,11 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     fun emittedRowCount(): Int = lastRowIndex() + 1
 
     /** Distinct layers with content, back to front. */
+    internal fun layerRowWidths(layer: Int): List<Int> =
+        buildRows(anchorToBounds, layer).map { it.endCursorX }
+
+    internal fun layerItemCount(layer: Int): Int = items.count { it.layer == layer }
+
     fun layers(): List<Int> = items.map { it.layer }.distinct().sorted()
 
     /**
