@@ -8,6 +8,8 @@ import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextAlignment
 import io.schemat.displaykit.render.TextComponent
 import io.schemat.displaykit.render.TextMetrics
+import io.schemat.displaykit.render.BlockStateRef
+import io.schemat.displaykit.render.VirtualBlockDisplay
 import io.schemat.displaykit.render.VirtualTextDisplay
 import io.schemat.displaykit.sprite.SpriteCanvas
 import io.schemat.displaykit.sprite.SpriteDiagnostics
@@ -88,6 +90,62 @@ class Surface(
      * pick a value outside both bands.
      */
     var backdrop: DkColor? = null
+
+    /**
+     * A block display stretched to the surface's full size, sitting just
+     * behind the sprite plane.
+     *
+     * Sprite glyphs are single-sided and unlit, so against open sky they are
+     * hard to read and the window looks like scattered decals rather than one
+     * panel. A backing block gives them something solid to sit on, and — being
+     * a real block — it takes world lighting, so the panel behaves like an
+     * object in the scene.
+     *
+     * Null leaves the surface unbacked (the previous behaviour). Prefer this
+     * over [backdrop] for anything window-shaped: [backdrop] is the text
+     * display's own background quad, which cannot be lit, cannot have depth,
+     * and is clipped to the measured text block rather than the canvas.
+     */
+    var backingBlock: BlockStateRef? = null
+
+    /**
+     * How thick the [backingBlock] slab is, in blocks.
+     *
+     * Kept small deliberately. A little depth reads as a physical panel, but
+     * once the gap between the sprite plane and its backing becomes visible
+     * from an angle the illusion breaks and the UI looks like disconnected
+     * floating surfaces.
+     */
+    var backingThicknessBlocks: Float = 0.02f
+
+    /**
+     * The stretched panel behind the sprite plane, or null when
+     * [backingBlock] is unset.
+     *
+     * A block display's position IS its local origin (unlike a text display —
+     * see [entityOrigin]), so this hangs off [position] directly. The unit
+     * cube is translated down by the surface's height and back by
+     * [OVERLAY_Z_STEP] before scaling, so it spans exactly the canvas bounds
+     * and sits one depth step behind the glyphs — far enough not to z-fight,
+     * close enough not to show an air gap.
+     */
+    fun toBackingEntity(): VirtualBlockDisplay? {
+        val block = backingBlock ?: return null
+        return VirtualBlockDisplay().also { d ->
+            d.blockState = block
+            d.position = position
+            d.billboard = orientation
+            d.brightness = Brightness.FULL
+            val w = widthPx * pixelScale * TextMetrics.PIXEL_SIZE
+            val h = heightPx * pixelScale * TextMetrics.PIXEL_SIZE
+            d.transformation = Mat4f(
+                Matrix4f()
+                    .rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat())
+                    .translate(0f, -h, OVERLAY_Z_STEP)
+                    .scale(w, h, backingThicknessBlocks)
+            )
+        }
+    }
 
     /**
      * Y-axis rotation applied to the whole surface, in degrees, composed with

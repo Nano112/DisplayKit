@@ -7,6 +7,7 @@ import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.pack.SpacingFontProvider
 import io.schemat.displaykit.pack.SpriteFontProvider
 import io.schemat.displaykit.pack.SpriteSliceProvider
+import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.SpriteEntry
@@ -50,18 +51,25 @@ object PickerWindow {
     private const val MIN_W = 320
     private const val MIN_H = 220
 
-    private const val COLS = 8
-    private const val ROWS = 6
     private const val STEP = 20
     private const val SLOT = 18
     private const val GRID_X = 150
     private const val GRID_Y = 30
-    // Grid's last column runs to x = GRID_X + 7*STEP + SLOT = 308; the scroll
-    // track sits clear of it at x=310. Track height matches the grid's own
-    // height (ROWS*STEP - (STEP-SLOT) = 118) rather than an arbitrary taller
-    // figure, now that the frame is being resized anyway.
-    private const val SCROLL_X = 310
-    private const val TRACK_H = (ROWS - 1) * STEP + SLOT
+    private const val MARGIN = 10
+    private const val SCROLL_W = 6
+
+    // Snapping the frame to an exact nine-slice tiling grew it to 346x264,
+    // and the grid kept its old 8x6 shape -- leaving a third of the window
+    // empty. Derive the counts from the frame instead, so the content always
+    // fills whatever size the tiling settles on.
+    private val COLS: Int
+        get() = maxOf(1, (W - GRID_X - MARGIN - SCROLL_W - 2 - SLOT) / STEP + 1)
+    private val ROWS: Int
+        get() = maxOf(1, (H - GRID_Y - MARGIN - SLOT) / STEP + 1)
+
+    /** Clear of the grid's last column by two pixels. */
+    private val SCROLL_X: Int get() = GRID_X + (COLS - 1) * STEP + SLOT + 2
+    private val TRACK_H: Int get() = (ROWS - 1) * STEP + SLOT
 
     private val FRAME = SpriteId("gui", "tooltip/background")
     private val ATLASES = listOf("gui", "items", "blocks")
@@ -188,6 +196,10 @@ object PickerWindow {
         // corner-radius) -- 190 sits outside both. Dark neutral graphite so
         // the vanilla chrome (frame, tabs, slots) stays legible against it.
         surface.backdrop = DkColor(190, 18, 19, 22)
+        // A real stretched block display behind the sprite plane. Glyphs are
+        // single-sided and unlit, so without it the chrome reads as floating
+        // decals against the sky rather than one panel.
+        surface.backingBlock = BlockStateRef.BLACK_CONCRETE
         val host = SurfaceHost(DisplayKit.platform, ref, surface)
         val session = Session(host, player)
         open[player.uuid] = session

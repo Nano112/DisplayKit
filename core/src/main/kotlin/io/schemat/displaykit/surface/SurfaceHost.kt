@@ -2,6 +2,7 @@ package io.schemat.displaykit.surface
 
 import io.schemat.displaykit.platform.PlatformProvider
 import io.schemat.displaykit.platform.PlayerRef
+import io.schemat.displaykit.render.VirtualBlockDisplay
 import io.schemat.displaykit.render.VirtualEntity
 import io.schemat.displaykit.render.VirtualTextDisplay
 
@@ -17,6 +18,7 @@ class SurfaceHost(
     val surface: Surface
 ) {
     private var entity: VirtualTextDisplay? = null
+    private var backing: VirtualBlockDisplay? = null
     private val viewers get() = setOf(owner.uuid)
 
     var hovered: String? = null
@@ -24,6 +26,13 @@ class SurfaceHost(
 
     fun open() {
         if (entity != null) return
+        // The backing panel spawns first so it is already behind the glyphs
+        // on the very first frame the viewer sees.
+        surface.toBackingEntity()?.let { b ->
+            backing = b
+            platform.packetSender.spawnEntity(b, viewers)
+            platform.packetSender.updateMetadata(b, viewers)
+        }
         val e = surface.toEntity()
         entity = e
         platform.packetSender.spawnEntity(e, viewers)
@@ -36,8 +45,18 @@ class SurfaceHost(
         val fresh = surface.toEntity()
         e.text = fresh.text
         e.transformation = fresh.transformation
-        e.position = surface.position
+        // Not surface.position: a text display is placed by its block
+        // centre, so the entity origin is offset from the canvas top-left
+        // (see Surface.entityOrigin).
+        e.position = fresh.position
         platform.packetSender.updateMetadata(e, viewers)
+        backing?.let { b ->
+            surface.toBackingEntity()?.let { f ->
+                b.position = f.position
+                b.transformation = f.transformation
+                platform.packetSender.updateMetadata(b, viewers)
+            }
+        }
     }
 
     /** Returns true when the click landed on a region and was consumed. */
@@ -56,10 +75,12 @@ class SurfaceHost(
     }
 
     fun close() {
-        val e = entity ?: return
-        platform.packetSender.destroyEntities(listOf(e.entityId), viewers)
+        val ids = listOfNotNull(entity?.entityId, backing?.entityId)
+        if (ids.isEmpty()) return
+        platform.packetSender.destroyEntities(ids, viewers)
         entity = null
+        backing = null
     }
 
-    fun entities(): List<VirtualEntity> = listOfNotNull(entity)
+    fun entities(): List<VirtualEntity> = listOfNotNull(backing, entity)
 }
