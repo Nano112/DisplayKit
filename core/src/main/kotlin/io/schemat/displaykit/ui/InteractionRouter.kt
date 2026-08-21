@@ -229,6 +229,11 @@ object InteractionRouter {
     fun closeAll() {
         activeUIs.values.flatten().toList().forEach { it.destroy() }
         activeOverlays.values.flatten().toList().forEach { it.destroy() }
+        // Surfaces too, for the same reason cleanupPlayer closes them: a host
+        // dropped without close() strands its entity client-side until the
+        // player relogs. Shutdown is exactly when that is least recoverable.
+        activeSurfaces.values.flatten().toList().forEach { it.close() }
+        activeSurfaces.clear()
     }
 
     fun closeForPlayer(playerUUID: UUID) {

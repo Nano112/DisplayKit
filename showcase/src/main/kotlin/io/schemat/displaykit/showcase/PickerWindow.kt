@@ -9,6 +9,7 @@ import io.schemat.displaykit.pack.SpriteFontProvider
 import io.schemat.displaykit.pack.SpriteSliceProvider
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.sprite.SpriteEntry
+import io.schemat.displaykit.sprite.SpriteGlyphs
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
 import io.schemat.displaykit.surface.Rect
@@ -20,6 +21,7 @@ import io.schemat.displaykit.surface.scrollTrack
 import io.schemat.displaykit.surface.tab
 import io.schemat.displaykit.surface.titleBar
 import io.schemat.displaykit.ui.InteractionRouter
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import java.util.UUID
@@ -55,8 +57,56 @@ object PickerWindow {
 
     private val open = ConcurrentHashMap<UUID, Session>()
 
+    @Volatile private var disconnectHookInstalled = false
+
+    /**
+     * Drop a disconnecting player's session.
+     *
+     * `InteractionRouter.cleanupPlayer` closes the surface hosts, but this map
+     * is the picker's own and holds a hard `ServerPlayer` plus every closure
+     * that captured it — a leak for the life of the server. The hook lives here
+     * rather than in `core` so `core` gains no dependency on the showcase.
+     * Installed lazily on first open, so `/dk picker` is the only thing that
+     * ever pays for it.
+     */
+    private fun installDisconnectHook() {
+        if (disconnectHookInstalled) return
+        disconnectHookInstalled = true
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+            closeFor(handler.player.uuid)
+        }
+    }
+
+    /**
+     * Repaint, push to the client, and resend the pack IF the repaint asked for
+     * glyphs the client has never seen.
+     *
+     * Every handler goes through here, and none of them may call `repaint` +
+     * `host.repaint()` directly: a repaint draws a different page of sprites
+     * and a differently placed scrollbar, allocating fresh codepoints, and a
+     * codepoint the client's pack does not define renders as a missing-glyph
+     * box. Before this existed, `open()` was the only path that rebuilt, so
+     * every tab and scroll click turned the window to tofu.
+     *
+     * Rebuilding unconditionally would be just as wrong the other way: it makes
+     * EVERY connected client re-download the pack on EVERY click. So we watch
+     * both allocators across the repaint and rebuild only on growth.
+     */
+    private fun repaintAndSync(session: Session) {
+        val glyphsBefore = SpriteGlyphs.requested().size
+        val slicesBefore = SpriteSliceProvider.variantCount()
+
+        repaint(session)
+        session.host.repaint()
+
+        val grew = SpriteGlyphs.requested().size > glyphsBefore ||
+            SpriteSliceProvider.variantCount() > slicesBefore
+        if (grew) FabricPackIntegration.rebuildAndResendToAll()
+    }
+
     fun open(player: ServerPlayer) {
         closeFor(player.uuid)
+        installDisconnectHook()
 
         // The chrome needs slices, glyphs and spacing; register and push once.
         FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
@@ -74,11 +124,13 @@ object PickerWindow {
         val session = Session(host, player)
         open[player.uuid] = session
 
-        repaint(session)
+        // Paint and sync the pack BEFORE spawning: host.repaint() is a no-op
+        // until open(), so this fills the canvas and rebuilds the pack, and
+        // host.open() then spawns the entity with content the client can read.
+        repaintAndSync(session)
         host.open()
         InteractionRouter.registerSurface(player.uuid, host)
 
-        FabricPackIntegration.rebuildAndResendToAll()
         player.sendSystemMessage(
             Component.literal("Picker open. Click a slot to copy its id; the cross closes it.")
         )
@@ -116,8 +168,7 @@ object PickerWindow {
                 tab("tab-$atlas", Rect(10, GRID_Y + i * 26, 130, 24), atlas, atlas == session.atlas) {
                     session.atlas = atlas
                     session.scroll = 0
-                    repaint(session)
-                    session.host.repaint()
+                    repaintAndSync(session)
                 }
             }
 
@@ -143,12 +194,12 @@ object PickerWindow {
 
             // scroll by clicking the track above or below the thumb
             region("scroll-up", Rect(SCROLL_X, GRID_Y, 6, maxOf(1, thumbY - GRID_Y))) {
-                session.scroll--; repaint(session); session.host.repaint()
+                session.scroll--; repaintAndSync(session)
             }
             val belowY = thumbY + 32
             if (belowY < GRID_Y + 180) {
                 region("scroll-down", Rect(SCROLL_X, belowY, 6, GRID_Y + 180 - belowY)) {
-                    session.scroll++; repaint(session); session.host.repaint()
+                    session.scroll++; repaintAndSync(session)
                 }
             }
         }

@@ -114,7 +114,7 @@ class Surface(
         }
 
         override fun fill(color: DkColor, rect: Rect) {
-            val e = SpriteIndex.bundled.get(FILL_SPRITE) ?: return
+            val e = resolveSprite(FILL_SPRITE, "a colour fill") ?: return
             require(e.width > 0 && e.height > 0) {
                 "Fill sprite $FILL_SPRITE has non-positive dimensions " +
                     "(${e.width}x${e.height})."
@@ -139,7 +139,8 @@ class Surface(
         }
 
         override fun slot(x: Int, y: Int, item: ItemRef?) {
-            SpriteIndex.bundled.get(SLOT_SPRITE)?.let { canvas.draw(it, x, y) }
+            val e = resolveSprite(SLOT_SPRITE, "a slot") ?: return
+            canvas.draw(e, x, y)
             if (item != null) slots += Rect(x, y, 18, 18) to item
         }
 
@@ -155,6 +156,32 @@ class Surface(
             rects += HitRect(id, rect, onClick)
         }
     }
+}
+
+/**
+ * Resolve a sprite id against the bundled index, warning once and returning
+ * null when it does not resolve.
+ *
+ * The single implementation of the spec's unknown-sprite rule. Every part that
+ * looks a sprite up goes through here, because the alternative — `get(id)?.let
+ * { … }` at each site — skipped the visual while the rest of the part carried
+ * on, producing an invisible control that was still clickable. Callers must
+ * skip the WHOLE part on null, not just its picture.
+ *
+ * @param part What was being drawn, for the log line.
+ */
+internal fun resolveSprite(id: SpriteId, part: String): SpriteEntry? {
+    val entry = SpriteIndex.bundled.get(id)
+    if (entry == null) {
+        SpriteDiagnostics.warnOnce(
+            "unknown-sprite:$id",
+            "Sprite $id does not resolve in the bundled index, so $part cannot be drawn " +
+                "and is skipped. Check the id, or re-run " +
+                ":libs:displaykit:pack:generateSpriteIndex if this sprite was added in a " +
+                "newer Minecraft version."
+        )
+    }
+    return entry
 }
 
 /**

@@ -3,7 +3,6 @@ package io.schemat.displaykit.surface
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.SpriteId
-import io.schemat.displaykit.sprite.SpriteIndex
 
 /**
  * Worked examples of composition, not a widget API.
@@ -25,9 +24,14 @@ private val SCROLL_THUMB = SpriteId("gui", "widget/scroller")
  *
  * Minimum size is 200x20 — the `gui/widget/button` sprite's own. [frame] will
  * throw if [rect] is smaller.
+ *
+ * If the frame sprite does not resolve the whole button is skipped, label and
+ * hit region included: an unlabelled, unframed, still-clickable rectangle is
+ * worse than nothing there at all.
  */
 fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> Unit) {
-    SpriteIndex.bundled.get(BUTTON)?.let { frame(it, rect) }
+    val sprite = resolveSprite(BUTTON, "button '$id'") ?: return
+    frame(sprite, rect)
     val textWidth = TextMetrics.textWidthPx(text)
     label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.LINE_HEIGHT_PX) / 2)
     region(id, rect, onClick)
@@ -42,7 +46,7 @@ fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> U
 fun SurfacePainter.titleBar(rect: Rect, title: String, onClose: () -> Unit) {
     fill(DkColor(255, 32, 34, 40), rect)
     label(title, rect.x + 4, rect.y + (rect.h - TextMetrics.LINE_HEIGHT_PX) / 2)
-    val cross = SpriteIndex.bundled.get(CROSS) ?: return
+    val cross = resolveSprite(CROSS, "a title bar's close button") ?: return
     val cx = rect.right - cross.width - 2
     val cy = rect.y + (rect.h - cross.height) / 2
     icon(cross, cx, cy)
@@ -56,7 +60,7 @@ fun SurfacePainter.titleBar(rect: Rect, title: String, onClose: () -> Unit) {
  * [frame] will throw if [rect] is smaller.
  */
 fun SurfacePainter.scrollTrack(rect: Rect) {
-    SpriteIndex.bundled.get(SCROLL_TRACK)?.let { frame(it, rect) }
+    frame(resolveSprite(SCROLL_TRACK, "a scrollbar track") ?: return, rect)
 }
 
 /**
@@ -66,7 +70,7 @@ fun SurfacePainter.scrollTrack(rect: Rect) {
  * throw if [rect] is smaller.
  */
 fun SurfacePainter.scrollThumb(rect: Rect) {
-    SpriteIndex.bundled.get(SCROLL_THUMB)?.let { frame(it, rect) }
+    frame(resolveSprite(SCROLL_THUMB, "a scrollbar thumb") ?: return, rect)
 }
 
 /**
@@ -74,10 +78,13 @@ fun SurfacePainter.scrollThumb(rect: Rect) {
  *
  * Minimum size is 130x24 — both `gui/widget/tab` and `gui/widget/tab_selected`
  * share that size. [frame] will throw if [rect] is smaller.
+ *
+ * Skipped entirely when its sprite does not resolve — see [button].
  */
 fun SurfacePainter.tab(id: String, rect: Rect, text: String, selected: Boolean, onClick: () -> Unit) {
-    val sprite = if (selected) TAB_SELECTED else TAB
-    SpriteIndex.bundled.get(sprite)?.let { frame(it, rect) }
+    val spriteId = if (selected) TAB_SELECTED else TAB
+    val sprite = resolveSprite(spriteId, "tab '$id'") ?: return
+    frame(sprite, rect)
     val textWidth = TextMetrics.textWidthPx(text)
     label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.LINE_HEIGHT_PX) / 2)
     region(id, rect, onClick)
