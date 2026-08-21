@@ -14,12 +14,21 @@ import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteGlyphs
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
+import io.schemat.displaykit.surface.EventResult
 import io.schemat.displaykit.surface.NineSliceLayout
 import io.schemat.displaykit.surface.Rect
 import io.schemat.displaykit.surface.Surface
+import io.schemat.displaykit.surface.SurfaceEvent
+import io.schemat.displaykit.surface.SurfaceFocus
 import io.schemat.displaykit.surface.SurfaceHost
 import io.schemat.displaykit.surface.SurfacePlacement
-import io.schemat.displaykit.surface.button
+import io.schemat.displaykit.surface.layout.CrossAxis
+import io.schemat.displaykit.surface.layout.FlexDirection
+import io.schemat.displaykit.surface.layout.FlexNode
+import io.schemat.displaykit.surface.layout.PxPadding
+import io.schemat.displaykit.surface.layout.PxSize
+import io.schemat.displaykit.surface.layout.ScrollNode
+import io.schemat.displaykit.surface.layout.WidgetNode
 import io.schemat.displaykit.surface.scrollThumb
 import io.schemat.displaykit.surface.scrollTrack
 import io.schemat.displaykit.surface.tab
@@ -32,11 +41,12 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * A sprite picker built entirely from surface parts.
+ * A sprite picker built entirely from the surface layout tree.
  *
- * This is the acceptance test for the chrome layer: if a framed, scrollable,
- * closable window cannot be assembled comfortably from the parts, the parts are
- * wrong.
+ * This is the acceptance test for the whole surface-interaction plan: if a
+ * framed, scrollable, closable window with hover and drag cannot be assembled
+ * comfortably from [io.schemat.displaykit.surface.layout] on top of the
+ * bubbling event model, the tree is wrong.
  */
 object PickerWindow {
 
@@ -52,29 +62,39 @@ object PickerWindow {
 
     private const val STEP = 20
     private const val SLOT = 18
-    private const val GRID_X = 150
-    private const val GRID_Y = 30
-    private const val MARGIN = 10
     private const val SCROLL_W = 6
 
-    // Snapping the frame to an exact nine-slice tiling grew it to 346x264,
-    // and the grid kept its old 8x6 shape -- leaving a third of the window
-    // empty. Derive the counts from the frame instead, so the content always
-    // fills whatever size the tiling settles on.
-    private val COLS: Int
-        get() = maxOf(1, (W - GRID_X - MARGIN - SCROLL_W - 2 - SLOT) / STEP + 1)
-    private val ROWS: Int
-        get() = maxOf(1, (H - GRID_Y - MARGIN - SLOT) / STEP + 1)
+    // Fixed geometry for the chrome around the grid. Named rather than
+    // inlined so the COLS estimate below (which has to know how much width
+    // the grid actually gets) can never drift from what the tree itself
+    // builds.
+    private const val PADDING = 10
+    private const val BODY_GAP = 10
+    private const val TAB_W = 130
+    private const val TAB_H = 24
+    private const val TITLE_H = 16
 
-    /** Clear of the grid's last column by two pixels. */
-    private val SCROLL_X: Int get() = GRID_X + (COLS - 1) * STEP + SLOT + 2
-    private val TRACK_H: Int get() = (ROWS - 1) * STEP + SLOT
+    // Snapping the frame to an exact nine-slice tiling grew it to 346x264,
+    // and a fixed column count leaves the grid too narrow or lets it
+    // overflow into the scrollbar. Derive the column count from the frame's
+    // own width instead, so the grid always fills whatever space the tree
+    // actually gives it: total width, minus the window's own padding, the
+    // tab strip, the two inter-column gaps and the scrollbar, is what the
+    // grid pane gets; STEP-pitch columns are chunked out of that.
+    private val COLS: Int
+        get() {
+            val paneW = W - 2 * PADDING - TAB_W - 2 * BODY_GAP - SCROLL_W
+            return maxOf(1, (paneW - SLOT) / STEP + 1)
+        }
 
     private val FRAME = SpriteId("gui", "tooltip/background")
     // items first: gui sprites are mostly nine-slice panels sized for a
     // real screen, so they overflow a slot grid. Revisit when the picker can
     // scale a preview down to its cell.
     private val ATLASES = listOf("items", "blocks", "gui")
+
+    /** A soft highlight applied to a grid icon while the pointer hovers it. */
+    private val HOVER_TINT = DkColor(255, 255, 240, 160)
 
     /** The frame sprite's manifest entry, resolved once. */
     private val frameEntry: SpriteEntry? by lazy { SpriteIndex.bundled.get(FRAME) }
@@ -98,7 +118,6 @@ object PickerWindow {
 
     private class Session(val host: SurfaceHost, val player: ServerPlayer) {
         var atlas: String = ATLASES.first()
-        var scroll: Int = 0
     }
 
     private val open = ConcurrentHashMap<UUID, Session>()
@@ -127,16 +146,18 @@ object PickerWindow {
      * Repaint, push to the client, and resend the pack IF the repaint asked for
      * glyphs the client has never seen.
      *
-     * Every handler goes through here, and none of them may call `repaint` +
-     * `host.repaint()` directly: a repaint draws a different page of sprites
-     * and a differently placed scrollbar, allocating fresh codepoints, and a
-     * codepoint the client's pack does not define renders as a missing-glyph
-     * box. Before this existed, `open()` was the only path that rebuilt, so
-     * every tab and scroll click turned the window to tofu.
+     * Every handler that changes CONTENT (a new atlas tab, the initial open)
+     * goes through here, and none of them may call `repaint` + `host.repaint()`
+     * directly: a repaint draws a different page of sprites, allocating fresh
+     * codepoints, and a codepoint the client's pack does not define renders as
+     * a missing-glyph box. Before this existed, `open()` was the only path
+     * that rebuilt, so every tab click turned the window to tofu.
      *
      * Rebuilding unconditionally would be just as wrong the other way: it makes
      * EVERY connected client re-download the pack on EVERY click. So we watch
      * both allocators across the repaint and rebuild only on growth.
+     *
+     * A scroll-only change never calls this -- see [repaintTree].
      */
     private fun repaintAndSync(session: Session) {
         val glyphsBefore = SpriteGlyphs.requested().size
@@ -148,6 +169,23 @@ object PickerWindow {
         val grew = SpriteGlyphs.requested().size > glyphsBefore ||
             SpriteSliceProvider.variantCount() > slicesBefore
         if (grew) FabricPackIntegration.rebuildAndResendToAll()
+    }
+
+    /**
+     * Re-paint the EXISTING tree and push it, without rebuilding the tree.
+     *
+     * [Surface.layout] constructs a fresh [ScrollNode] every time it runs,
+     * whose `scrollPx` starts at zero -- so re-running it on every scroll
+     * notch would snap the grid back to the top on every notch. Scroll and
+     * thumb-drag handlers call this instead, which repaints the tree exactly
+     * as it stands (with whatever `scrollPx` the drag/notch just set) and
+     * only pushes the result to the client. Only a genuine content change --
+     * switching atlas tabs -- goes through [repaintAndSync] and rebuilds the
+     * tree from scratch.
+     */
+    private fun repaintTree(session: Session) {
+        session.host.surface.paintTree()
+        session.host.repaint()
     }
 
     fun open(player: ServerPlayer) {
@@ -238,65 +276,158 @@ object PickerWindow {
             .filter { it.id.atlas == session.atlas && it.glyphEligible }
             .sortedBy { it.id.sprite }
 
+    /**
+     * Rebuild the layout tree from scratch and paint it.
+     *
+     * Only called for a genuine content change (initial open, atlas switch):
+     * [Surface.layout] constructs a brand new [ScrollNode], so re-running it
+     * legitimately resets scroll to the top. Scroll-only changes must go
+     * through [repaintTree] instead, never through here.
+     */
     private fun repaint(session: Session) {
         val all = spritesFor(session)
-        val perPage = COLS * ROWS
-        val maxScroll = maxOf(0, (all.size - 1) / COLS - ROWS + 1)
-        session.scroll = session.scroll.coerceIn(0, maxScroll)
-        val start = session.scroll * COLS
-        val page = all.drop(start).take(perPage)
+        val player = session.player
 
-        val frameSprite = SpriteIndex.bundled.get(FRAME)
+        session.host.surface.layout { root ->
+            val column = FlexNode("window", FlexDirection.COLUMN, gap = 4)
+            column.padding = PxPadding.all(PADDING)
 
-        session.host.surface.paint {
-            frameSprite?.let { frame(it, Rect(0, 0, W, H)) }
-
-            titleBar(Rect(10, 10, W - 20, 16), "Sprites — ${session.atlas} (${all.size})") {
-                closeFor(session.player.uuid)
+            // Title bar: fixed height, full width. The window's own nine-slice
+            // background is painted here too, spanning the whole canvas --
+            // there is nowhere else in a single-child root to hang a
+            // full-bleed backdrop behind the rest of the tree.
+            val title = WidgetNode("title", PxSize(0, TITLE_H)) { p, r ->
+                frameEntry?.let { p.frame(it, Rect(0, 0, W, H)) }
+                p.titleBar(r, "Sprites — ${session.atlas} (${all.size})") { closeFor(player.uuid) }
             }
+            title.flexGrow = 0
+            column.addChild(title)
 
-            ATLASES.forEachIndexed { i, atlas ->
-                tab("tab-$atlas", Rect(10, GRID_Y + i * 26, 130, 24), atlas, atlas == session.atlas) {
-                    session.atlas = atlas
-                    session.scroll = 0
-                    repaintAndSync(session)
+            val body = FlexNode("body", FlexDirection.ROW, gap = BODY_GAP)
+            body.flexGrow = 1
+
+            // Tab strip.
+            val tabs = FlexNode("tabs", FlexDirection.COLUMN, gap = 2)
+            tabs.width = TAB_W
+            for (atlas in ATLASES) {
+                val selected = atlas == session.atlas
+                val tab = WidgetNode("tab-$atlas", PxSize(TAB_W, TAB_H)) { p, r ->
+                    val hovered = SurfaceFocus.state(player.uuid).hoveredId == "tab-$atlas"
+                    p.tab("tab-$atlas", r, atlas, hovered || selected) {}
                 }
-            }
-
-            page.forEachIndexed { i, entry ->
-                val cx = GRID_X + (i % COLS) * STEP
-                val cy = GRID_Y + (i / COLS) * STEP
-                slot(cx, cy)
-                // Fitted, not native: gui sprites are whole panels (some are
-                // hundreds of pixels across) and at 1:1 they bury the grid.
-                iconFitted(entry, cx + 1, cy + 1, SLOT - 2, SLOT - 2)
-                region("cell-$i", Rect(cx, cy, SLOT, SLOT)) {
-                    session.player.sendSystemMessage(
-                        Component.literal("${entry.id}  ${entry.width}x${entry.height}")
-                    )
+                tab.onEvent = { e ->
+                    when (e) {
+                        is SurfaceEvent.Click -> {
+                            session.atlas = atlas
+                            repaintAndSync(session)
+                            EventResult.CONSUMED
+                        }
+                        // The consumed/pass return value itself is not
+                        // load-bearing here -- SurfaceEvents.dispatch delivers
+                        // these only to the target and ignores it -- but the
+                        // render lambda above reads SurfaceFocus.hoveredId, so
+                        // the canvas must actually be repainted for the
+                        // highlight to appear; SurfaceHost.tick() only re-pushes
+                        // the ALREADY-painted canvas on a hover change, it does
+                        // not re-run paintTree().
+                        is SurfaceEvent.PointerEnter, is SurfaceEvent.PointerExit -> {
+                            repaintTree(session)
+                            EventResult.CONSUMED
+                        }
+                        else -> EventResult.PASS
+                    }
                 }
+                tabs.addChild(tab)
             }
+            body.addChild(tabs)
 
-            // Track sits at x=310, clear of the grid's last column (which ends at
-            // x=308) — moved right from the original x=304, which overlapped that
-            // column by 4px. 310+6=316 stays inside the frame regardless of its
-            // exact width. Track height (TRACK_H) matches the grid's own height
-            // instead of an arbitrary taller figure.
-            scrollTrack(Rect(SCROLL_X, GRID_Y, 6, TRACK_H))
-            val thumbY = if (maxScroll == 0) GRID_Y
-                         else GRID_Y + (session.scroll * (TRACK_H - 32)) / maxScroll
-            scrollThumb(Rect(SCROLL_X, thumbY, 6, 32))
-
-            // scroll by clicking the track above or below the thumb
-            region("scroll-up", Rect(SCROLL_X, GRID_Y, 6, maxOf(1, thumbY - GRID_Y))) {
-                session.scroll--; repaintAndSync(session)
+            // Scrolling grid.
+            val pane = ScrollNode("grid")
+            pane.stepPx = STEP
+            pane.flexGrow = 1
+            pane.onEvent = { e ->
+                if (e is SurfaceEvent.Scroll && pane.scrollBy(e.delta)) {
+                    repaintTree(session)
+                    EventResult.CONSUMED
+                } else EventResult.PASS
             }
-            val belowY = thumbY + 32
-            if (belowY < GRID_Y + TRACK_H) {
-                region("scroll-down", Rect(SCROLL_X, belowY, 6, GRID_Y + TRACK_H - belowY)) {
-                    session.scroll++; repaintAndSync(session)
+            for (rowIndex in all.indices.step(COLS)) {
+                // STEP tall, not SLOT: ScrollNode stacks children contiguously
+                // with no gap, so the row's own height IS the vertical row
+                // pitch. Sizing it to the 18px cell instead of the 20px step
+                // drifts 2px per notch against stepPx and, because the canvas
+                // has no clipping and visibleChildren() only emits WHOLE
+                // children, eventually drops a row off the bottom edge.
+                val row = FlexNode(
+                    "row-$rowIndex", FlexDirection.ROW,
+                    gap = STEP - SLOT, crossAxis = CrossAxis.CENTER
+                )
+                row.height = STEP
+                for (i in rowIndex until minOf(rowIndex + COLS, all.size)) {
+                    val entry = all[i]
+                    val cell = WidgetNode("cell-$i", PxSize(SLOT, SLOT)) { p, r ->
+                        val hovered = SurfaceFocus.state(player.uuid).hoveredId == "cell-$i"
+                        p.slot(r.x, r.y)
+                        // Fitted, not native: gui sprites are whole panels
+                        // (some hundreds of pixels across) and at 1:1 they
+                        // bury the grid.
+                        p.iconFitted(
+                            entry, r.x + 1, r.y + 1, SLOT - 2, SLOT - 2,
+                            tint = if (hovered) HOVER_TINT else null
+                        )
+                    }
+                    cell.onEvent = { e ->
+                        when (e) {
+                            is SurfaceEvent.Click -> {
+                                player.sendSystemMessage(
+                                    Component.literal("${entry.id}  ${entry.width}x${entry.height}")
+                                )
+                                EventResult.CONSUMED
+                            }
+                            // See the matching comment on the tab handler
+                            // above: the highlight only shows up once the
+                            // canvas is actually repainted.
+                            is SurfaceEvent.PointerEnter, is SurfaceEvent.PointerExit -> {
+                                repaintTree(session)
+                                EventResult.CONSUMED
+                            }
+                            else -> EventResult.PASS
+                        }
+                    }
+                    row.addChild(cell)
                 }
+                pane.addChild(row)
             }
+            body.addChild(pane)
+
+            // Scrollbar with a grabbable thumb. A plain WidgetNode never
+            // stretches to fill a flex container's cross axis in this tree
+            // (only flexGrow'd children get a forced cross size, and that
+            // only grows the MAIN axis of their own parent) -- wrapping the
+            // bar in its own single-child COLUMN, and growing IT inside that
+            // wrapper, fills the bar's height to the grid's without also
+            // fighting the tab strip and grid pane for width in `body`.
+            val barWrap = FlexNode("scrollbar-wrap", FlexDirection.COLUMN)
+            val bar = WidgetNode("scrollbar", PxSize(SCROLL_W, 0)) { p, r ->
+                p.scrollTrack(r)
+                val max = pane.maxScroll()
+                val thumbH = if (max == 0) r.h else maxOf(32, r.h * r.h / (r.h + max))
+                val thumbY = if (max == 0) r.y else r.y + (pane.scrollPx * (r.h - thumbH)) / max
+                p.scrollThumb(Rect(r.x, thumbY, SCROLL_W, thumbH))
+            }
+            bar.width = SCROLL_W
+            bar.flexGrow = 1
+            bar.onGrabMove = { _, y ->
+                val r = bar.rect()
+                val fraction = ((y - r.y).toDouble() / r.h.coerceAtLeast(1)).coerceIn(0.0, 1.0)
+                if (pane.scrollTo((fraction * pane.maxScroll()).toInt())) repaintTree(session)
+            }
+            barWrap.addChild(bar)
+            body.addChild(barWrap)
+
+            column.addChild(body)
+            root.addChild(column)
         }
+        session.host.surface.paintTree()
     }
 }
