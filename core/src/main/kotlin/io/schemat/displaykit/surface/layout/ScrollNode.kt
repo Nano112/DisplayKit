@@ -64,9 +64,17 @@ class ScrollNode(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.Scrollable
         return true
     }
 
-    /** Set the offset directly, e.g. from a dragged scrollbar thumb. */
+    /**
+     * Set the offset directly, e.g. from a dragged scrollbar thumb.
+     *
+     * Snaps to a [stepPx] boundary, for the same reason [scrollBy] moves in
+     * steps: only whole children are emitted, so an offset between rows leaves
+     * nothing flush with the viewport edge and blanks it.
+     */
     fun scrollTo(px: Int): Boolean {
-        val target = px.coerceIn(0, maxScroll())
+        val step = stepPx.coerceAtLeast(1)
+        val snapped = ((px + step / 2) / step) * step
+        val target = snapped.coerceIn(0, maxScroll())
         if (target == scrollPx) return false
         scrollPx = target
         place(layoutResult?.offset ?: PxOffset.Zero)

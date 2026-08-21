@@ -63,4 +63,16 @@ class ScrollNodeTest {
         val hit = pane.hitTest(10, 10)
         assertEquals("r1", hit?.id)
     }
+
+    @Test
+    fun scrollToSnapsToAStepBoundary() {
+        // A dragged thumb produces arbitrary offsets. Landing between rows
+        // would leave no child flush with the viewport edge and blank it.
+        val pane = paneOf(rows = 10)          // rowH 20, viewport 100, maxScroll 100
+        assertTrue(pane.scrollTo(27))
+        assertEquals(20, pane.scrollPx, "27 snaps to the nearest 20")
+        assertEquals(5, pane.visibleChildren().size, "a full viewport, not a blank one")
+        assertTrue(pane.scrollTo(99))
+        assertEquals(100, pane.scrollPx, "snaps to 100 and clamps to maxScroll")
+    }
 }
