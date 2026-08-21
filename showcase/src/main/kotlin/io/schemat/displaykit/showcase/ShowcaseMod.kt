@@ -76,7 +76,20 @@ object ShowcaseMod : ModInitializer {
                                     ctx.source.sendFailure(Component.literal("Picker requires a player"))
                                     0
                                 } else {
-                                    PickerWindow.open(p)
+                                    // TEMPORARY DIAGNOSTIC: Minecraft's command
+                                    // dispatcher reports "an unexpected error" and
+                                    // logs through an appender whose buffer we could
+                                    // not flush. Write the trace straight to a file.
+                                    try {
+                                        PickerWindow.open(p)
+                                    } catch (t: Throwable) {
+                                        java.io.File("/tmp/dk-picker-error.txt")
+                                            .writeText(t.stackTraceToString())
+                                        p.sendSystemMessage(
+                                            Component.literal("picker failed: ${t::class.java.simpleName}: ${t.message}")
+                                        )
+                                        throw t
+                                    }
                                     1
                                 }
                             }

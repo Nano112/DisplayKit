@@ -2,6 +2,17 @@ package io.schemat.displaykit.surface.layout
 
 enum class FlexDirection { ROW, COLUMN }
 enum class MainAxis { START, CENTER, END, SPACE_BETWEEN }
+
+/**
+ * Cross-axis placement for a [FlexNode]'s children.
+ *
+ * [STRETCH] applies to every child, growing or not: the child is measured
+ * with a tight cross-axis constraint equal to the parent's inner cross
+ * extent (width for a COLUMN, height for a ROW), instead of a loosened
+ * shrink-to-fit one. A child with its own explicit `width`/`height` still
+ * wins over this, because [BaseSurfaceNode.measure] applies that override
+ * on top of whatever constraint the parent hands down.
+ */
 enum class CrossAxis { START, CENTER, END, STRETCH }
 
 /**
@@ -31,12 +42,38 @@ class FlexNode(
         val totalGap = if (_children.isEmpty()) 0 else gap * (_children.size - 1)
         val mainAvail = (if (isRow) inner.maxW else inner.maxH) - totalGap
 
-        // Pass 1: measure non-growing children at their natural size.
+        // Pass 1: measure non-growing children at their natural size, except
+        // on the cross axis where CrossAxis.STRETCH asks for the parent's
+        // inner cross extent instead of a loosened (shrink-to-fit) one. This
+        // mirrors pass 2 below: an explicit width/height on the child still
+        // wins, because BaseSurfaceNode.measure overrides whatever
+        // constraint we hand it here with the child's own fixed size.
+        //
+        // The stretch floor is pinned to inner.maxW/maxH, not inner.minW/
+        // minH: this FlexNode's OWN incoming constraint is routinely loose
+        // (BoxNode.measureSelf hands every child `inner.loosen()`, so a
+        // FlexNode sitting directly under a Surface's root has minW == 0
+        // even though maxW is the real available width). maxW/maxH is the
+        // one value that is always the true inner extent regardless of how
+        // loose the incoming constraint was, so it is what "tight equal to
+        // the inner cross extent" has to mean.
         val sizes = arrayOfNulls<PxSize>(_children.size)
         var usedMain = 0
+        val stretchNonGrowing = crossAxis == CrossAxis.STRETCH
         for ((i, child) in _children.withIndex()) {
             if (child.flexGrow > 0) continue
-            val s = child.measure(inner.loosen())
+            val cc = if (isRow) {
+                PxConstraints(
+                    0, inner.maxW,
+                    if (stretchNonGrowing) inner.maxH else 0, inner.maxH
+                )
+            } else {
+                PxConstraints(
+                    if (stretchNonGrowing) inner.maxW else 0, inner.maxW,
+                    0, inner.maxH
+                )
+            }
+            val s = child.measure(cc)
             sizes[i] = s
             usedMain += main(s)
         }
@@ -57,17 +94,21 @@ class FlexNode(
                 remainder -= take
                 // Loosen the cross axis unless the caller asked to stretch --
                 // otherwise a growing child is force-filled on the cross axis
-                // and CENTER/END can never move it.
+                // and CENTER/END can never move it. Pinned to inner.maxH/
+                // maxW rather than inner.minH/minW for the same reason as
+                // pass 1 above: the incoming constraint's floor is not a
+                // reliable stand-in for the inner extent when this FlexNode
+                // itself was measured loosely.
                 val stretch = crossAxis == CrossAxis.STRETCH
                 val cc = if (isRow) {
                     PxConstraints(
                         give, give,
-                        if (stretch) inner.minH else 0,
+                        if (stretch) inner.maxH else 0,
                         inner.maxH
                     )
                 } else {
                     PxConstraints(
-                        if (stretch) inner.minW else 0,
+                        if (stretch) inner.maxW else 0,
                         inner.maxW,
                         give, give
                     )

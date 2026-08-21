@@ -118,4 +118,28 @@ class FlexNodeTest {
         assertEquals(10, a.rect().h, "keeps its natural cross size")
         assertEquals(10, a.rect().y, "and is centred within the 30px line")
     }
+
+    @Test
+    fun stretchSizesANonGrowingChildToTheCrossAxis() {
+        // A zero-intrinsic-width child in a COLUMN is a natural thing to write
+        // for a full-width title bar. Without working STRETCH it stays 0 wide
+        // and any painter that tiles a sprite into it throws.
+        val col = FlexNode("col", FlexDirection.COLUMN, crossAxis = CrossAxis.STRETCH)
+        val title = Fixed("title", 0, 16)
+        col.addChild(title)
+        col.measure(PxConstraints.exactly(346, 264))
+        col.place(PxOffset.Zero)
+        assertEquals(346, title.rect().w, "STRETCH must fill the cross axis")
+        assertEquals(16, title.rect().h, "and leave the main axis alone")
+    }
+
+    @Test
+    fun stretchDoesNotOverrideAnExplicitSize() {
+        val col = FlexNode("col", FlexDirection.COLUMN, crossAxis = CrossAxis.STRETCH)
+        val fixed = Fixed("fixed", 50, 16).also { it.width = 50 }
+        col.addChild(fixed)
+        col.measure(PxConstraints.exactly(346, 264))
+        col.place(PxOffset.Zero)
+        assertEquals(50, fixed.rect().w, "an explicit width still wins over STRETCH")
+    }
 }

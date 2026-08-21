@@ -312,11 +312,17 @@ object PickerWindow {
             }
             root.addChild(frame)
 
-            val column = FlexNode("window", FlexDirection.COLUMN, gap = 4)
+            // STRETCH so a non-growing child (the title bar below) fills the
+            // column's cross axis (width) instead of collapsing to its own
+            // intrinsic width -- see FlexNode.measureSelf pass 1.
+            val column = FlexNode("window", FlexDirection.COLUMN, crossAxis = CrossAxis.STRETCH, gap = 4)
             column.padding = PxPadding.all(PADDING)
 
-            // Title bar: fixed height, full width.
-            val title = WidgetNode("title", PxSize(0, TITLE_H)) { p, r ->
+            // Title bar: fixed height, full width. Width is supplied by the
+            // column's STRETCH above; MIN_W - 2*PADDING here is just an
+            // honest non-zero fallback (the design-target content width) so
+            // this node is never zero-sized even if STRETCH stopped applying.
+            val title = WidgetNode("title", PxSize(MIN_W - 2 * PADDING, TITLE_H)) { p, r ->
                 p.titleBar(r, "Sprites — ${session.atlas} (${all.size})") { closeFor(player.uuid) }
             }
             title.flexGrow = 0
@@ -415,13 +421,17 @@ object PickerWindow {
             }
             body.addChild(pane)
 
-            // Scrollbar with a grabbable thumb. A plain WidgetNode never
-            // stretches to fill a flex container's cross axis in this tree
-            // (only flexGrow'd children get a forced cross size, and that
-            // only grows the MAIN axis of their own parent) -- wrapping the
-            // bar in its own single-child COLUMN, and growing IT inside that
-            // wrapper, fills the bar's height to the grid's without also
-            // fighting the tab strip and grid pane for width in `body`.
+            // Scrollbar with a grabbable thumb. CrossAxis.STRETCH now works
+            // for non-growing children too (see FlexNode.measureSelf pass
+            // 1), so in principle `bar` could sit directly in `body` with
+            // body.crossAxis = STRETCH and no flexGrow. Kept as a wrapper
+            // instead: `body` is a ROW shared with `tabs` and `pane`, and
+            // making body.crossAxis STRETCH would stretch THEM to the row's
+            // full cross extent (height) too -- a change to their layout
+            // this bugfix has no reason to make. Wrapping `bar` in its own
+            // single-child COLUMN keeps the stretch (via flexGrow, growing
+            // along the wrapper's own main axis) scoped to just the
+            // scrollbar, fixed width via `bar.width` as before.
             val barWrap = FlexNode("scrollbar-wrap", FlexDirection.COLUMN)
             val bar = WidgetNode("scrollbar", PxSize(SCROLL_W, 0)) { p, r ->
                 p.scrollTrack(r)

@@ -63,4 +63,23 @@ class SurfaceLayoutTest {
         s.layout { root -> root.addChild(WidgetNode("b", PxSize(10, 10))) }
         assertEquals(listOf("b"), s.root!!.children.map { it.id })
     }
+
+    @Test
+    fun aZeroWidthWidgetInAStretchColumnIsNonZeroAfterLayout() {
+        // Guards the PickerWindow crash: a WidgetNode with a zero-intrinsic
+        // width, meant to span its COLUMN parent's full width, must actually
+        // come out non-zero once real Surface.layout runs -- not just in the
+        // narrower FlexNode-only unit tests. A painter that tiles a sprite
+        // into a 0-wide rect throws (Surface.Painter.fill's 16x16 minimum).
+        val s = surface()
+        s.layout { root ->
+            val col = FlexNode("col", FlexDirection.COLUMN, crossAxis = CrossAxis.STRETCH)
+            val title = WidgetNode("title", PxSize(0, 16))
+            col.addChild(title)
+            root.addChild(col)
+        }
+        val title = s.root!!.children.single().children.single()
+        assertEquals(346, title.rect().w, "must not stay 0-wide")
+        assertEquals(16, title.rect().h)
+    }
 }
