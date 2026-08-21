@@ -92,10 +92,22 @@ abstract class BaseSurfaceNode(override val id: String) : SurfaceNode {
         _children.clear()
     }
 
+    /**
+     * Absolute offset, accumulated up the parent chain.
+     *
+     * Walks the [SurfaceNode] interface rather than casting to
+     * [BaseSurfaceNode]: `addChild` accepts the interface, so a parent is not
+     * guaranteed to be a [BaseSurfaceNode], and a cast here would fail at
+     * rect()/hitTest() time far from whatever attached it.
+     */
     private fun absoluteOffset(): PxOffset {
-        val own = layoutResult?.offset ?: PxOffset.Zero
-        val p = parent ?: return own
-        return (p as BaseSurfaceNode).absoluteOffset() + own
+        var acc = PxOffset.Zero
+        var node: SurfaceNode? = this
+        while (node != null) {
+            acc += node.layoutResult?.offset ?: PxOffset.Zero
+            node = node.parent
+        }
+        return acc
     }
 
     override fun rect(): Rect {
