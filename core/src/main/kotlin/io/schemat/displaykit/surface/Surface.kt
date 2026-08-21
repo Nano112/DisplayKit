@@ -471,6 +471,9 @@ class Surface(
         )
     }
 
+    /** Test seam for [planePoint], which otherwise stays private. */
+    internal fun planePointForTest(px: Int, py: Int, depth: Float = 0f): Vec3d = planePoint(px, py, depth)
+
     /**
      * One text display per depth layer, back to front.
      *
@@ -562,7 +565,7 @@ class Surface(
      * teleport.
      *
      * Deviation from the brief's sketch: the glyph is composited on a canvas
-     * sized to exactly [SpriteEntry.width] x [SpriteEntry.height] rather than
+     * sized to [SpriteEntry.glyphAdvance] x [SpriteEntry.height] rather than
      * the full surface canvas. A canvas built at the surface's own
      * `widthPx`/`heightPx` measures its block at that same fixed width
      * regardless of where the glyph is drawn on it ([SpriteCanvas.blockWidthPx]
@@ -571,10 +574,12 @@ class Surface(
      * would only ever move via glyph-advance codepoints inside one static
      * text block, never by moving the entity. That defeats the entity-teleport
      * design this whole primitive exists for (see the type doc above). Sizing
-     * the canvas to the glyph itself makes its block genuinely tiny, and
-     * [planePoint] + [entityOrigin]'s `base` parameter place that tiny block
-     * directly at the aimed-at point on the surface's plane, so `showPointer`
-     * can move the cursor with a real position change.
+     * the canvas to the glyph's own row advance — not [SpriteEntry.width],
+     * which for a trimmed sprite like the bundled crosshair overstates what
+     * the client actually measures — makes its block genuinely tiny AND
+     * exact, and [planePoint] + [entityOrigin]'s `base` parameter place that
+     * tiny block directly at the aimed-at point on the surface's plane, so
+     * `showPointer` can move the cursor with a real position change.
      */
     fun pointerEntityAt(px: Int, py: Int): VirtualTextDisplay? {
         val id = pointerSpriteOverride ?: POINTER_SPRITE
@@ -586,7 +591,12 @@ class Surface(
             )
             return null
         }
-        val cursor = SpriteCanvas(entry.width, entry.height)
+        // glyphAdvance (trimmedWidth + 1), not width -- the client measures a
+        // row by what the glyph actually advances, and a trimmed sprite (the
+        // bundled crosshair is 15px wide but trims to 12) advances less than
+        // its raw width. Sizing the canvas by width would predict a block one
+        // pixel wider than what gets emitted, landing entityOrigin a pixel off.
+        val cursor = SpriteCanvas(entry.glyphAdvance, entry.height)
         cursor.anchorToBounds = false
         cursor.draw(entry, 0, 0)
 
@@ -603,6 +613,7 @@ class Surface(
             d.billboard = orientation
             d.backgroundColor = DkColor.TRANSPARENT
             d.brightness = Brightness.FULL
+            d.hasShadow = false
             d.textAlignment = TextAlignment.LEFT
             d.lineWidth = cursor.blockWidthPx() + LINE_WIDTH_MARGIN_PX
             val s = pixelScale

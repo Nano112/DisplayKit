@@ -100,6 +100,11 @@ class SurfaceHost(
         } else {
             existing.position = fresh.position
             existing.text = fresh.text
+            // yawDegrees is mutable and repaint() refreshes the layers'
+            // transformation when it changes -- without also copying these,
+            // a re-faced surface would leave the pointer rotated the old way.
+            existing.transformation = fresh.transformation
+            existing.lineWidth = fresh.lineWidth
             platform.packetSender.updateMetadata(existing, viewers)
         }
     }
