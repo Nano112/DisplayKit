@@ -6,6 +6,7 @@ import io.schemat.displaykit.pack.ItemModelAssetProvider
 import io.schemat.displaykit.pack.PackConfig
 import io.schemat.displaykit.pack.PackManager
 import io.schemat.displaykit.pack.SpriteAssetProvider
+import io.schemat.displaykit.sprite.SpriteDiagnostics
 import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.common.ClientboundResourcePackPushPacket
 import net.minecraft.server.MinecraftServer
@@ -124,6 +125,9 @@ object FabricPackIntegration {
         packManager?.rebuildPack()
     }
 
+    /** Callbacks waiting for a player to finish applying the current pack. */
+    private val awaitingPack = java.util.concurrent.ConcurrentHashMap<UUID, MutableList<() -> Unit>>()
+
     /**
      * Rebuild the pack and resend to all online players.
      */
@@ -132,6 +136,76 @@ object FabricPackIntegration {
         val mcServer = server ?: return
         for (player in mcServer.playerList.players) {
             sendPack(player)
+        }
+    }
+
+    /**
+     * Run [action] once [playerId] has applied the pack that is being sent
+     * now — or immediately, if nothing is in flight for them.
+     *
+     * Spawning a glyph-composed surface before its pack lands renders every
+     * new codepoint as a missing-glyph box, whose advance is the font's
+     * default rather than the sprite's. The row widths are then wrong, so the
+     * measured text block is wrong, and every layer centres somewhere
+     * different — a scattered window that silently fixes itself the next time
+     * it is opened.
+     */
+    fun whenPackApplied(playerId: UUID, action: () -> Unit) {
+        val pm = packManager
+        if (pm == null || pm.getPlayerStatus(playerId) != PackManager.PackStatus.SENDING) {
+            action()
+            return
+        }
+        awaitingPack.computeIfAbsent(playerId) { mutableListOf() }.add(action)
+
+        // A client that never answers must not leave the caller waiting
+        // forever -- that turns a cosmetic race into a window that simply
+        // never appears. Fire anyway after a grace period; a tofu surface is
+        // recoverable, an invisible one is not.
+        val mcServer = server ?: return
+        val deadline = PACK_WAIT_TIMEOUT_MS
+        Thread.ofVirtual().start {
+            Thread.sleep(deadline)
+            val stranded = awaitingPack.remove(playerId) ?: return@start
+            SpriteDiagnostics.warnOnce(
+                "pack-wait-timeout:$playerId",
+                "Client $playerId did not report applying the resource pack within " +
+                    "${deadline}ms. Opening anyway -- sprite glyphs may render as " +
+                    "missing-glyph boxes until the pack lands."
+            )
+            mcServer.execute { stranded.forEach { it() } }
+        }
+    }
+
+    /** How long to wait for a client's pack answer before opening regardless. */
+    private const val PACK_WAIT_TIMEOUT_MS = 10_000L
+
+    /**
+     * The client's answer to a pack push, from `ResourcePackResponseMixin`.
+     *
+     * Only terminal states release the waiters. ACCEPTED and DOWNLOADED are
+     * progress reports — the pack is not in use yet — so waking on those would
+     * reintroduce exactly the race this exists to close.
+     */
+    fun onPackResponse(playerId: UUID, action: String) {
+        val status = when (action) {
+            "SUCCESSFULLY_LOADED" -> PackManager.PackStatus.ACCEPTED
+            "DECLINED" -> PackManager.PackStatus.DECLINED
+            "FAILED_DOWNLOAD", "FAILED_RELOAD", "INVALID_URL", "DISCARDED" ->
+                PackManager.PackStatus.FAILED
+            else -> return   // ACCEPTED / DOWNLOADED: still in flight
+        }
+        packManager?.onPackStatus(playerId, status)
+        // Release waiters even on failure: a surface that renders as tofu is
+        // still better than one that never appears, and SpriteDiagnostics
+        // already reports the degraded path.
+        val waiting = awaitingPack.remove(playerId) ?: return
+        val mcServer = server
+        if (mcServer == null) {
+            waiting.forEach { it() }
+        } else {
+            // Back onto the server thread: entity spawning is not thread-safe.
+            mcServer.execute { waiting.forEach { it() } }
         }
     }
 

@@ -206,11 +206,21 @@ object PickerWindow {
         open[player.uuid] = session
 
         // Paint and sync the pack BEFORE spawning: host.repaint() is a no-op
-        // until open(), so this fills the canvas and rebuilds the pack, and
-        // host.open() then spawns the entity with content the client can read.
+        // until open(), so this fills the canvas and rebuilds the pack.
         repaintAndSync(session)
-        host.open()
-        InteractionRouter.registerSurface(player.uuid, host)
+        // Then WAIT for the client to actually apply that pack. Spawning
+        // straight away renders every newly-allocated codepoint as a
+        // missing-glyph box, whose advance is the font default rather than the
+        // sprite's -- so the rows measure wrong, the block measures wrong, and
+        // the layers scatter. That is why opening the picker a second time
+        // always looked right: the pack had landed by then.
+        FabricPackIntegration.whenPackApplied(player.uuid) {
+            // The player may have closed it (or logged out) while the pack was
+            // downloading; only spawn if this session is still the live one.
+            if (open[player.uuid] !== session) return@whenPackApplied
+            host.open()
+            InteractionRouter.registerSurface(player.uuid, host)
+        }
 
         player.sendSystemMessage(
             Component.literal("Picker open. Click a slot to copy its id; the cross closes it.")
