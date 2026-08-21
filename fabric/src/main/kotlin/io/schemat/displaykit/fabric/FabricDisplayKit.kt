@@ -92,6 +92,9 @@ class FabricDisplayKit : ModInitializer {
 
             DisplayKit.init(platform)
 
+            io.schemat.displaykit.surface.SliceGlyphSource.installed =
+                io.schemat.displaykit.fabric.surface.FabricSliceGlyphSource
+
             SpriteDiagnostics.checkVersion(
                 SpriteIndex.bundled,
                 server.serverVersion
@@ -134,6 +137,8 @@ class FabricDisplayKit : ModInitializer {
             if (enableResourcePack) {
                 FabricPackIntegration.shutdown()
             }
+
+            io.schemat.displaykit.surface.SliceGlyphSource.installed = null
 
             DisplayKit.shutdown()
             scheduler?.shutdown()

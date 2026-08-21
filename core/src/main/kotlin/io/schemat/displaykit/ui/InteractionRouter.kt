@@ -8,6 +8,7 @@ object InteractionRouter {
     private val logger = Logger.getLogger("displaykit/router")
     private val activeUIs = ConcurrentHashMap<UUID, MutableList<FloatingUI>>()
     private val activeOverlays = ConcurrentHashMap<UUID, MutableList<WorldOverlay>>()
+    private val activeSurfaces = ConcurrentHashMap<UUID, MutableList<io.schemat.displaykit.surface.SurfaceHost>>()
     private val debugPlayers = ConcurrentHashMap.newKeySet<UUID>()
     private val lastClickTime = ConcurrentHashMap<String, Long>()
     private val lastConsumedLeftClick = ConcurrentHashMap<UUID, Long>()
@@ -66,6 +67,22 @@ object InteractionRouter {
     fun getOverlaysForPlayer(playerUUID: UUID): List<WorldOverlay> {
         return activeOverlays[playerUUID]?.toList() ?: emptyList()
     }
+
+    fun registerSurface(playerUUID: UUID, host: io.schemat.displaykit.surface.SurfaceHost) {
+        activeSurfaces.computeIfAbsent(playerUUID) { mutableListOf() }.add(host)
+    }
+
+    fun unregisterSurface(playerUUID: UUID, host: io.schemat.displaykit.surface.SurfaceHost) {
+        activeSurfaces[playerUUID]?.remove(host)
+        if (activeSurfaces[playerUUID]?.isEmpty() == true) activeSurfaces.remove(playerUUID)
+    }
+
+    fun getSurfaces(playerUUID: UUID): List<io.schemat.displaykit.surface.SurfaceHost> =
+        activeSurfaces[playerUUID]?.toList() ?: emptyList()
+
+    /** Returns true when a surface consumed the click. */
+    fun handleSurfaceClick(playerUUID: UUID): Boolean =
+        getSurfaces(playerUUID).any { it.handleClick() }
 
     fun hasHoveredOverlay(playerUUID: UUID): Boolean {
         val overlays = activeOverlays[playerUUID] ?: return false
@@ -147,6 +164,13 @@ object InteractionRouter {
         val debug = isDebug(playerUUID)
         val side = if (isRightClick) "R" else "L"
 
+        // A surface is a foreground window, so it consumes the click before UI/overlay
+        // dispatch even gets a chance to raycast.
+        if (handleSurfaceClick(playerUUID)) {
+            if (debug) onDebugClick?.invoke(playerUUID, "$side:surface")
+            return true
+        }
+
         var closestDist = Double.MAX_VALUE
         var closestAction: (() -> Unit)? = null
         var closestLabel = ""
@@ -196,6 +220,7 @@ object InteractionRouter {
         uiSuppressed.remove(playerUUID)
         lastConsumedLeftClick.remove(playerUUID)
         debugPlayers.remove(playerUUID)
+        activeSurfaces.remove(playerUUID)
     }
 
     fun closeAll() {
