@@ -190,8 +190,14 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * glyph's advance exceeds its drawn width by 1, so touching or
      * overlapping sprites correct the cursor backward.
      */
-    fun toTextComponent(): TextComponent {
-        if (items.isEmpty()) return TextComponent.EMPTY
+    /**
+     * The row/cursor walk shared by [toTextComponent] and [requiresPack], so
+     * the two can never drift apart — whatever children this produces is
+     * exactly what would render, and exactly what is inspected for pack
+     * dependence.
+     */
+    private fun buildChildren(): List<TextComponent> {
+        if (items.isEmpty()) return emptyList()
 
         val byRow = items.groupBy { it.y / TextMetrics.LINE_HEIGHT_PX }
         val maxRow = byRow.keys.max()
@@ -216,6 +222,25 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
             }
         }
 
+        return children
+    }
+
+    fun toTextComponent(): TextComponent {
+        val children = buildChildren()
+        if (children.isEmpty()) return TextComponent.EMPTY
         return TextComponent(children = children)
     }
+
+    /**
+     * True when rendering this canvas requires the DisplayKit resource pack.
+     *
+     * Plain text needs no pack at all. Only two things do: an item drawn with
+     * a non-null font (a sprite or slice glyph, which lives in
+     * `displaykit:sprites`), and a spacing advance for a non-zero gap (which
+     * lives in `displaykit:spacing`). Both surface as a non-null `font` on a
+     * child from [buildChildren], so checking that is exact rather than a
+     * proxy like "the canvas is non-empty" — an empty text-only canvas with a
+     * leading gap still needs the pack for its spacing character.
+     */
+    fun requiresPack(): Boolean = buildChildren().any { it.font != null }
 }

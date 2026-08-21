@@ -4,7 +4,11 @@ import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.Billboard
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextMetrics
+import io.schemat.displaykit.sprite.SpriteEntry
+import io.schemat.displaykit.sprite.SpriteId
 import kotlin.math.abs
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -14,6 +18,12 @@ class SurfaceTest {
 
     private fun surface(w: Int = 200, h: Int = 120) =
         Surface(widthPx = w, heightPx = h, position = Vec3d(0.0, 70.0, 0.0), targetWidthBlocks = 2f)
+
+    // A canvas that requires no pack at all to render (font = null throughout) is
+    // exactly what the fallback in toEntity() must never discard, so these tests
+    // need SliceGlyphSource.installed to genuinely be null and stay that way.
+    @BeforeTest fun clearSliceSource() { SliceGlyphSource.installed = null }
+    @AfterTest fun restoreSliceSource() { SliceGlyphSource.installed = null }
 
     @Test
     fun pixelScaleIsDerivedFromTheTargetWidth() {
@@ -97,5 +107,79 @@ class SurfaceTest {
                 .paint { region("x", Rect(0, 0, 4, 4)) {} }
         }
         assertTrue(e.message!!.contains("FIXED"))
+    }
+
+    // --- Finding 1: the pack-disabled fallback must not discard real text ---
+
+    @Test
+    fun textOnlyCanvasWithNoSourceInstalledRendersRealText() {
+        val s = surface()
+        s.paint { label("hello", 0, 0, DkColor.WHITE) }
+        assertEquals("hello", s.toEntity().text.plain())
+    }
+
+    @Test
+    fun canvasWithASpriteDrawAndNoSourceInstalledRendersTheFallback() {
+        val s = surface()
+        val entry = SpriteEntry(
+            id = SpriteId("gui", "test_icon"),
+            width = 8, height = 8,
+            texture = "minecraft:gui/test_icon.png",
+            greyscale = true
+        )
+        s.paint { icon(entry, 0, 0) }
+        assertEquals(
+            "[DisplayKit surface unavailable: resource pack disabled]",
+            s.toEntity().text.plain()
+        )
+    }
+
+    // --- Finding 2: pixelScale's inputs must be guarded at construction ---
+
+    @Test
+    fun widthPxMustBePositive() {
+        val e = assertFailsWith<IllegalArgumentException> {
+            Surface(0, 100, Vec3d.ZERO, 2f)
+        }
+        assertTrue(e.message!!.contains("widthPx"))
+    }
+
+    @Test
+    fun heightPxMustBePositive() {
+        val e = assertFailsWith<IllegalArgumentException> {
+            Surface(100, 0, Vec3d.ZERO, 2f)
+        }
+        assertTrue(e.message!!.contains("heightPx"))
+    }
+
+    @Test
+    fun targetWidthBlocksMustBePositive() {
+        val e = assertFailsWith<IllegalArgumentException> {
+            Surface(100, 100, Vec3d.ZERO, -1f)
+        }
+        assertTrue(e.message!!.contains("targetWidthBlocks"))
+    }
+
+    // --- Finding 3: fill must not overdraw past its rect ---
+
+    @Test
+    fun fillDoesNotPaintOutsideARectThatIsNotAWholeMultipleOfTheTile() {
+        val s = surface()
+        s.paint { fill(DkColor.fromRGB(255, 0, 0), Rect(0, 0, 20, 20)) }
+        // the fill sprite (lightning_rod_on) is 16x16 — every tile must stay
+        // fully inside [0,20) x [0,20), never bleeding past the rect's edge.
+        for ((x, y) in s.canvasItemPositions()) {
+            assertTrue(x >= 0 && x + 16 <= 20, "tile at x=$x overflows the rect")
+            assertTrue(y >= 0 && y + 16 <= 20, "tile at y=$y overflows the rect")
+        }
+    }
+
+    @Test
+    fun fillRectSmallerThanTheTileThrows() {
+        val s = surface()
+        val e = assertFailsWith<IllegalArgumentException> {
+            s.paint { fill(DkColor.WHITE, Rect(0, 0, 10, 20)) }
+        }
+        assertTrue(e.message!!.contains("16"))
     }
 }

@@ -199,4 +199,20 @@ class SpriteCanvasTest {
         val variant = SpriteGlyphs.requested().single()
         assertEquals(-6, variant.yOffset)
     }
+
+    // --- requiresPack(): plain text needs no pack; a non-zero gap does ---
+
+    @Test
+    fun textOnlyCanvasAtNonZeroXRequiresPackBecauseOfTheLeadingSpacingChar() {
+        val c = SpriteCanvas(64, 64)
+        c.text("hi", x = 10, y = 0)
+        assertTrue(c.requiresPack())
+    }
+
+    @Test
+    fun textOnlyCanvasAtOriginNeedsNoPackAtAll() {
+        val c = SpriteCanvas(64, 64)
+        c.text("hi", x = 0, y = 0)
+        assertTrue(!c.requiresPack())
+    }
 }

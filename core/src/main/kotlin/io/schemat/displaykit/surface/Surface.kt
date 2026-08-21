@@ -58,6 +58,14 @@ class Surface(
         val SLOT_SPRITE = SpriteId("gui", "container/slot")
     }
 
+    init {
+        require(widthPx > 0) { "Surface widthPx must be positive (got $widthPx)." }
+        require(heightPx > 0) { "Surface heightPx must be positive (got $heightPx)." }
+        require(targetWidthBlocks > 0) {
+            "Surface targetWidthBlocks must be positive (got $targetWidthBlocks)."
+        }
+    }
+
     /** World blocks per canvas pixel, derived so callers size in blocks. */
     val pixelScale: Float
         get() = targetWidthBlocks / (widthPx * TextMetrics.PIXEL_SIZE)
@@ -67,6 +75,7 @@ class Surface(
     private val slots = mutableListOf<Pair<Rect, ItemRef>>()
 
     fun canvasItemCount(): Int = canvas.itemCount()
+    fun canvasItemPositions(): List<Pair<Int, Int>> = canvas.itemPositions()
     fun hitRects(): List<HitRect> = rects.toList()
     fun slotItems(): List<Pair<Rect, ItemRef>> = slots.toList()
 
@@ -85,10 +94,12 @@ class Surface(
         val s = pixelScale
         d.transformation = Mat4f(Matrix4f().scale(s, s, s))
 
-        // Surfaces are glyph-composed, so with no slice source installed the
-        // canvas would render as a field of missing-glyph boxes. Say so in
-        // words instead — a legible message beats tofu.
-        d.text = if (SliceGlyphSource.installed == null && canvas.itemCount() > 0) {
+        // Surfaces are glyph-composed, so with no slice source installed a
+        // canvas that actually needs glyphs (sprites, slices, or spacing)
+        // would render as a field of missing-glyph boxes. Say so in words
+        // instead — a legible message beats tofu. Plain text needs no pack at
+        // all, so it must never be discarded here (see requiresPack()).
+        d.text = if (SliceGlyphSource.installed == null && canvas.requiresPack()) {
             SpriteDiagnostics.packDisabled()
             TextComponent.of("[DisplayKit surface unavailable: resource pack disabled]")
         } else {
@@ -104,14 +115,18 @@ class Surface(
 
         override fun fill(color: DkColor, rect: Rect) {
             val e = SpriteIndex.bundled.get(FILL_SPRITE) ?: return
-            var y = rect.y
-            while (y < rect.bottom) {
-                var x = rect.x
-                while (x < rect.right) {
+            require(e.width > 0 && e.height > 0) {
+                "Fill sprite $FILL_SPRITE has non-positive dimensions " +
+                    "(${e.width}x${e.height})."
+            }
+            require(rect.w >= e.width && rect.h >= e.height) {
+                "A fill rect must be at least ${e.width}x${e.height} " +
+                    "(asked for ${rect.w}x${rect.h}). Tiling needs one whole tile to fit."
+            }
+            for (y in tileSteps(rect.y, rect.bottom, e.height)) {
+                for (x in tileSteps(rect.x, rect.right, e.width)) {
                     canvas.draw(e, x, y, color)
-                    x += e.width
                 }
-                y += e.height
             }
         }
 
@@ -140,4 +155,23 @@ class Surface(
             rects += HitRect(id, rect, onClick)
         }
     }
+}
+
+/**
+ * Tile positions along one axis, covering [start] until [end]: a full grid of
+ * [tile]-sized steps, with the final tile placed flush against [end] so it
+ * overlaps its neighbour rather than overflowing past it. The same trick
+ * [NineSliceLayout] uses for its borders — invisible on a uniform tile, and
+ * exact everywhere else. Requires at least one whole tile to fit (checked by
+ * callers before this runs).
+ */
+private fun tileSteps(start: Int, end: Int, tile: Int): List<Int> {
+    val positions = ArrayList<Int>()
+    var p = start
+    while (p + tile < end) {
+        positions.add(p)
+        p += tile
+    }
+    positions.add(end - tile)
+    return positions
 }
