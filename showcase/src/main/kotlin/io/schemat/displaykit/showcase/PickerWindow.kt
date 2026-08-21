@@ -492,7 +492,14 @@ object PickerWindow {
                 p.scrollTrack(r)
                 val max = pane.maxScroll()
                 val thumbH = thumbHeightFor(r.h, max)
-                val thumbY = if (max == 0) r.y else r.y + (pane.scrollPx * (r.h - thumbH)) / max
+                val rawY = if (max == 0) 0 else (pane.scrollPx * (r.h - thumbH)) / max
+                // Snap to the renderer's line pitch. A glyph's ascent is baked
+                // per vertical phase, so an unsnapped thumb lands on a new
+                // phase every notch, allocates new codepoints, and forces a
+                // full client pack reload mid-scroll. Snapping costs at most
+                // 9px of thumb precision on a track hundreds of pixels tall.
+                val snapped = (rawY / TextMetrics.FONT_LINE_HEIGHT_PX) * TextMetrics.FONT_LINE_HEIGHT_PX
+                val thumbY = r.y + snapped.coerceIn(0, (r.h - thumbH).coerceAtLeast(0))
                 p.scrollThumb(Rect(r.x, thumbY, SCROLL_W, thumbH))
             }
             bar.width = SCROLL_W
@@ -572,25 +579,59 @@ object PickerWindow {
     }
 
     /**
-     * Allocate the scrollbar thumb's slice codepoints at every ascent phase
-     * a drag can land it on.
+     * Allocate the scrollbar thumb's slice codepoints at the one ascent the
+     * (now snapped -- see the `bar` render lambda above) thumb will ever
+     * render at.
      *
-     * Unlike the grid, [bar]'s `onGrabMove` snaps the thumb to an arbitrary Y
-     * (see [thumbHeightFor] and the render/drag comment above), so it is NOT
-     * phase-locked to one value -- all 10 `y mod 10` residues are reachable
-     * mid-drag. [NineSlicePainter.prewarm] allocates without touching a
-     * canvas, so ten calls here are cheap: this is the "if you can cheaply
-     * pre-warm the thumb too, do it" case. If thumb geometry (track height,
-     * [ScrollNode.maxScroll]) ever changes between this call and a drag,
-     * [repaintTree]'s growth check still covers it with a resend.
+     * This used to probe every `y mod FONT_LINE_HEIGHT_PX` phase with a
+     * SYNTHETIC `Rect(0, phase, ...)` for `phase` in `0 until 10` -- cheap,
+     * since [NineSlicePainter.prewarm] allocates without touching a canvas,
+     * but WRONG in a way a full scroll-and-drag test caught. A first attempt
+     * at fixing it -- probing `bar.rect().y` directly, the snap's real
+     * minimum `thumbY` -- was ALSO wrong, in the opposite direction, for the
+     * same underlying reason: `y mod 10` alone does not determine a crop's
+     * resolved ascent.
+     *
+     * [GlyphPlacement.resolve] starts from the natural ascent for `y`'s own
+     * row and, if that exceeds the crop's height, walks rows backward,
+     * subtracting [TextMetrics.FONT_LINE_HEIGHT_PX] from the ascent each
+     * step, until it fits or row 0 is exhausted. A short crop (this sprite's
+     * 1px borders) needs at most one such step, EVER -- the natural ascent
+     * is at most [TextMetrics.GLYPH_TOP_BEARING_PX] (7), and one step
+     * subtracts a full 10, so one fallback row always suffices. But that one
+     * step needs a row to fall back TO: at a `y` within the first
+     * [TextMetrics.FONT_LINE_HEIGHT_PX] px of the canvas (row 0 is `y`'s own
+     * natural row), there is no row -1, so resolution can fail there and
+     * ONLY there -- succeeding, at a stable ascent, for every larger `y` on
+     * the identical phase. Probing at `bar.rect().y` when the track happens
+     * to start inside that first line (true of this synthetic-tree test,
+     * false of the real window's ~30px chrome, but not something this
+     * function should assume) reproduces exactly that gap: it warns and
+     * skips a crop the render never draws at `y=0` either, then misses
+     * pre-warming the different, stable ascent every larger same-phase `y`
+     * -- i.e. every scroll notch after the first -- actually needs,
+     * allocating it live instead and forcing a resend.
+     *
+     * Probing one line-pitch ABOVE the snap's minimum Y sidesteps this for
+     * good: it is always at least [TextMetrics.FONT_LINE_HEIGHT_PX] px from
+     * the canvas floor, so the one fallback step this sprite's crops could
+     * ever need always has a row to land on, and per the paragraph above
+     * that resolves to the SAME ascent every other `y` on this phase does
+     * (`bar.rect().y` itself included, whether or not IT happened to have
+     * the headroom). This is provably enough for a 1px-tall crop; it is
+     * enough for anything nine-sliced DisplayKit currently ships, but a
+     * crop taller than [TextMetrics.FONT_LINE_HEIGHT_PX] + 3px (needing TWO
+     * fallback steps) would need two line-pitches of margin instead of one
+     * -- [repaintTree]'s growth check remains the backstop if that ever
+     * changes, or if thumb geometry (track height, [ScrollNode.maxScroll])
+     * changes between this call and a scroll/drag.
      */
     private fun prewarmScrollThumb(bar: WidgetNode, pane: ScrollNode) {
         val sprite = SpriteIndex.bundled.get(SCROLL_THUMB_SPRITE) ?: return
-        val trackH = bar.rect().h
-        if (trackH <= 0) return
-        val thumbH = thumbHeightFor(trackH, pane.maxScroll())
-        for (phase in 0 until 10) {
-            NineSlicePainter.prewarm(sprite, Rect(0, phase, SCROLL_W, thumbH))
-        }
+        val r = bar.rect()
+        if (r.h <= 0) return
+        val thumbH = thumbHeightFor(r.h, pane.maxScroll())
+        val probeY = r.y + TextMetrics.FONT_LINE_HEIGHT_PX
+        NineSlicePainter.prewarm(sprite, Rect(0, probeY, SCROLL_W, thumbH))
     }
 }
