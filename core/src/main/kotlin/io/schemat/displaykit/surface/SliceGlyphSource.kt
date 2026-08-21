@@ -1,6 +1,7 @@
 package io.schemat.displaykit.surface
 
 import io.schemat.displaykit.render.DkColor
+import io.schemat.displaykit.sprite.GlyphPlacement
 import io.schemat.displaykit.sprite.SpriteCanvas
 import io.schemat.displaykit.sprite.SpriteDiagnostics
 import io.schemat.displaykit.sprite.SpriteEntry
@@ -117,6 +118,31 @@ object NineSlicePainter {
                 source.codepointFor(entry.id, p.srcX, p.srcY, ascent)
                     ?.let { String(Character.toChars(it)) }
             }
+        }
+    }
+
+    /**
+     * Allocate the crop codepoints [entry] would need if painted at [rect],
+     * without touching a canvas.
+     *
+     * Same regions ([NineSliceLayout.regionsFor]) and the same ascent maths
+     * ([GlyphPlacement.resolve]) as [paint] — this only skips the
+     * [SpriteCanvas.drawGlyph] call, so a caller that already knows a frame
+     * will land at [rect] (or at several candidate rects, e.g. one per
+     * possible drag phase) can pre-allocate those variants ahead of the pack
+     * build that will actually ship them, instead of allocating them lazily
+     * the first time the frame is drawn there.
+     */
+    fun prewarm(entry: SpriteEntry, rect: Rect) {
+        if (entry.nineSlice == null) return
+        val source = SliceGlyphSource.installed ?: return
+        val regions = NineSliceLayout.regionsFor(entry, rect.w, rect.h)
+        if (regions.isEmpty()) return
+
+        source.request(entry.id)
+        for (p in regions) {
+            val ascent = GlyphPlacement.resolve(rect.y + p.dstY, p.srcH)?.ascent ?: continue
+            source.codepointFor(entry.id, p.srcX, p.srcY, ascent)
         }
     }
 }

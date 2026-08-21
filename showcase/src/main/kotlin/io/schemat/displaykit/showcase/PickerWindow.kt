@@ -10,12 +10,14 @@ import io.schemat.displaykit.pack.SpriteSliceProvider
 import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextMetrics
+import io.schemat.displaykit.sprite.GlyphPlacement
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteGlyphs
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
 import io.schemat.displaykit.surface.EventResult
 import io.schemat.displaykit.surface.NineSliceLayout
+import io.schemat.displaykit.surface.NineSlicePainter
 import io.schemat.displaykit.surface.Rect
 import io.schemat.displaykit.surface.Surface
 import io.schemat.displaykit.surface.SurfaceEvent
@@ -96,6 +98,14 @@ object PickerWindow {
     /** A soft highlight applied to a grid icon while the pointer hovers it. */
     private val HOVER_TINT = DkColor(255, 255, 240, 160)
 
+    /**
+     * The scrollbar thumb sprite, for [prewarmScrollThumb]. Must match the
+     * private `SCROLL_THUMB` id [io.schemat.displaykit.surface.scrollThumb]
+     * itself draws with, in `SurfaceParts.kt` -- that id is not exported, so
+     * this is a second literal of the same sprite id, not a shared constant.
+     */
+    private val SCROLL_THUMB_SPRITE = SpriteId("gui", "widget/scroller")
+
     /** The frame sprite's manifest entry, resolved once. */
     private val frameEntry: SpriteEntry? by lazy { SpriteIndex.bundled.get(FRAME) }
 
@@ -143,6 +153,25 @@ object PickerWindow {
     }
 
     /**
+     * Repaint, then resend the pack if painting allocated new glyph variants.
+     *
+     * A sprite's vertical placement is baked into its font ascent, so the same
+     * sprite at a new Y is a new codepoint. Anything the client's pack does not
+     * have renders as tofu -- which is what scrolling, dragging the thumb, and
+     * (before it was pre-warmed) moving the cursor all used to produce.
+     *
+     * Rebuilding unconditionally would be just as wrong the other way: it makes
+     * EVERY connected client re-download the pack on EVERY change. So both
+     * callers watch both allocators across their repaint and rebuild only on
+     * growth.
+     */
+    private fun syncPackIfGlyphsGrew(glyphsBefore: Int, slicesBefore: Int) {
+        val grew = SpriteGlyphs.requested().size > glyphsBefore ||
+            SpriteSliceProvider.variantCount() > slicesBefore
+        if (grew) FabricPackIntegration.rebuildAndResendToAll()
+    }
+
+    /**
      * Repaint, push to the client, and resend the pack IF the repaint asked for
      * glyphs the client has never seen.
      *
@@ -153,22 +182,20 @@ object PickerWindow {
      * a missing-glyph box. Before this existed, `open()` was the only path
      * that rebuilt, so every tab click turned the window to tofu.
      *
-     * Rebuilding unconditionally would be just as wrong the other way: it makes
-     * EVERY connected client re-download the pack on EVERY click. So we watch
-     * both allocators across the repaint and rebuild only on growth.
-     *
-     * A scroll-only change never calls this -- see [repaintTree].
+     * [repaint] itself pre-warms the grid and the scrollbar thumb's variants
+     * before painting the current page, and [prewarmCursor] does the same for
+     * the on-surface pointer -- so this call's growth check almost always
+     * finds nothing new, and this is the ONE resend that ships them all.
      */
     private fun repaintAndSync(session: Session) {
         val glyphsBefore = SpriteGlyphs.requested().size
         val slicesBefore = SpriteSliceProvider.variantCount()
 
         repaint(session)
+        prewarmCursor()
         session.host.repaint()
 
-        val grew = SpriteGlyphs.requested().size > glyphsBefore ||
-            SpriteSliceProvider.variantCount() > slicesBefore
-        if (grew) FabricPackIntegration.rebuildAndResendToAll()
+        syncPackIfGlyphsGrew(glyphsBefore, slicesBefore)
     }
 
     /**
@@ -182,10 +209,22 @@ object PickerWindow {
      * only pushes the result to the client. Only a genuine content change --
      * switching atlas tabs -- goes through [repaintAndSync] and rebuilds the
      * tree from scratch.
+     *
+     * The grid's pre-warm (see [repaint]) means a scroll notch normally needs
+     * no new glyph at all -- every row shares the grid's one ascent phase, see
+     * [prewarmGrid] -- but the scrollbar thumb can still drag to a Y this
+     * session's pre-warm did not cover if the geometry it was computed from
+     * (track height, max scroll) ever changes underneath it. This growth
+     * check is what makes that safe rather than merely usually-fine.
      */
     private fun repaintTree(session: Session) {
+        val glyphsBefore = SpriteGlyphs.requested().size
+        val slicesBefore = SpriteSliceProvider.variantCount()
+
         session.host.surface.paintTree()
         session.host.repaint()
+
+        syncPackIfGlyphsGrew(glyphsBefore, slicesBefore)
     }
 
     fun open(player: ServerPlayer) {
@@ -295,10 +334,25 @@ object PickerWindow {
      * [Surface.layout] constructs a brand new [ScrollNode], so re-running it
      * legitimately resets scroll to the top. Scroll-only changes must go
      * through [repaintTree] instead, never through here.
+     *
+     * Pre-warms the grid's and the scrollbar thumb's glyph variants (see
+     * [prewarmGrid], [prewarmScrollThumb]) once the tree is placed but before
+     * [Surface.paintTree] draws only the current page, so scrolling and
+     * thumb-dragging afterwards need no new variant at all.
      */
     private fun repaint(session: Session) {
         val all = spritesFor(session)
         val player = session.player
+
+        // Captured from inside the tree builder below so the pre-warm calls
+        // after `layout {}` returns can read their REAL placed rects, rather
+        // than re-deriving the chrome-above-the-grid arithmetic (padding,
+        // title height, tab strip gap...) by hand -- which would drift the
+        // moment any of that changes, exactly the kind of duplication
+        // iconFitted's own sizing math had to avoid.
+        lateinit var pane: ScrollNode
+        lateinit var bar: WidgetNode
+        var firstCell: WidgetNode? = null
 
         session.host.surface.layout { root ->
             // The window's own nine-slice background, sized to the full
@@ -365,7 +419,7 @@ object PickerWindow {
             body.addChild(tabs)
 
             // Scrolling grid.
-            val pane = ScrollNode("grid")
+            pane = ScrollNode("grid")
             pane.stepPx = STEP
             pane.flexGrow = 1
             pane.onEvent = { e ->
@@ -415,6 +469,7 @@ object PickerWindow {
                             else -> EventResult.PASS
                         }
                     }
+                    if (firstCell == null) firstCell = cell
                     row.addChild(cell)
                 }
                 pane.addChild(row)
@@ -433,7 +488,7 @@ object PickerWindow {
             // along the wrapper's own main axis) scoped to just the
             // scrollbar, fixed width via `bar.width` as before.
             val barWrap = FlexNode("scrollbar-wrap", FlexDirection.COLUMN)
-            val bar = WidgetNode("scrollbar", PxSize(SCROLL_W, 0)) { p, r ->
+            bar = WidgetNode("scrollbar", PxSize(SCROLL_W, 0)) { p, r ->
                 p.scrollTrack(r)
                 val max = pane.maxScroll()
                 val thumbH = thumbHeightFor(r.h, max)
@@ -460,6 +515,82 @@ object PickerWindow {
             column.addChild(body)
             root.addChild(column)
         }
+        prewarmGrid(all, firstCell)
+        prewarmScrollThumb(bar, pane)
         session.host.surface.paintTree()
+    }
+
+    /**
+     * Allocate the ONE glyph variant every grid cell in [all] will need,
+     * before [Surface.paintTree] paints only the current page.
+     *
+     * A sprite's rendered ascent depends only on its canvas Y modulo
+     * [TextMetrics.FONT_LINE_HEIGHT_PX] (10) -- see
+     * [io.schemat.displaykit.sprite.GlyphPlacement] -- and every grid row
+     * sits [STEP] (20, itself a multiple of 10) apart, so every row shares
+     * exactly the same phase as the first. [reference] is that first cell's
+     * REAL placed rect, read after layout rather than re-derived from the
+     * chrome above the grid (padding, title height, tab gap...), which would
+     * drift the moment any of that changes -- the same reasoning that keeps
+     * this fitted-size math ([SpriteEntry.fitHeight]/[SpriteEntry.scaledWidth])
+     * itself shared with [io.schemat.displaykit.surface.Surface.iconFitted]
+     * rather than hand-duplicated here.
+     *
+     * Costs one variant per sprite regardless of how many rows scroll past --
+     * cheap even for the "items" atlas, which is the whole point: it turns
+     * scrolling from something that grows the glyph table into something that
+     * never does.
+     */
+    private fun prewarmGrid(all: List<SpriteEntry>, reference: WidgetNode?) {
+        val y = reference?.rect()?.let { it.y + 1 } ?: return
+        for (entry in all) {
+            val h = entry.fitHeight(SLOT - 2, SLOT - 2)
+            val ascent = GlyphPlacement.resolve(y, h)?.ascent ?: continue
+            SpriteGlyphs.request(entry, ascent, h)
+        }
+    }
+
+    /**
+     * Allocate the pointer-cursor glyph before the first tick that would
+     * otherwise allocate it lazily.
+     *
+     * [Surface.pointerEntityAt] composites the cursor sprite onto its OWN
+     * tiny scratch canvas at a FIXED local y=0 -- the entity's on-screen
+     * position moves by teleporting it (`entityOrigin`), never by a different
+     * font ascent (see that function's KDoc). So, unlike the grid or the
+     * thumb, there is exactly ONE variant here, not one per possible screen
+     * Y. Left un-pre-warmed it is still allocated the first time
+     * `SurfaceHost.tick()` calls `showPointer` -- entirely outside
+     * [repaintAndSync]'s growth check -- so it can render as tofu until some
+     * unrelated repaint happens to trigger a resend afterwards.
+     */
+    private fun prewarmCursor() {
+        val id = Surface.pointerSpriteOverride ?: Surface.POINTER_SPRITE
+        val entry = SpriteIndex.bundled.get(id) ?: return
+        val ascent = GlyphPlacement.resolve(0, entry.height)?.ascent ?: return
+        SpriteGlyphs.request(entry, ascent, entry.height)
+    }
+
+    /**
+     * Allocate the scrollbar thumb's slice codepoints at every ascent phase
+     * a drag can land it on.
+     *
+     * Unlike the grid, [bar]'s `onGrabMove` snaps the thumb to an arbitrary Y
+     * (see [thumbHeightFor] and the render/drag comment above), so it is NOT
+     * phase-locked to one value -- all 10 `y mod 10` residues are reachable
+     * mid-drag. [NineSlicePainter.prewarm] allocates without touching a
+     * canvas, so ten calls here are cheap: this is the "if you can cheaply
+     * pre-warm the thumb too, do it" case. If thumb geometry (track height,
+     * [ScrollNode.maxScroll]) ever changes between this call and a drag,
+     * [repaintTree]'s growth check still covers it with a resend.
+     */
+    private fun prewarmScrollThumb(bar: WidgetNode, pane: ScrollNode) {
+        val sprite = SpriteIndex.bundled.get(SCROLL_THUMB_SPRITE) ?: return
+        val trackH = bar.rect().h
+        if (trackH <= 0) return
+        val thumbH = thumbHeightFor(trackH, pane.maxScroll())
+        for (phase in 0 until 10) {
+            NineSlicePainter.prewarm(sprite, Rect(0, phase, SCROLL_W, thumbH))
+        }
     }
 }
