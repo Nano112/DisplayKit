@@ -19,6 +19,9 @@ class PackBuilder(
 ) {
     private val assets = mutableMapOf<String, ByteArray>()
 
+    /** Item definition JSONs staged per path, kept so later ones can merge in. */
+    private val itemDefinitions = mutableMapOf<String, MutableList<String>>()
+
     /**
      * Add a raw file to the pack.
      * @param path Path within the ZIP (e.g., "assets/displaykit/textures/foo.png")
@@ -41,6 +44,106 @@ class PackBuilder(
      */
     fun addJson(path: String, json: String): PackBuilder {
         return addText(path, json)
+    }
+
+    /**
+     * Add an item definition (`assets/minecraft/items/<item>.json`), MERGING it
+     * with anything already staged at [path].
+     *
+     * An item definition is a single `minecraft:select` over
+     * `minecraft:custom_model_data`, so every provider that wants a
+     * CustomModelData case on the same base item is writing to the same file.
+     * Plain [addRaw] would make that last-writer-wins and silently drop one
+     * provider's models — the collision is real: `ItemModelAssetProvider`
+     * carries nucleation's models on `leather_horse_armor` by default, which is
+     * exactly the base item `SpriteSolidProvider` uses.
+     *
+     * Merging here rather than in either provider makes the result independent
+     * of provider registration order.
+     */
+    fun addItemDefinition(path: String, json: String): PackBuilder {
+        val staged = itemDefinitions.getOrPut(path) { mutableListOf() }
+        staged.add(json)
+        val content = if (staged.size == 1) staged[0] else mergeItemDefinitions(staged)
+        return addRaw(path, content.toByteArray(StandardCharsets.UTF_8))
+    }
+
+    /**
+     * Merge item definition JSONs by combining their `cases` arrays.
+     *
+     * Shape (as nucleation generates it, and as this Minecraft version wants):
+     * ```
+     * { "model": { "type": "minecraft:select",
+     *              "property": "minecraft:custom_model_data",
+     *              "fallback": { "type": "minecraft:model", "model": "..." },
+     *              "cases": [ { "when": "...", "model": { ... } } ] } }
+     * ```
+     * Individual case objects are lifted out of each input's `cases` array and
+     * concatenated; the `fallback` comes from the first input.
+     */
+    private fun mergeItemDefinitions(jsonList: List<String>): String {
+        val allCases = mutableListOf<String>()
+
+        for (json in jsonList) {
+            val casesStart = json.indexOf("\"cases\"")
+            if (casesStart == -1) continue
+
+            val arrayStart = json.indexOf('[', casesStart)
+            if (arrayStart == -1) continue
+
+            // Find matching close bracket, tracking nesting
+            var depth = 0
+            var i = arrayStart
+            val arrayContent = StringBuilder()
+            while (i < json.length) {
+                val c = json[i]
+                if (c == '[') depth++
+                else if (c == ']') {
+                    depth--
+                    if (depth == 0) break
+                }
+                if (depth == 1 && c != '[') arrayContent.append(c)
+                else if (depth > 1) arrayContent.append(c)
+                i++
+            }
+
+            val content = arrayContent.toString().trim()
+            if (content.isNotEmpty()) {
+                allCases.add(content)
+            }
+        }
+
+        // Extract fallback from first JSON
+        val firstJson = jsonList[0]
+        val fallbackStart = firstJson.indexOf("\"fallback\"")
+        var fallback = """{ "type": "minecraft:model", "model": "minecraft:item/paper" }"""
+        if (fallbackStart != -1) {
+            val objStart = firstJson.indexOf('{', fallbackStart + 10)
+            if (objStart != -1) {
+                var depth = 0
+                var i = objStart
+                while (i < firstJson.length) {
+                    if (firstJson[i] == '{') depth++
+                    else if (firstJson[i] == '}') {
+                        depth--
+                        if (depth == 0) {
+                            fallback = firstJson.substring(objStart, i + 1)
+                            break
+                        }
+                    }
+                    i++
+                }
+            }
+        }
+
+        return """{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:custom_model_data",
+    "fallback": $fallback,
+    "cases": [${allCases.joinToString(", ")}]
+  }
+}"""
     }
 
     /**
@@ -154,6 +257,7 @@ class PackBuilder(
      */
     fun clear(): PackBuilder {
         assets.clear()
+        itemDefinitions.clear()
         return this
     }
 

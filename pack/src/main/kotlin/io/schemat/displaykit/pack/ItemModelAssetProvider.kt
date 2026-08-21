@@ -49,104 +49,24 @@ object ItemModelAssetProvider : AssetProvider {
 
     fun getModelItem(name: String): String? = modelItems[name]
 
+    /**
+     * Item definitions go through [PackBuilder.addItemDefinition], which owns
+     * the merge. That is what lets `SpriteSolidProvider` add its own
+     * CustomModelData cases to the same `leather_horse_armor` definition
+     * without either provider clobbering the other, whichever runs first.
+     */
     override fun contributeAssets(builder: PackBuilder) {
-        // Collect item definition files separately for merging
-        val itemDefs = mutableMapOf<String, MutableList<String>>()
-
         for ((_, entries) in models) {
             for ((path, bytes) in entries) {
-                if (path.startsWith("assets/minecraft/items/") && path.endsWith(".json")) {
-                    itemDefs.getOrPut(path) { mutableListOf() }.add(String(bytes, StandardCharsets.UTF_8))
+                if (isItemDefinition(path)) {
+                    builder.addItemDefinition(path, String(bytes, StandardCharsets.UTF_8))
                 } else {
                     builder.addRaw(path, bytes)
                 }
             }
         }
-
-        // Merge item definitions by combining their cases arrays
-        for ((path, jsonList) in itemDefs) {
-            if (jsonList.size == 1) {
-                builder.addRaw(path, jsonList[0].toByteArray(StandardCharsets.UTF_8))
-            } else {
-                val merged = mergeItemDefinitions(jsonList)
-                builder.addRaw(path, merged.toByteArray(StandardCharsets.UTF_8))
-            }
-        }
     }
 
-    /**
-     * Merge multiple item definition JSONs by combining their "cases" arrays.
-     *
-     * Nucleation generates:
-     * { "model": { "type": "minecraft:select", "property": "minecraft:custom_model_data",
-     *   "fallback": { "type": "minecraft:model", "model": "minecraft:item/paper" },
-     *   "cases": [ { "when": "name", "model": { ... } } ] } }
-     *
-     * We extract individual case objects from each JSON's cases array and combine them.
-     */
-    private fun mergeItemDefinitions(jsonList: List<String>): String {
-        val allCases = mutableListOf<String>()
-
-        for (json in jsonList) {
-            // Find the cases array and extract individual case objects
-            val casesStart = json.indexOf("\"cases\"")
-            if (casesStart == -1) continue
-
-            val arrayStart = json.indexOf('[', casesStart)
-            if (arrayStart == -1) continue
-
-            // Find matching close bracket, tracking nesting
-            var depth = 0
-            var i = arrayStart
-            val arrayContent = StringBuilder()
-            while (i < json.length) {
-                val c = json[i]
-                if (c == '[') depth++
-                else if (c == ']') {
-                    depth--
-                    if (depth == 0) break
-                }
-                if (depth == 1 && c != '[') arrayContent.append(c)
-                else if (depth > 1) arrayContent.append(c)
-                i++
-            }
-
-            val content = arrayContent.toString().trim()
-            if (content.isNotEmpty()) {
-                allCases.add(content)
-            }
-        }
-
-        // Extract fallback from first JSON
-        val firstJson = jsonList[0]
-        val fallbackStart = firstJson.indexOf("\"fallback\"")
-        var fallback = """{ "type": "minecraft:model", "model": "minecraft:item/paper" }"""
-        if (fallbackStart != -1) {
-            val objStart = firstJson.indexOf('{', fallbackStart + 10)
-            if (objStart != -1) {
-                var depth = 0
-                var i = objStart
-                while (i < firstJson.length) {
-                    if (firstJson[i] == '{') depth++
-                    else if (firstJson[i] == '}') {
-                        depth--
-                        if (depth == 0) {
-                            fallback = firstJson.substring(objStart, i + 1)
-                            break
-                        }
-                    }
-                    i++
-                }
-            }
-        }
-
-        return """{
-  "model": {
-    "type": "minecraft:select",
-    "property": "minecraft:custom_model_data",
-    "fallback": $fallback,
-    "cases": [${allCases.joinToString(", ")}]
-  }
-}"""
-    }
+    private fun isItemDefinition(path: String): Boolean =
+        path.startsWith("assets/minecraft/items/") && path.endsWith(".json")
 }

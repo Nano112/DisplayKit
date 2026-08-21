@@ -286,10 +286,19 @@ object MetadataEncoder {
 
         // Set CustomModelData if specified (MC 1.21+ uses list-based CustomModelData)
         if (entity.customModelData != 0) {
-            // CustomModelData in 1.21+ takes lists of floats, flags, strings, colors
-            // For now, we encode the CMD as a single float in the first list
+            // CustomModelData in 1.21+ takes lists of floats, flags, strings, colors.
+            // Write the same value into BOTH the floats and the strings list:
+            // `minecraft:range_dispatch` item definitions read the float at an
+            // index, while `minecraft:select` (what ItemModelAssetProvider and
+            // SpriteSolidProvider emit) matches the STRING at an index. Only
+            // populating floats left every select-based definition falling
+            // through to its fallback model.
             val floatList = listOf(entity.customModelData.toFloat())
-            stack.set(DataComponents.CUSTOM_MODEL_DATA, CustomModelData(floatList, emptyList(), emptyList(), emptyList()))
+            val stringList = listOf(entity.customModelData.toString())
+            stack.set(
+                DataComponents.CUSTOM_MODEL_DATA,
+                CustomModelData(floatList, emptyList(), stringList, emptyList())
+            )
         }
 
         // Set color if specified (for leather armor)

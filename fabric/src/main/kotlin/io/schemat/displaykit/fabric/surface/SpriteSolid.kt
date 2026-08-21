@@ -29,7 +29,9 @@ object SpriteSolid {
         val cmd = SpriteSolidProvider.register(entry, thicknessPx)
         return VirtualItemDisplay().also { d ->
             d.position = position
-            d.itemId = "minecraft:leather_horse_armor"   // tintable base item
+            // Must be the item SpriteSolidProvider writes its item definition
+            // for, or the CustomModelData case never applies.
+            d.itemId = SpriteSolidProvider.BASE_ITEM     // tintable base item
             d.customModelData = cmd
             d.itemColor = tint
             d.itemDisplayTransform = ItemDisplayTransform.FIXED
