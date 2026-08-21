@@ -68,6 +68,26 @@ object ShowcaseMod : ModInitializer {
                                     }
                             )
                     )
+                    .then(
+                        Commands.literal("picker")
+                            .executes { ctx ->
+                                val p = ctx.source.player
+                                if (p == null) {
+                                    ctx.source.sendFailure(Component.literal("Picker requires a player"))
+                                    0
+                                } else {
+                                    PickerWindow.open(p)
+                                    1
+                                }
+                            }
+                    )
+                    .then(
+                        Commands.literal("closepicker")
+                            .executes { ctx ->
+                                ctx.source.player?.let { PickerWindow.closeFor(it.uuid) }
+                                1
+                            }
+                    )
             )
         }
 

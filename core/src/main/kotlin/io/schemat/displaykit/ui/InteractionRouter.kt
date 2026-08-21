@@ -220,7 +220,10 @@ object InteractionRouter {
         uiSuppressed.remove(playerUUID)
         lastConsumedLeftClick.remove(playerUUID)
         debugPlayers.remove(playerUUID)
-        activeSurfaces.remove(playerUUID)
+        // A dropped host without close() leaves its entity alive client-side
+        // until the player relogs — close every surface the player still has
+        // open before discarding the entry.
+        activeSurfaces.remove(playerUUID)?.forEach { it.close() }
     }
 
     fun closeAll() {
