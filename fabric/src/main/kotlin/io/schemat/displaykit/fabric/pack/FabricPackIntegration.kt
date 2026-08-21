@@ -42,6 +42,8 @@ object FabricPackIntegration {
             // Register asset providers
             if (config.registerDefaultProviders) {
                 registerAssetProvider(DefaultAssets)
+            }
+            if (config.registerGeistFont) {
                 registerAssetProvider(GeistFontProvider)
             }
             registerAssetProvider(ItemModelAssetProvider)

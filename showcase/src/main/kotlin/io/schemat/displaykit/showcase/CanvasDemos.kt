@@ -59,8 +59,17 @@ object CanvasDemos {
             "x via spacing advances",
             "y via per-glyph ascent"
         )
+        // Restrained terminal palette, legible in the vanilla font: matrix
+        // green for the prompt line, soft off-white body text, and a couple
+        // of muted accents so it reads as a terminal, not a wall of one hue.
+        val lineTints = listOf(
+            DkColor.fromRGB(0, 255, 136),
+            DkColor.fromRGB(214, 219, 214),
+            DkColor.fromRGB(45, 212, 191),
+            DkColor.fromRGB(250, 204, 21)
+        )
         lines.forEachIndexed { row, line ->
-            canvas.text(line, x = 0, y = row * 10, tint = DkColor.fromRGB(0, 255, 136))
+            canvas.text(line, x = 0, y = row * 10, tint = lineTints[row % lineTints.size])
         }
 
         FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
@@ -73,8 +82,9 @@ object CanvasDemos {
             billboard = Billboard.CENTER
             // Alpha 100-149 and 200-249 are DkColor shader sentinels (glass /
             // corner-radius, see DkColor.withGlass / withCornerRadius) -- 190
-            // sits outside both.
-            backgroundColor = DkColor(190, 15, 20, 18)
+            // sits outside both. RGB is a dark, neutral graphite -- no green
+            // cast -- so the varied line tints above read cleanly against it.
+            backgroundColor = DkColor(190, 22, 23, 26)
             brightness = Brightness.FULL
             hasShadow = false
             transformation = transformFor(scaleFor(canvas, TERMINAL_TARGET_WIDTH_BLOCKS))

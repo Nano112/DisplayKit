@@ -1,6 +1,7 @@
 package io.schemat.displaykit.showcase
 
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration
+import io.schemat.displaykit.fabric.text.Sprites
 import io.schemat.displaykit.pack.SpacingFontProvider
 import io.schemat.displaykit.pack.SpriteFontProvider
 import io.schemat.displaykit.render.DkColor
@@ -13,8 +14,9 @@ import net.minecraft.network.chat.TextColor
 import net.minecraft.server.level.ServerPlayer
 
 /**
- * `/dk demo tint` — by-reference glyphs, at true aspect ratio and tinted to an
- * arbitrary 24-bit colour that no stained-glass palette can express.
+ * `/dk demo tint` — settles, by looking, whether vanilla's `AtlasSprite` object
+ * component respects a Style's colour, and shows the by-reference glyph tint
+ * path (which is known to work) for comparison.
  */
 object TintDemo {
 
@@ -38,7 +40,6 @@ object TintDemo {
         }
 
         SpriteGlyphs.request(tintable, 0)
-        SpriteGlyphs.request(coloured, 0)
 
         FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
         FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
@@ -47,18 +48,26 @@ object TintDemo {
         val green = Style.EMPTY.withColor(
             TextColor.fromRgb((PRIMARY.red shl 16) or (PRIMARY.green shl 8) or PRIMARY.blue)
         )
+        val red = Style.EMPTY.withColor(TextColor.fromRgb(0xFF0000))
 
         player.sendSystemMessage(
-            Component.literal("tintable (greyscale): ")
+            Component.literal("1. vanilla AtlasSprite, no colour: ")
+                .append(Sprites.forEntry(coloured))
+        )
+        player.sendSystemMessage(
+            Component.literal("2. vanilla AtlasSprite, RED style colour: ")
+                .append(Sprites.forEntry(coloured).withStyle(red))
+        )
+        player.sendSystemMessage(
+            Component.literal("3. by-reference glyph, no tint: ")
+                .append(Component.literal(SpriteGlyphs.charsFor(tintable, 0)))
+        )
+        player.sendSystemMessage(
+            Component.literal("4. by-reference glyph, matrix-green tint: ")
                 .append(Component.literal(SpriteGlyphs.charsFor(tintable, 0)).withStyle(green))
-                .append(Component.literal("  <- ${tintable.id}"))
         )
         player.sendSystemMessage(
-            Component.literal("true aspect (${coloured.width}x${coloured.height}): ")
-                .append(Component.literal(SpriteGlyphs.charsFor(coloured, 0)))
-        )
-        player.sendSystemMessage(
-            Component.literal("Accept the resource pack prompt if you have not already.")
+            Component.literal("Line 2 answers it: red means vanilla AtlasSprite honours Style colour; unchanged means it does not.")
         )
     }
 }
