@@ -132,6 +132,14 @@ class SurfaceHostTest {
         host.tick()
         assertEquals(2, moves.size, "grab must keep being fed once the ray leaves the surface")
 
+        // Tick 3: still off surface. A feed gated on the hover CHANGE (i.e.
+        // only on the on->off transition) would have passed tick 2 above and
+        // then gone quiet here -- that is precisely the regression this test
+        // exists to catch, since the drag must survive CONTINUOUSLY, not just
+        // for one tick after leaving.
+        host.tick()
+        assertEquals(3, moves.size, "the grab is fed on every off-surface tick, not just the transition")
+
         SurfaceFocus.clear(player.uuid)
     }
 

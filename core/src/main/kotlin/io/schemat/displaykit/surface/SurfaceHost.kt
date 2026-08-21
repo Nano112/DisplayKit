@@ -223,6 +223,7 @@ class SurfaceHost(
         layers = emptyList()
         backing = null
         pointer = null
+        lastPointerPx = null
         SurfaceFocus.clear(owner.uuid)
     }
 
