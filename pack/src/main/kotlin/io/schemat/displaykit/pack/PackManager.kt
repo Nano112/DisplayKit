@@ -57,8 +57,17 @@ class PackManager(
 
     /**
      * Register an asset provider.
+     *
+     * Idempotent: registering the same provider instance twice is a no-op the
+     * second time. Callers (demos, commands re-run per invocation) may call
+     * this unconditionally on every use without growing the provider list or
+     * re-running the same contribution on every subsequent [rebuildPack].
      */
     fun registerAssetProvider(provider: AssetProvider) {
+        if (provider in assetProviders) {
+            logger.fine("Asset provider already registered, skipping: ${provider.javaClass.simpleName}")
+            return
+        }
         assetProviders.add(provider)
         logger.fine("Registered asset provider: ${provider.javaClass.simpleName}")
     }

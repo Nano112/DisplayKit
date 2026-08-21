@@ -41,6 +41,9 @@ object PickerWindow {
     private const val STEP = 20
     private const val GRID_X = 150
     private const val GRID_Y = 30
+    // Grid's last column runs to x = GRID_X + 7*STEP + 18 = 308; the scroll
+    // track sits clear of it at x=310 (see the reviewed layout note below).
+    private const val SCROLL_X = 310
 
     private val FRAME = SpriteId("gui", "tooltip/background")
     private val ATLASES = listOf("gui", "items", "blocks")
@@ -130,18 +133,21 @@ object PickerWindow {
                 }
             }
 
-            scrollTrack(Rect(304, GRID_Y, 6, 180))
+            // Track sits at x=310, clear of the grid's last column (which ends at
+            // x=308) — moved right from the original x=304, which overlapped that
+            // column by 4px. 310+6=316 stays inside the 320-wide frame.
+            scrollTrack(Rect(SCROLL_X, GRID_Y, 6, 180))
             val thumbY = if (maxScroll == 0) GRID_Y
                          else GRID_Y + (session.scroll * (180 - 32)) / maxScroll
-            scrollThumb(Rect(304, thumbY, 6, 32))
+            scrollThumb(Rect(SCROLL_X, thumbY, 6, 32))
 
             // scroll by clicking the track above or below the thumb
-            region("scroll-up", Rect(304, GRID_Y, 6, maxOf(1, thumbY - GRID_Y))) {
+            region("scroll-up", Rect(SCROLL_X, GRID_Y, 6, maxOf(1, thumbY - GRID_Y))) {
                 session.scroll--; repaint(session); session.host.repaint()
             }
             val belowY = thumbY + 32
             if (belowY < GRID_Y + 180) {
-                region("scroll-down", Rect(304, belowY, 6, GRID_Y + 180 - belowY)) {
+                region("scroll-down", Rect(SCROLL_X, belowY, 6, GRID_Y + 180 - belowY)) {
                     session.scroll++; repaint(session); session.host.repaint()
                 }
             }
