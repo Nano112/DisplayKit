@@ -71,7 +71,10 @@ object PickerWindow {
     private val TRACK_H: Int get() = (ROWS - 1) * STEP + SLOT
 
     private val FRAME = SpriteId("gui", "tooltip/background")
-    private val ATLASES = listOf("gui", "items", "blocks")
+    // items first: gui sprites are mostly nine-slice panels sized for a
+    // real screen, so they overflow a slot grid. Revisit when the picker can
+    // scale a preview down to its cell.
+    private val ATLASES = listOf("items", "blocks", "gui")
 
     /** The frame sprite's manifest entry, resolved once. */
     private val frameEntry: SpriteEntry? by lazy { SpriteIndex.bundled.get(FRAME) }
@@ -94,7 +97,7 @@ object PickerWindow {
     private const val MIN_VIEW_DISTANCE_BLOCKS = 3.0
 
     private class Session(val host: SurfaceHost, val player: ServerPlayer) {
-        var atlas: String = "gui"
+        var atlas: String = ATLASES.first()
         var scroll: Int = 0
     }
 

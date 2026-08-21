@@ -59,6 +59,20 @@ class Surface(
         const val OVERLAY_Z_STEP = 0.005f
 
         /**
+         * Depth layers, back to front. Each becomes its own text display,
+         * stepped [OVERLAY_Z_STEP] nearer the viewer than the one below, so
+         * overlapping glyphs have real depth between them instead of
+         * z-fighting.
+         *
+         * The order is painter's-algorithm: chrome, then the wells cut into
+         * it, then their contents, then text on top of everything.
+         */
+        const val LAYER_CHROME = 0
+        const val LAYER_SLOT = 1
+        const val LAYER_ICON = 2
+        const val LAYER_TEXT = 3
+
+        /**
          * Yaw, in degrees, that turns a surface's readable side toward a
          * viewer looking along [look].
          *
@@ -159,18 +173,31 @@ class Surface(
      */
     fun toBackingEntity(): VirtualBlockDisplay? {
         val block = backingBlock ?: return null
+        val unit = TextMetrics.PIXEL_SIZE * pixelScale
+        // Size from the TEXT BLOCK, not the canvas. The two are not the same:
+        // the block width is the widest emitted row (the nine-slice frame's
+        // right edge overshoots the canvas by a pixel) and the block height is
+        // rounded up to whole rows (264px of canvas becomes 27 rows = 269px).
+        // A slab built from widthPx/heightPx therefore never quite lines up,
+        // and the mismatch is visible as a dark margin around the UI.
+        val blockW = canvas.blockWidthPx()
+        val blockH = canvas.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
         return VirtualBlockDisplay().also { d ->
             d.blockState = block
-            d.position = position
+            // Anchored to the entity, which is what the block is measured
+            // against -- position is the canvas top-left and drifts from the
+            // block by the same rounding.
+            d.position = entityOrigin()
             d.billboard = orientation
             d.brightness = Brightness.FULL
-            val w = widthPx * pixelScale * TextMetrics.PIXEL_SIZE
-            val h = heightPx * pixelScale * TextMetrics.PIXEL_SIZE
             d.transformation = Mat4f(
                 Matrix4f()
                     .rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat())
-                    .translate(0f, -h, -(OVERLAY_Z_STEP + backingThicknessBlocks))
-                    .scale(w, h, backingThicknessBlocks)
+                    // The client's own x translate carries a +1 nudge
+                    // (`1.0f - blockWidth / 2.0f`); match it or the slab sits
+                    // a pixel off.
+                    .translate(unit * (1f - blockW / 2f), 0f, -(OVERLAY_Z_STEP + backingThicknessBlocks))
+                    .scale(unit * blockW, unit * blockH, backingThicknessBlocks)
             )
         }
     }
@@ -243,27 +270,55 @@ class Surface(
      *
      * See `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`.
      */
-    internal fun entityOrigin(): Vec3d {
+    /** Depth of a layer along the readable normal. Layer 0 sits on the plane. */
+    private fun layerDepth(layer: Int?): Float = (layer ?: 0) * OVERLAY_Z_STEP
+
+    internal fun canvasMaxRowAdvanceForDiag(): Int = canvas.blockWidthPx()
+    internal fun canvasRowsForDiag(): Int = canvas.emittedRowCount()
+
+    internal fun entityOrigin(depth: Float = 0f): Vec3d {
         // No text means no measured block and so no centring to undo.
         if (canvas.itemCount() == 0) return position
         val unit = TextMetrics.PIXEL_SIZE * pixelScale
         val blockHeightPx = canvas.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
         // Offset of canvas (0,0) from the entity, in the surface's own frame.
-        val localX = unit * (1.0 - canvas.maxRowAdvance() / 2.0)
+        val localX = unit * (1.0 - canvas.blockWidthPx() / 2.0)
         val localY = unit * blockHeightPx.toDouble()
         val theta = Math.toRadians(yawDegrees.toDouble())
         val cos = cos(theta)
         val sin = sin(theta)
         // rotateY applied to local +X, matching SurfacePicking's inverse.
+        // `depth` steps along local +Z, the readable side (see yawFacing), so
+        // a higher layer sits nearer the viewer.
         return Vec3d(
-            position.x - (localX * cos),
+            position.x - (localX * cos) + depth * sin,
             position.y - localY,
-            position.z - (localX * -sin)
+            position.z - (localX * -sin) + depth * cos
         )
     }
 
-    fun toEntity(): VirtualTextDisplay = VirtualTextDisplay().also { d ->
-        d.position = entityOrigin()
+    /**
+     * One text display per depth layer, back to front.
+     *
+     * Everything inside a single text display is coplanar, so wherever the UI
+     * overlaps — an icon on a slot, a slot on the frame — the glyphs z-fight
+     * and flicker as the camera moves. Splitting by layer and stepping each
+     * one [OVERLAY_Z_STEP] toward the viewer gives the depth buffer something
+     * to separate, while staying far too small to read as an air gap.
+     *
+     * Every layer shares one block size ([SpriteCanvas.blockWidthPx] and
+     * [SpriteCanvas.emittedRowCount] are canvas-level, not per-layer), so they
+     * all resolve the same [entityOrigin] and stack exactly.
+     */
+    fun toEntities(): List<VirtualTextDisplay> {
+        val layers = canvas.layers()
+        if (layers.isEmpty()) return listOf(toEntity())
+        return layers.map { layer -> toEntity(layer) }
+    }
+
+    @JvmOverloads
+    fun toEntity(layer: Int? = null): VirtualTextDisplay = VirtualTextDisplay().also { d ->
+        d.position = entityOrigin(layerDepth(layer))
         d.billboard = orientation
         d.backgroundColor = backdrop ?: DkColor.TRANSPARENT
         d.brightness = Brightness.FULL
@@ -285,7 +340,7 @@ class Surface(
         // everything below it down by however much the wrapped content
         // added. Deriving lineWidth from the canvas's own widest row (with a
         // small margin) makes wrapping impossible regardless of content.
-        d.lineWidth = canvas.maxRowAdvance() + LINE_WIDTH_MARGIN_PX
+        d.lineWidth = canvas.blockWidthPx() + LINE_WIDTH_MARGIN_PX
 
         // Surfaces are glyph-composed, so with no slice source installed a
         // canvas that actually needs glyphs (sprites, slices, or spacing)
@@ -312,10 +367,12 @@ class Surface(
     private inner class Painter : SurfacePainter {
 
         override fun frame(entry: SpriteEntry, rect: Rect, tint: DkColor?) {
+            canvas.currentLayer = LAYER_CHROME
             NineSlicePainter.paint(canvas, entry, rect, tint)
         }
 
         override fun fill(color: DkColor, rect: Rect) {
+            canvas.currentLayer = LAYER_CHROME
             val e = resolveSprite(FILL_SPRITE, "a colour fill") ?: return
             require(e.width > 0 && e.height > 0) {
                 "Fill sprite $FILL_SPRITE has non-positive dimensions " +
@@ -333,14 +390,17 @@ class Surface(
         }
 
         override fun icon(entry: SpriteEntry, x: Int, y: Int, tint: DkColor?) {
+            canvas.currentLayer = LAYER_ICON
             canvas.draw(entry, x, y, tint)
         }
 
         override fun label(text: String, x: Int, y: Int, color: DkColor?) {
+            canvas.currentLayer = LAYER_TEXT
             canvas.text(text, x, y, color)
         }
 
         override fun slot(x: Int, y: Int, item: ItemRef?) {
+            canvas.currentLayer = LAYER_SLOT
             val e = resolveSprite(SLOT_SPRITE, "a slot") ?: return
             canvas.draw(e, x, y)
             if (item != null) slots += Rect(x, y, 18, 18) to item

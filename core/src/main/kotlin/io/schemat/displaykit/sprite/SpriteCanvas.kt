@@ -99,7 +99,13 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         val y: Int,
         val row: Int,
         val advanceWidth: Int,
-        val tint: DkColor?
+        val tint: DkColor?,
+        /**
+         * Depth layer. Everything in one text display is coplanar, so
+         * overlapping glyphs z-fight; [Surface] emits one entity per distinct
+         * layer, each stepped toward the viewer. See [Surface.toEntities].
+         */
+        val layer: Int = 0
     )
 
     private val items = mutableListOf<Item>()
@@ -146,7 +152,8 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
             y = y,
             row = placement.row,
             advanceWidth = entry.glyphAdvance,
-            tint = tint
+            tint = tint,
+            layer = currentLayer
         )
     }
 
@@ -169,6 +176,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
             y = y,
             row = y / TextMetrics.FONT_LINE_HEIGHT_PX,
             advanceWidth = TextMetrics.textWidthPx(s),
+            layer = currentLayer,
             tint = tint
         )
     }
@@ -223,7 +231,8 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         }
         val chars = resolve(placement.ascent) ?: return
         items += Item(content = chars, font = SpriteGlyphs.SLICE_FONT_ID, x = x, y = y,
-                      row = placement.row, advanceWidth = advanceWidth, tint = tint)
+                      row = placement.row, advanceWidth = advanceWidth, tint = tint,
+                      layer = currentLayer)
     }
 
     fun clear() = items.clear()
@@ -264,11 +273,51 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     var anchorToBounds: Boolean = false
 
     /**
+     * Layer assigned to subsequent draws. [Surface] raises this as it paints
+     * chrome, then slots, then icons, then text, so each sits a depth step in
+     * front of the last.
+     */
+    var currentLayer: Int = 0
+
+    /**
      * Rows this canvas actually emits — the block height the client measures,
      * divided by the line pitch. Content taller than [heightPx] still emits
      * its own rows, so this is a max, not [anchoredRowCount].
      */
-    fun emittedRowCount(): Int = buildRows().size
+    fun emittedRowCount(): Int = lastRowIndex() + 1
+
+    /** Distinct layers with content, back to front. */
+    fun layers(): List<Int> = items.map { it.layer }.distinct().sorted()
+
+    /**
+     * The row index every layer emits up to.
+     *
+     * Canvas-level on purpose: a layer holding only the title would otherwise
+     * emit one row while the chrome layer emits 27, giving the two different
+     * block heights and therefore different entity origins — and the layers
+     * would drift apart instead of stacking.
+     */
+    private fun lastRowIndex(): Int {
+        val contentLast = items.maxOfOrNull { it.row } ?: 0
+        return if (anchorToBounds) maxOf(contentLast, anchoredRowCount() - 1) else contentLast
+    }
+
+    /**
+     * The width every layer pads to — the widest row across ALL layers, never
+     * less than [widthPx].
+     *
+     * Also canvas-level. The nine-slice frame overshoots [widthPx] by a pixel,
+     * so anchoring each layer to its own widest row would make the frame's
+     * block one pixel wider than the icons' and offset them by half of that.
+     */
+    fun blockWidthPx(): Int = maxOf(widthPx, rawMaxRowAdvance())
+
+    private fun rawMaxRowAdvance(): Int =
+        items.groupBy { it.row }.values.maxOfOrNull { row ->
+            var cursor = 0
+            for (item in row.sortedBy { it.x }) cursor = item.x + item.advanceWidth
+            cursor
+        } ?: 0
 
     /**
      * Rows needed to cover [heightPx] at the renderer's line pitch — the block
@@ -286,16 +335,22 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * this produces is exactly what would render, exactly what is inspected
      * for pack dependence, and exactly what the widest row actually measures.
      */
-    private fun buildRows(anchor: Boolean = anchorToBounds): List<Row> {
+    private fun buildRows(
+        anchor: Boolean = anchorToBounds,
+        layer: Int? = null
+    ): List<Row> {
         if (items.isEmpty()) return emptyList()
 
-        val byRow = items.groupBy { it.row }
-        val maxRow = byRow.keys.max()
+        val visible = if (layer == null) items else items.filter { it.layer == layer }
+        val byRow = visible.groupBy { it.row }
+        val maxRow = byRow.keys.maxOrNull() ?: 0
         // Anchoring pads out to the canvas bounds so the client measures the
         // block at exactly (width x anchoredRowCount), which is what lets
         // Surface place the entity from a known offset instead of predicting
         // the measurement. See the property's KDoc.
-        val lastRow = if (anchor) maxOf(maxRow, anchoredRowCount() - 1) else maxRow
+        // Shared across layers -- see lastRowIndex()/blockWidthPx().
+        val lastRow = if (anchor) lastRowIndex() else maxRow
+        val padTo = if (anchor) blockWidthPx() else 0
 
         val rows = mutableListOf<Row>()
         for (row in 0..lastRow) {
@@ -313,12 +368,12 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
                 )
                 cursorX = item.x + item.advanceWidth
             }
-            if (anchor && cursorX < widthPx) {
+            if (anchor && cursorX < padTo) {
                 children += TextComponent(
-                    text = Spacing.advance(widthPx - cursorX),
+                    text = Spacing.advance(padTo - cursorX),
                     font = Spacing.FONT_ID
                 )
-                cursorX = widthPx
+                cursorX = padTo
             }
             rows += Row(children, cursorX)
         }
@@ -326,8 +381,11 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         return rows
     }
 
-    private fun buildChildren(anchor: Boolean = anchorToBounds): List<TextComponent> {
-        val rows = buildRows(anchor)
+    private fun buildChildren(
+        anchor: Boolean = anchorToBounds,
+        layer: Int? = null
+    ): List<TextComponent> {
+        val rows = buildRows(anchor, layer)
         val children = mutableListOf<TextComponent>()
         rows.forEachIndexed { index, row ->
             if (index > 0) children += TextComponent(text = "\n")
@@ -336,8 +394,11 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         return children
     }
 
-    fun toTextComponent(anchor: Boolean = anchorToBounds): TextComponent {
-        val children = buildChildren(anchor)
+    fun toTextComponent(
+        anchor: Boolean = anchorToBounds,
+        layer: Int? = null
+    ): TextComponent {
+        val children = buildChildren(anchor, layer)
         if (children.isEmpty()) return TextComponent.EMPTY
         return TextComponent(children = children)
     }

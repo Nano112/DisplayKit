@@ -17,7 +17,7 @@ class SurfaceHost(
     private val owner: PlayerRef,
     val surface: Surface
 ) {
-    private var entity: VirtualTextDisplay? = null
+    private var layers: List<VirtualTextDisplay> = emptyList()
     private var backing: VirtualBlockDisplay? = null
     private val viewers get() = setOf(owner.uuid)
 
@@ -25,7 +25,7 @@ class SurfaceHost(
         private set
 
     fun open() {
-        if (entity != null) return
+        if (layers.isNotEmpty()) return
         // The backing panel spawns first so it is already behind the glyphs
         // on the very first frame the viewer sees.
         surface.toBackingEntity()?.let { b ->
@@ -33,23 +33,34 @@ class SurfaceHost(
             platform.packetSender.spawnEntity(b, viewers)
             platform.packetSender.updateMetadata(b, viewers)
         }
-        val e = surface.toEntity()
-        entity = e
-        platform.packetSender.spawnEntity(e, viewers)
-        platform.packetSender.updateMetadata(e, viewers)
+        layers = surface.toEntities()
+        for (e in layers) {
+            platform.packetSender.spawnEntity(e, viewers)
+            platform.packetSender.updateMetadata(e, viewers)
+        }
     }
 
     /** Push the current canvas to the client. Cheap: one metadata packet. */
     fun repaint() {
-        val e = entity ?: return
-        val fresh = surface.toEntity()
-        e.text = fresh.text
-        e.transformation = fresh.transformation
-        // Not surface.position: a text display is placed by its block
-        // centre, so the entity origin is offset from the canvas top-left
-        // (see Surface.entityOrigin).
-        e.position = fresh.position
-        platform.packetSender.updateMetadata(e, viewers)
+        if (layers.isEmpty()) return
+        val fresh = surface.toEntities()
+        // A repaint that changed the layer count needs new entities, not new
+        // metadata -- fall back to a full cycle rather than silently dropping
+        // or orphaning one.
+        if (fresh.size != layers.size) {
+            close()
+            open()
+            return
+        }
+        for ((e, f) in layers.zip(fresh)) {
+            e.text = f.text
+            e.transformation = f.transformation
+            // Not surface.position: a text display is placed by its block
+            // centre, so the entity origin is offset from the canvas top-left
+            // (see Surface.entityOrigin).
+            e.position = f.position
+            platform.packetSender.updateMetadata(e, viewers)
+        }
         backing?.let { b ->
             surface.toBackingEntity()?.let { f ->
                 b.position = f.position
@@ -75,12 +86,12 @@ class SurfaceHost(
     }
 
     fun close() {
-        val ids = listOfNotNull(entity?.entityId, backing?.entityId)
+        val ids = layers.map { it.entityId } + listOfNotNull(backing?.entityId)
         if (ids.isEmpty()) return
         platform.packetSender.destroyEntities(ids, viewers)
-        entity = null
+        layers = emptyList()
         backing = null
     }
 
-    fun entities(): List<VirtualEntity> = listOfNotNull(backing, entity)
+    fun entities(): List<VirtualEntity> = listOfNotNull(backing) + layers
 }

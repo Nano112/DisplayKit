@@ -143,4 +143,105 @@ class TextDisplayLayoutTruthTest {
         )
     }
 
+    // --- Fact 5: the backing slab must track the TEXT BLOCK, not the canvas ---
+
+    @Test
+    fun theBackingSlabAlignsWithTheTextBlockAtEveryYaw() {
+        // The slab used to hang off `position` (the canvas top-left) while the
+        // text hangs off `entityOrigin` (the block centre) -- 1.5 blocks apart
+        // on a 3-block window. At yaw 0 they coincidentally overlap; rotate
+        // the window and the two pivot about different points, flinging the
+        // panel away from its own UI. Corner-checking at several yaws is what
+        // catches that; a single unrotated case does not.
+        for (yaw in listOf(0f, 90f, 137f, 180f, 271f)) {
+            val s = surface(346, 264)
+            s.yawDegrees = yaw
+            s.backingBlock = BlockStateRef.BLACK_CONCRETE
+            s.paint { label("align", 0, 0, DkColor.WHITE) }
+
+            val unit = (s.pixelScale * TextMetrics.PIXEL_SIZE).toDouble()
+            val blockW = s.canvasMaxRowAdvanceForDiag()
+            val blockH = s.canvasRowsForDiag() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
+            val e = s.entityOrigin()
+            val th = Math.toRadians(yaw.toDouble())
+            val cs = Math.cos(th)
+            val sn = Math.sin(th)
+
+            val back = s.toBackingEntity()!!
+            val m = back.transformation.joml
+            val corners = listOf(
+                Triple(0, 0, 0f to 1f),
+                Triple(blockW, 0, 1f to 1f),
+                Triple(0, blockH, 0f to 0f),
+                Triple(blockW, blockH, 1f to 0f)
+            )
+            for ((px, py, sc) in corners) {
+                val bx = e.x + unit * (px + 1 - blockW / 2.0) * cs
+                val by = e.y + unit * (blockH - py)
+                val bz = e.z - unit * (px + 1 - blockW / 2.0) * sn
+                val v = m.transformPosition(org.joml.Vector3f(sc.first, sc.second, 0f))
+                val gap = Math.sqrt(
+                    Math.pow(bx - (back.position.x + v.x()), 2.0) +
+                        Math.pow(by - (back.position.y + v.y()), 2.0) +
+                        Math.pow(bz - (back.position.z + v.z()), 2.0)
+                )
+                // The only separation allowed is the deliberate depth step.
+                val expected = (Surface.OVERLAY_Z_STEP + s.backingThicknessBlocks).toDouble()
+                assertTrue(
+                    Math.abs(gap - expected) < 1e-4,
+                    "yaw $yaw corner ($px,$py): slab is $gap from the block, expected $expected"
+                )
+            }
+        }
+    }
+
+    // --- Fact 6: overlapping glyphs need real depth between them ---
+
+    @Test
+    fun eachLayerBecomesItsOwnEntitySteppedTowardTheViewer() {
+        val s = surface()
+        s.paint {
+            fill(DkColor.WHITE, Rect(0, 0, 40, 40))   // chrome
+            slot(10, 10)                               // slot
+            label("hi", 12, 12, DkColor.WHITE)         // text
+        }
+        val es = s.toEntities()
+        assertEquals(3, es.size, "one entity per occupied layer")
+
+        // Layers must differ ONLY in depth: same block, same origin, so they
+        // stack instead of sliding apart.
+        val step = Surface.OVERLAY_Z_STEP.toDouble()
+        for (i in 1 until es.size) {
+            val a = es[i - 1].position
+            val b = es[i].position
+            assertTrue(
+                Math.abs(a.x - b.x) < 1e-6,
+                "layers must not drift sideways: ${a.x} vs ${b.x}"
+            )
+            assertEquals(a.y, b.y, "layers must not drift vertically")
+        }
+        // At yaw 0 the readable normal is +Z, so each layer steps along it.
+        val zs = es.map { it.position.z }
+        assertEquals(zs.sorted(), zs, "layers must be ordered back to front")
+        assertTrue(
+            Math.abs((zs[1] - zs[0]) - step) < 1e-6,
+            "consecutive layers should be one depth step apart, got ${zs[1] - zs[0]}"
+        )
+    }
+
+    @Test
+    fun everyLayerResolvesTheSameBlockSoTheyCannotDriftApart() {
+        // The nine-slice frame overshoots the canvas width by a pixel. If each
+        // layer anchored to its own widest row the frame's block would be
+        // wider than the icons' and the two would offset by half that.
+        val s = surface()
+        s.paint {
+            fill(DkColor.WHITE, Rect(0, 0, s.widthPx, 40))
+            label("x", 0, 0, DkColor.WHITE)
+        }
+        val es = s.toEntities()
+        assertTrue(es.size >= 2)
+        assertEquals(es.first().lineWidth, es.last().lineWidth, "shared block width")
+    }
+
 }
