@@ -104,6 +104,25 @@ class SurfaceHost(
     }
 
     /**
+     * Re-render the tree, if this surface has one, and push the result.
+     *
+     * A hover change -- the pointer moving onto a new node, moving between
+     * two nodes, or leaving the surface entirely -- dispatches
+     * PointerEnter/PointerExit and then must show the result: [repaint] only
+     * re-serialises the canvas as it already stands, so a hover-dependent
+     * widget's highlight would never appear when it starts, and never clear
+     * when it ends, without re-running [Surface.paintTree] first. Both
+     * [tick]'s branches call this so the pairing cannot drift apart -- a
+     * surface built with a manual `paint {}` and no tree is left untouched by
+     * the `root != null` guard, same as [repaint] itself already assumes
+     * nothing about how the canvas got its content.
+     */
+    private fun repaintTreeAndPush() {
+        if (surface.root != null) surface.paintTree()
+        repaint()
+    }
+
+    /**
      * One tick of pointer work for this surface: raycast, move the cursor,
      * fire enter/exit and move events, and feed an active grab.
      *
@@ -126,7 +145,7 @@ class SurfaceHost(
             if (changed) {
                 val (lx, ly) = lastPointerPx ?: (0 to 0)
                 previous?.let { surface.dispatch(SurfaceEvent.PointerExit(lx, ly), target = it) }
-                repaint()
+                repaintTreeAndPush()
             }
             return changed
         }
@@ -145,11 +164,7 @@ class SurfaceHost(
         if (changed) {
             previous?.let { surface.dispatch(SurfaceEvent.PointerExit(px, py), target = it) }
             node?.let { surface.dispatch(SurfaceEvent.PointerEnter(px, py), target = it) }
-            // Re-render the tree before pushing: repaint() only re-serialises the
-            // canvas as it already stands, so a hover-dependent widget would never
-            // show its highlight. Doing it here means no widget has to remember.
-            if (surface.root != null) surface.paintTree()
-            repaint()
+            repaintTreeAndPush()
         }
         surface.dispatch(SurfaceEvent.PointerMove(px, py))
         return changed
