@@ -4,24 +4,35 @@ import io.schemat.displaykit.surface.Rect
 import io.schemat.displaykit.surface.SurfacePainter
 
 /**
- * A container that just applies padding around a single child.
+ * A container that stacks every child at the same padded origin.
  *
- * Sizes to its content and does not stretch its child: an exact constraint on
- * the box (as [io.schemat.displaykit.surface.Surface.layout] gives the root)
- * is loosened before it reaches the child, so the child keeps its own natural
- * size and only a [FlexNode] child expands, via its own `flexGrow`.
+ * Sizes to its LARGEST child and does not stretch any of them: an exact
+ * constraint on the box (as [io.schemat.displaykit.surface.Surface.layout]
+ * gives the root) is loosened before it reaches each child, so every child
+ * keeps its own natural size and only a [FlexNode] child expands, via its own
+ * `flexGrow`. All children share one origin rather than being sequenced along
+ * an axis -- that is what a [FlexNode] is for -- so a Box is how a background
+ * sits behind foreground content: paint order already means later children
+ * draw on top, matching the rest of the tree's z convention.
  */
 class BoxNode(id: String) : BaseSurfaceNode(id) {
     override fun measureSelf(c: PxConstraints): PxSize {
         val inner = c.deflate(padding)
-        val child = _children.firstOrNull() ?: return c.constrain(PxSize.Zero)
-        val cs = child.measure(inner.loosen())
-        return c.constrain(PxSize(cs.w + padding.horizontal, cs.h + padding.vertical))
+        if (_children.isEmpty()) return c.constrain(PxSize.Zero)
+        var w = 0
+        var h = 0
+        for (child in _children) {
+            val cs = child.measure(inner.loosen())
+            if (cs.w > w) w = cs.w
+            if (cs.h > h) h = cs.h
+        }
+        return c.constrain(PxSize(w + padding.horizontal, h + padding.vertical))
     }
 
     override fun place(offset: PxOffset) {
         super.place(offset)
-        _children.firstOrNull()?.place(PxOffset(padding.left, padding.top))
+        val at = PxOffset(padding.left, padding.top)
+        _children.forEach { it.place(at) }
     }
 }
 

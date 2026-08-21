@@ -277,6 +277,18 @@ object PickerWindow {
             .sortedBy { it.id.sprite }
 
     /**
+     * Scrollbar thumb height for a track of [trackH] px given [max] scroll.
+     *
+     * Shared by the thumb's render and its drag handler so the two can never
+     * drift apart: the render positions the thumb over `(trackH - thumbH)`,
+     * so a drag handler computing `fraction` over anything else (plain
+     * `trackH`, or a differently-rounded thumbH) is not that position's
+     * inverse, and the thumb visibly lags the cursor mid-drag.
+     */
+    private fun thumbHeightFor(trackH: Int, max: Int): Int =
+        if (max == 0) trackH else maxOf(32, trackH * trackH / (trackH + max))
+
+    /**
      * Rebuild the layout tree from scratch and paint it.
      *
      * Only called for a genuine content change (initial open, atlas switch):
@@ -289,15 +301,22 @@ object PickerWindow {
         val player = session.player
 
         session.host.surface.layout { root ->
+            // The window's own nine-slice background, sized to the full
+            // canvas and added to the root BEFORE the content column so it
+            // draws behind everything. BoxNode now stacks every child at the
+            // same origin (rather than only laying out its first), so this
+            // can be a real sibling of `column` and paint with the rect the
+            // tree gives it instead of a hardcoded Rect(0, 0, W, H).
+            val frame = WidgetNode("frame", PxSize(W, H)) { p, r ->
+                frameEntry?.let { p.frame(it, r) }
+            }
+            root.addChild(frame)
+
             val column = FlexNode("window", FlexDirection.COLUMN, gap = 4)
             column.padding = PxPadding.all(PADDING)
 
-            // Title bar: fixed height, full width. The window's own nine-slice
-            // background is painted here too, spanning the whole canvas --
-            // there is nowhere else in a single-child root to hang a
-            // full-bleed backdrop behind the rest of the tree.
+            // Title bar: fixed height, full width.
             val title = WidgetNode("title", PxSize(0, TITLE_H)) { p, r ->
-                frameEntry?.let { p.frame(it, Rect(0, 0, W, H)) }
                 p.titleBar(r, "Sprites — ${session.atlas} (${all.size})") { closeFor(player.uuid) }
             }
             title.flexGrow = 0
@@ -322,18 +341,16 @@ object PickerWindow {
                             repaintAndSync(session)
                             EventResult.CONSUMED
                         }
-                        // The consumed/pass return value itself is not
-                        // load-bearing here -- SurfaceEvents.dispatch delivers
-                        // these only to the target and ignores it -- but the
-                        // render lambda above reads SurfaceFocus.hoveredId, so
-                        // the canvas must actually be repainted for the
-                        // highlight to appear; SurfaceHost.tick() only re-pushes
-                        // the ALREADY-painted canvas on a hover change, it does
-                        // not re-run paintTree().
-                        is SurfaceEvent.PointerEnter, is SurfaceEvent.PointerExit -> {
-                            repaintTree(session)
+                        // Not load-bearing -- SurfaceEvents.dispatch delivers
+                        // these only to the target and ignores the return
+                        // value -- but reporting them handled keeps the
+                        // intent explicit and matches the click branch. The
+                        // render lambda above reads SurfaceFocus.hoveredId;
+                        // SurfaceHost.tick() re-runs paintTree() on every
+                        // hover change before pushing, so no repaint call is
+                        // needed here.
+                        is SurfaceEvent.PointerEnter, is SurfaceEvent.PointerExit ->
                             EventResult.CONSUMED
-                        }
                         else -> EventResult.PASS
                     }
                 }
@@ -385,12 +402,10 @@ object PickerWindow {
                                 EventResult.CONSUMED
                             }
                             // See the matching comment on the tab handler
-                            // above: the highlight only shows up once the
-                            // canvas is actually repainted.
-                            is SurfaceEvent.PointerEnter, is SurfaceEvent.PointerExit -> {
-                                repaintTree(session)
+                            // above -- SurfaceHost.tick() repaints the tree
+                            // on hover change, so this node does not have to.
+                            is SurfaceEvent.PointerEnter, is SurfaceEvent.PointerExit ->
                                 EventResult.CONSUMED
-                            }
                             else -> EventResult.PASS
                         }
                     }
@@ -411,7 +426,7 @@ object PickerWindow {
             val bar = WidgetNode("scrollbar", PxSize(SCROLL_W, 0)) { p, r ->
                 p.scrollTrack(r)
                 val max = pane.maxScroll()
-                val thumbH = if (max == 0) r.h else maxOf(32, r.h * r.h / (r.h + max))
+                val thumbH = thumbHeightFor(r.h, max)
                 val thumbY = if (max == 0) r.y else r.y + (pane.scrollPx * (r.h - thumbH)) / max
                 p.scrollThumb(Rect(r.x, thumbY, SCROLL_W, thumbH))
             }
@@ -419,8 +434,15 @@ object PickerWindow {
             bar.flexGrow = 1
             bar.onGrabMove = { _, y ->
                 val r = bar.rect()
-                val fraction = ((y - r.y).toDouble() / r.h.coerceAtLeast(1)).coerceIn(0.0, 1.0)
-                if (pane.scrollTo((fraction * pane.maxScroll()).toInt())) repaintTree(session)
+                val max = pane.maxScroll()
+                // The inverse of the render's thumbY: dividing by the plain
+                // track height (rather than the same `r.h - thumbH` span the
+                // render positions the thumb over) makes the thumb visibly
+                // lag the cursor mid-drag, worse the taller the thumb.
+                val thumbH = thumbHeightFor(r.h, max)
+                val span = (r.h - thumbH).coerceAtLeast(1)
+                val fraction = ((y - r.y).toDouble() / span).coerceIn(0.0, 1.0)
+                if (pane.scrollTo((fraction * max).toInt())) repaintTree(session)
             }
             barWrap.addChild(bar)
             body.addChild(barWrap)

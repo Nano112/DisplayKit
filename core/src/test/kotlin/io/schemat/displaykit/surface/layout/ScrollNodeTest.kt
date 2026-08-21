@@ -90,4 +90,19 @@ class ScrollNodeTest {
         assertEquals(5, child.rect().x, "and is inset by the padding")
         assertEquals(5, child.rect().y)
     }
+
+    @Test
+    fun boxLaysOutEveryChildNotJustTheFirst() {
+        // A window root stacks a background under its content; dropping the
+        // second child silently renders half the UI.
+        val box = BoxNode("box")
+        val back = Block("back", 30)
+        val front = Block("front", 10)
+        box.addChild(back); box.addChild(front)
+        box.measure(PxConstraints.exactly(100, 50))
+        box.place(PxOffset.Zero)
+        assertEquals(30, back.rect().h)
+        assertEquals(10, front.rect().h, "the second child must be laid out too")
+        assertEquals(0, front.rect().y, "stacked at the same origin, not below")
+    }
 }

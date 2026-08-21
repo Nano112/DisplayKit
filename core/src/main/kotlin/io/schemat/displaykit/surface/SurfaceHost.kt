@@ -145,6 +145,10 @@ class SurfaceHost(
         if (changed) {
             previous?.let { surface.dispatch(SurfaceEvent.PointerExit(px, py), target = it) }
             node?.let { surface.dispatch(SurfaceEvent.PointerEnter(px, py), target = it) }
+            // Re-render the tree before pushing: repaint() only re-serialises the
+            // canvas as it already stands, so a hover-dependent widget would never
+            // show its highlight. Doing it here means no widget has to remember.
+            if (surface.root != null) surface.paintTree()
             repaint()
         }
         surface.dispatch(SurfaceEvent.PointerMove(px, py))
