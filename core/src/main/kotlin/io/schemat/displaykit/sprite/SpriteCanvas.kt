@@ -161,14 +161,36 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     fun itemPositions(): List<Pair<Int, Int>> = items.map { it.x to it.y }
 
     /**
-     * Draw pre-resolved glyph characters at a pixel position.
+     * Draw a slice glyph with its top-left at ([x], [y]) in canvas pixels.
      *
-     * Used by the nine-slice painter, which resolves its own codepoints from a
-     * [io.schemat.displaykit.surface.SliceGlyphSource] rather than from
-     * [SpriteGlyphs], because slice crops are not whole sprites.
+     * Mirrors [draw] exactly, and must keep doing so: [y] is split into a row
+     * (`y / TextMetrics.LINE_HEIGHT_PX`, handled by [toTextComponent]) and a
+     * within-row remainder (`y % LINE_HEIGHT_PX`) that has to be baked into the
+     * glyph's `ascent`, or the glyph collapses onto its row's baseline.
+     *
+     * Slice codepoints are not owned by [SpriteGlyphs] — they reference
+     * generated crop textures and live in
+     * [io.schemat.displaykit.surface.SliceGlyphSource] — so the caller cannot
+     * be handed a finished string up front: it does not know the offset yet.
+     * Instead it passes [resolve], which this method calls with the required
+     * `yOffset` (`-remainder`, never positive). Computing the offset here
+     * rather than at each call site is what stops the slice path from drifting
+     * away from [draw] again.
+     *
+     * @param resolve Returns the characters for the requested `yOffset`
+     *   variant, or null when the variant cannot be resolved (in which case
+     *   nothing is drawn).
      */
-    fun drawGlyph(chars: String, x: Int, y: Int, advanceWidth: Int, tint: DkColor? = null) {
+    fun drawGlyph(
+        x: Int,
+        y: Int,
+        advanceWidth: Int,
+        tint: DkColor? = null,
+        resolve: (yOffset: Int) -> String?
+    ) {
         require(y >= 0) { "Canvas y must be >= 0 (got $y); the canvas origin is its top-left." }
+        val remainder = y % TextMetrics.LINE_HEIGHT_PX
+        val chars = resolve(-remainder) ?: return
         items += Item(content = chars, font = SpriteGlyphs.SLICE_FONT_ID, x = x, y = y,
                       advanceWidth = advanceWidth, tint = tint)
     }
