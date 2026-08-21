@@ -3,12 +3,19 @@ package io.schemat.displaykit.surface.layout
 import io.schemat.displaykit.surface.Rect
 import io.schemat.displaykit.surface.SurfacePainter
 
-/** A container that just applies padding around a single child. */
+/**
+ * A container that just applies padding around a single child.
+ *
+ * Sizes to its content and does not stretch its child: an exact constraint on
+ * the box (as [io.schemat.displaykit.surface.Surface.layout] gives the root)
+ * is loosened before it reaches the child, so the child keeps its own natural
+ * size and only a [FlexNode] child expands, via its own `flexGrow`.
+ */
 class BoxNode(id: String) : BaseSurfaceNode(id) {
     override fun measureSelf(c: PxConstraints): PxSize {
         val inner = c.deflate(padding)
         val child = _children.firstOrNull() ?: return c.constrain(PxSize.Zero)
-        val cs = child.measure(inner)
+        val cs = child.measure(inner.loosen())
         return c.constrain(PxSize(cs.w + padding.horizontal, cs.h + padding.vertical))
     }
 

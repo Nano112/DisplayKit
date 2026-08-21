@@ -75,4 +75,19 @@ class ScrollNodeTest {
         assertTrue(pane.scrollTo(99))
         assertEquals(100, pane.scrollPx, "snaps to 100 and clamps to maxScroll")
     }
+
+    @Test
+    fun boxSizesToItsChildRatherThanStretchingIt() {
+        // An exact constraint on the box must not be forced onto the child, or
+        // every Box-wrapped widget renders at full container size.
+        val box = BoxNode("box")
+        box.padding = PxPadding.all(5)
+        val child = Block("child", 20)
+        box.addChild(child)
+        box.measure(PxConstraints.exactly(200, 100))
+        box.place(PxOffset.Zero)
+        assertEquals(20, child.rect().h, "child keeps its own height")
+        assertEquals(5, child.rect().x, "and is inset by the padding")
+        assertEquals(5, child.rect().y)
+    }
 }

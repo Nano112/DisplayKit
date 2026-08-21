@@ -16,6 +16,11 @@ import io.schemat.displaykit.sprite.SpriteDiagnostics
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
+import io.schemat.displaykit.surface.layout.BoxNode
+import io.schemat.displaykit.surface.layout.PxConstraints
+import io.schemat.displaykit.surface.layout.PxOffset
+import io.schemat.displaykit.surface.layout.SurfaceNode
+import io.schemat.displaykit.surface.layout.WidgetNode
 import org.joml.Matrix4f
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -276,6 +281,58 @@ class Surface(
     fun canvasItemPositions(): List<Pair<Int, Int>> = canvas.itemPositions()
     fun hitRects(): List<HitRect> = rects.toList()
     fun slotItems(): List<Pair<Rect, ItemRef>> = slots.toList()
+
+    /**
+     * Root of this surface's layout tree, or null if [layout] was never called.
+     *
+     * Surfaces predate the tree, so it is optional: `paint {}` with absolute
+     * rects still works, and [hitRects] still drives clicks for those. New
+     * windows should use [layout], which is what gives events a parent chain
+     * to bubble along.
+     */
+    var root: SurfaceNode? = null
+        private set
+
+    /**
+     * Rebuild the layout tree, measure it against the canvas bounds, and place
+     * it at the origin.
+     *
+     * Rebuilds from scratch each call, so a caller can re-run it after any
+     * content change without tracking which nodes to remove.
+     */
+    fun layout(build: (SurfaceNode) -> Unit) {
+        val r = BoxNode("surface-root")
+        build(r)
+        r.measure(PxConstraints.exactly(widthPx, heightPx))
+        r.place(PxOffset.Zero)
+        root = r
+    }
+
+    /** Paint every [WidgetNode] in the tree, in tree order (back to front). */
+    fun paintTree() {
+        val r = root ?: return
+        paint {
+            fun walk(node: SurfaceNode) {
+                if (node is WidgetNode) node.paint(this)
+                val kids = if (node is io.schemat.displaykit.surface.layout.ScrollNode) {
+                    node.visibleChildren()
+                } else {
+                    node.children
+                }
+                kids.forEach(::walk)
+            }
+            walk(r)
+        }
+    }
+
+    /** Deepest node at a canvas point, or null. */
+    fun nodeAt(x: Int, y: Int): SurfaceNode? = root?.hitTest(x, y)
+
+    /** Dispatch an event into the tree. Returns the consuming node, if any. */
+    fun dispatch(event: SurfaceEvent, target: SurfaceNode? = null): SurfaceNode? {
+        val r = root ?: return null
+        return SurfaceEvents.dispatch(r, event, target)
+    }
 
     /** Repaint from scratch. Previous content, hit rects and slots are discarded. */
     fun paint(block: SurfacePainter.() -> Unit) {
