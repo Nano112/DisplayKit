@@ -160,8 +160,8 @@ class TextDisplayLayoutTruthTest {
             s.paint { label("align", 0, 0, DkColor.WHITE) }
 
             val unit = (s.pixelScale * TextMetrics.PIXEL_SIZE).toDouble()
-            val blockW = s.canvasMaxRowAdvanceForDiag()
-            val blockH = s.canvasRowsForDiag() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
+            val blockW = s.blockWidthPx()
+            val blockH = s.blockHeightPx()
             val e = s.entityOrigin()
             val th = Math.toRadians(yaw.toDouble())
             val cs = Math.cos(th)
@@ -242,6 +242,44 @@ class TextDisplayLayoutTruthTest {
         val es = s.toEntities()
         assertTrue(es.size >= 2)
         assertEquals(es.first().lineWidth, es.last().lineWidth, "shared block width")
+    }
+
+    @Test
+    fun aWidgetDrawnOnChromeGetsItsOwnDepth() {
+        // Layering by primitive KIND alone is not enough: a window frame and a
+        // title bar drawn on top of it are both chrome, so they land on one
+        // plane and z-fight exactly like unlayered glyphs. The widget helpers
+        // raise an elevation for their own body; this checks they actually do.
+        val s = surface()
+        s.paint {
+            fill(DkColor.WHITE, Rect(0, 0, s.widthPx, s.heightPx))   // base chrome
+            elevate { fill(DkColor.WHITE, Rect(10, 10, 100, 16)) }   // a widget on it
+        }
+        val es = s.toEntities()
+        assertEquals(2, es.size, "raised chrome must not share the base plane")
+        assertTrue(es[1].position.z > es[0].position.z, "the widget sits in front")
+    }
+
+    @Test
+    fun onlyTheBottomLayerPaintsABackground() {
+        // A text display fills its whole measured block with backgroundColor.
+        // Giving every layer one stacks N quads, each hiding the glyphs of the
+        // layer beneath -- which reads as z-fighting but is pure occlusion.
+        val s = surface()
+        s.backdrop = DkColor(190, 18, 19, 22)
+        s.paint {
+            fill(DkColor.WHITE, Rect(0, 0, 40, 40))
+            label("on top", 4, 4, DkColor.WHITE)
+        }
+        val es = s.toEntities()
+        assertTrue(es.size >= 2)
+        assertEquals(s.backdrop, es.first().backgroundColor, "bottom layer keeps the backdrop")
+        for (e in es.drop(1)) {
+            assertEquals(
+                DkColor.TRANSPARENT, e.backgroundColor,
+                "a layer above the bottom must not paint over the one below"
+            )
+        }
     }
 
 }

@@ -36,6 +36,15 @@ interface SurfacePainter {
     fun label(text: String, x: Int, y: Int, color: DkColor? = null)
     fun slot(x: Int, y: Int, item: ItemRef? = null)
     fun region(id: String, rect: Rect, onClick: () -> Unit)
+
+    /**
+     * Draw [block] raised [delta] elevations above the current one.
+     *
+     * Anything drawn on top of something else needs this, or the two share a
+     * plane and z-fight. Widget helpers in `SurfaceParts` already do it; call
+     * it directly when composing your own nested chrome.
+     */
+    fun elevate(delta: Int = 1, block: SurfacePainter.() -> Unit)
 }
 
 /**
@@ -67,10 +76,13 @@ class Surface(
          * The order is painter's-algorithm: chrome, then the wells cut into
          * it, then their contents, then text on top of everything.
          */
-        const val LAYER_CHROME = 0
-        const val LAYER_SLOT = 1
-        const val LAYER_ICON = 2
-        const val LAYER_TEXT = 3
+        const val KIND_CHROME = 0
+        const val KIND_SLOT = 1
+        const val KIND_ICON = 2
+        const val KIND_TEXT = 3
+
+        /** Depth slots reserved per elevation, so kinds never collide across them. */
+        const val KINDS_PER_ELEVATION = 4
 
         /**
          * Yaw, in degrees, that turns a surface's readable side toward a
@@ -181,7 +193,7 @@ class Surface(
         // A slab built from widthPx/heightPx therefore never quite lines up,
         // and the mismatch is visible as a dark margin around the UI.
         val blockW = canvas.blockWidthPx()
-        val blockH = canvas.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
+        val blockH = blockHeightPx()
         return VirtualBlockDisplay().also { d ->
             d.blockState = block
             // Anchored to the entity, which is what the block is measured
@@ -270,11 +282,12 @@ class Surface(
      *
      * See `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`.
      */
-    /** Depth of a layer along the readable normal. Layer 0 sits on the plane. */
-    private fun layerDepth(layer: Int?): Float = (layer ?: 0) * OVERLAY_Z_STEP
+    /** Width of the text block the client will measure, in canvas pixels. */
+    internal fun blockWidthPx(): Int = canvas.blockWidthPx()
 
-    internal fun canvasMaxRowAdvanceForDiag(): Int = canvas.blockWidthPx()
-    internal fun canvasRowsForDiag(): Int = canvas.emittedRowCount()
+    /** Height of that block, in canvas pixels. */
+    internal fun blockHeightPx(): Int =
+        canvas.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
 
     internal fun entityOrigin(depth: Float = 0f): Vec3d {
         // No text means no measured block and so no centring to undo.
@@ -313,14 +326,23 @@ class Surface(
     fun toEntities(): List<VirtualTextDisplay> {
         val layers = canvas.layers()
         if (layers.isEmpty()) return listOf(toEntity())
-        return layers.map { layer -> toEntity(layer) }
+        // Depth is the layer's ORDINAL, not its raw index. Layer numbers are
+        // sparse (elevation * KINDS_PER_ELEVATION + kind leaves gaps), and
+        // stepping by the raw value would pile up depth the UI never asked
+        // for, eventually opening a visible gap between front and back.
+        return layers.mapIndexed { ordinal, layer -> toEntity(layer, ordinal) }
     }
 
     @JvmOverloads
-    fun toEntity(layer: Int? = null): VirtualTextDisplay = VirtualTextDisplay().also { d ->
-        d.position = entityOrigin(layerDepth(layer))
+    fun toEntity(layer: Int? = null, depthIndex: Int = 0): VirtualTextDisplay = VirtualTextDisplay().also { d ->
+        d.position = entityOrigin(depthIndex * OVERLAY_Z_STEP)
         d.billboard = orientation
-        d.backgroundColor = backdrop ?: DkColor.TRANSPARENT
+        // ONLY the bottom layer. A text display paints its background across
+        // the whole measured block, so giving every layer one stacks N opaque
+        // quads and each hides the glyphs of the layer beneath it -- which
+        // reads exactly like z-fighting but is pure occlusion.
+        val isBottomLayer = layer == null || layer == canvas.layers().firstOrNull()
+        d.backgroundColor = if (isBottomLayer) backdrop ?: DkColor.TRANSPARENT else DkColor.TRANSPARENT
         d.brightness = Brightness.FULL
         d.hasShadow = false
         val s = pixelScale
@@ -366,13 +388,37 @@ class Surface(
 
     private inner class Painter : SurfacePainter {
 
+        /**
+         * How far the current widget is raised above the surface's base plane.
+         *
+         * Layering by primitive KIND alone is not enough: a window frame and
+         * the title bar drawn on top of it are both chrome, so they land on
+         * the same plane and z-fight exactly like unlayered glyphs did. Widget
+         * helpers raise this for their own body (see [elevate]), which is what
+         * separates a tab from the frame it sits on, or a scroll thumb from
+         * its track.
+         */
+        private var elevation = 0
+
+        private fun depth(kind: Int) = elevation * KINDS_PER_ELEVATION + kind
+
+        override fun elevate(delta: Int, block: SurfacePainter.() -> Unit) {
+            val previous = elevation
+            elevation += delta
+            try {
+                block()
+            } finally {
+                elevation = previous
+            }
+        }
+
         override fun frame(entry: SpriteEntry, rect: Rect, tint: DkColor?) {
-            canvas.currentLayer = LAYER_CHROME
+            canvas.currentLayer = depth(KIND_CHROME)
             NineSlicePainter.paint(canvas, entry, rect, tint)
         }
 
         override fun fill(color: DkColor, rect: Rect) {
-            canvas.currentLayer = LAYER_CHROME
+            canvas.currentLayer = depth(KIND_CHROME)
             val e = resolveSprite(FILL_SPRITE, "a colour fill") ?: return
             require(e.width > 0 && e.height > 0) {
                 "Fill sprite $FILL_SPRITE has non-positive dimensions " +
@@ -390,17 +436,17 @@ class Surface(
         }
 
         override fun icon(entry: SpriteEntry, x: Int, y: Int, tint: DkColor?) {
-            canvas.currentLayer = LAYER_ICON
+            canvas.currentLayer = depth(KIND_ICON)
             canvas.draw(entry, x, y, tint)
         }
 
         override fun label(text: String, x: Int, y: Int, color: DkColor?) {
-            canvas.currentLayer = LAYER_TEXT
+            canvas.currentLayer = depth(KIND_TEXT)
             canvas.text(text, x, y, color)
         }
 
         override fun slot(x: Int, y: Int, item: ItemRef?) {
-            canvas.currentLayer = LAYER_SLOT
+            canvas.currentLayer = depth(KIND_SLOT)
             val e = resolveSprite(SLOT_SPRITE, "a slot") ?: return
             canvas.draw(e, x, y)
             if (item != null) slots += Rect(x, y, 18, 18) to item

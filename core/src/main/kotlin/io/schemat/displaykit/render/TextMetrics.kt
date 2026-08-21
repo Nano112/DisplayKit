@@ -64,14 +64,30 @@ object TextMetrics {
      * Advance width of a character in the default Minecraft font (text pixels).
      * Approximation table — good enough for layout/hitbox math.
      */
-    fun charWidthPx(c: Char): Int = when (c) {
-        'i', '!', ',', '.', ':', ';', '|', '\'' -> 2
-        'l' -> 3
-        't', 'I', '[', ']', ' ', '(', ')', '{', '}', '"' -> 4
-        'f', 'k' -> 5
-        '@', '~' -> 7
-        else -> 6
+    fun charWidthPx(c: Char): Int = when {
+        c == 'i' || c == '!' || c == ',' || c == '.' || c == ':' ||
+            c == ';' || c == '|' || c == '\'' -> 2
+        c == 'l' -> 3
+        c == 't' || c == 'I' || c == '[' || c == ']' || c == ' ' ||
+            c == '(' || c == ')' || c == '{' || c == '}' || c == '"' -> 4
+        c == 'f' || c == 'k' -> 5
+        c == '@' || c == '~' -> 7
+        c.code < 128 -> 6
+        // Non-ASCII does not come from ascii.png at all -- the client falls
+        // back to the unifont providers, whose glyphs are up to 16px wide.
+        // Guessing 6 here under-estimates badly (an em-dash in a window title
+        // was enough to push a padded row past lineWidth and wrap the whole
+        // surface, which shifts every row below it).
+        //
+        // Over-estimating is the safe direction: SpriteCanvas closes the gap
+        // to the next item with a spacing advance that is allowed to go
+        // negative, so positioning still lands exactly, and a row that
+        // measures SHORTER than predicted can never overflow.
+        else -> UNICODE_FALLBACK_WIDTH_PX
     }
+
+    /** Upper bound on a unifont glyph's advance, in text pixels. */
+    const val UNICODE_FALLBACK_WIDTH_PX = 16
 
     /** Widest line of [text], in text pixels. */
     fun textWidthPx(text: String): Int =

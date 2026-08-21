@@ -29,8 +29,8 @@ private val SCROLL_THUMB = SpriteId("gui", "widget/scroller")
  * hit region included: an unlabelled, unframed, still-clickable rectangle is
  * worse than nothing there at all.
  */
-fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> Unit) {
-    val sprite = resolveSprite(BUTTON, "button '$id'") ?: return
+fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> Unit) = elevate {
+    val sprite = resolveSprite(BUTTON, "button '$id'") ?: return@elevate
     frame(sprite, rect)
     val textWidth = TextMetrics.textWidthPx(text)
     label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
@@ -43,10 +43,10 @@ fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> U
  * Minimum height is 16 — [fill]'s fill sprite is 16x16, and [rect] must be at
  * least that tall (and wide) or [fill] will throw.
  */
-fun SurfacePainter.titleBar(rect: Rect, title: String, onClose: () -> Unit) {
+fun SurfacePainter.titleBar(rect: Rect, title: String, onClose: () -> Unit) = elevate {
     fill(DkColor(255, 32, 34, 40), rect)
     label(title, rect.x + 4, rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
-    val cross = resolveSprite(CROSS, "a title bar's close button") ?: return
+    val cross = resolveSprite(CROSS, "a title bar's close button") ?: return@elevate
     val cx = rect.right - cross.width - 2
     val cy = rect.y + (rect.h - cross.height) / 2
     icon(cross, cx, cy)
@@ -59,8 +59,8 @@ fun SurfacePainter.titleBar(rect: Rect, title: String, onClose: () -> Unit) {
  * Minimum size is 6x32 — the `gui/widget/scroller_background` sprite's own.
  * [frame] will throw if [rect] is smaller.
  */
-fun SurfacePainter.scrollTrack(rect: Rect) {
-    frame(resolveSprite(SCROLL_TRACK, "a scrollbar track") ?: return, rect)
+fun SurfacePainter.scrollTrack(rect: Rect) = elevate {
+    frame(resolveSprite(SCROLL_TRACK, "a scrollbar track") ?: return@elevate, rect)
 }
 
 /**
@@ -69,8 +69,8 @@ fun SurfacePainter.scrollTrack(rect: Rect) {
  * Minimum size is 6x32 — the `gui/widget/scroller` sprite's own. [frame] will
  * throw if [rect] is smaller.
  */
-fun SurfacePainter.scrollThumb(rect: Rect) {
-    frame(resolveSprite(SCROLL_THUMB, "a scrollbar thumb") ?: return, rect)
+fun SurfacePainter.scrollThumb(rect: Rect) = elevate(2) {
+    frame(resolveSprite(SCROLL_THUMB, "a scrollbar thumb") ?: return@elevate, rect)
 }
 
 /**
@@ -81,9 +81,9 @@ fun SurfacePainter.scrollThumb(rect: Rect) {
  *
  * Skipped entirely when its sprite does not resolve — see [button].
  */
-fun SurfacePainter.tab(id: String, rect: Rect, text: String, selected: Boolean, onClick: () -> Unit) {
+fun SurfacePainter.tab(id: String, rect: Rect, text: String, selected: Boolean, onClick: () -> Unit) = elevate {
     val spriteId = if (selected) TAB_SELECTED else TAB
-    val sprite = resolveSprite(spriteId, "tab '$id'") ?: return
+    val sprite = resolveSprite(spriteId, "tab '$id'") ?: return@elevate
     frame(sprite, rect)
     val textWidth = TextMetrics.textWidthPx(text)
     label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
