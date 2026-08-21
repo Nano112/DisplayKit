@@ -6,7 +6,9 @@
   "mixins": [
     "InteractPacketMixin",
     "ChatPacketMixin",
-    "ResourcePackResponseMixin"
+    "ResourcePackResponseMixin",
+    "ServerboundSetCarriedItemPacketAccessor",
+    "SetCarriedItemMixin"
   ],
   "injectors": {
     "defaultRequire": 1
