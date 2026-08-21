@@ -1,0 +1,101 @@
+package io.schemat.displaykit.surface
+
+import io.schemat.displaykit.math.Vec3d
+import io.schemat.displaykit.render.Billboard
+import io.schemat.displaykit.render.DkColor
+import io.schemat.displaykit.render.TextMetrics
+import kotlin.math.abs
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+
+class SurfaceTest {
+
+    private fun surface(w: Int = 200, h: Int = 120) =
+        Surface(widthPx = w, heightPx = h, position = Vec3d(0.0, 70.0, 0.0), targetWidthBlocks = 2f)
+
+    @Test
+    fun pixelScaleIsDerivedFromTheTargetWidth() {
+        val s = surface(w = 400)
+        // 2 blocks / (400 px * 0.025) = 0.2
+        assertTrue(abs(0.2f - s.pixelScale) < 1e-5f, "got ${s.pixelScale}")
+    }
+
+    @Test
+    fun anEmptySurfaceStillProducesExactlyOneEntity() {
+        val e = surface().toEntity()
+        assertEquals(Vec3d(0.0, 70.0, 0.0), e.position)
+    }
+
+    @Test
+    fun fillTilesEnoughToCoverTheRect() {
+        val s = surface()
+        s.paint { fill(DkColor.fromRGB(0, 255, 136), Rect(0, 0, 32, 32)) }
+        // the fill sprite is 16x16, so a 32x32 rect needs 4 tiles
+        assertEquals(4, s.canvasItemCount())
+    }
+
+    @Test
+    fun labelAndIconBothLandOnTheCanvas() {
+        val s = surface()
+        s.paint { label("hello", 4, 0, DkColor.WHITE) }
+        assertEquals(1, s.canvasItemCount())
+    }
+
+    @Test
+    fun regionRegistersAHitRect() {
+        val s = surface()
+        var fired = 0
+        s.paint { region("close", Rect(10, 10, 14, 14)) { fired++ } }
+        val rects = s.hitRects()
+        assertEquals(1, rects.size)
+        assertEquals("close", rects[0].id)
+        rects[0].onClick()
+        assertEquals(1, fired)
+    }
+
+    @Test
+    fun hitRectsAreInDrawOrderSoLaterOnesSitOnTop() {
+        val s = surface()
+        s.paint {
+            region("under", Rect(0, 0, 50, 50)) {}
+            region("over", Rect(10, 10, 10, 10)) {}
+        }
+        assertEquals(listOf("under", "over"), s.hitRects().map { it.id })
+    }
+
+    @Test
+    fun repaintingReplacesRatherThanAccumulates() {
+        val s = surface()
+        s.paint { region("a", Rect(0, 0, 4, 4)) {} }
+        s.paint { region("b", Rect(0, 0, 4, 4)) {} }
+        assertEquals(listOf("b"), s.hitRects().map { it.id })
+    }
+
+    @Test
+    fun slotsRecordTheirItemsForOverlayRendering() {
+        val s = surface()
+        s.paint { slot(8, 8, ItemRef("minecraft:diamond")) }
+        val items = s.slotItems()
+        assertEquals(1, items.size)
+        assertEquals("minecraft:diamond", items[0].second.itemId)
+    }
+
+    @Test
+    fun aRegionOutsideTheSurfaceIsRejected() {
+        val s = surface(w = 100, h = 100)
+        assertFailsWith<IllegalArgumentException> {
+            s.paint { region("oops", Rect(90, 90, 40, 40)) {} }
+        }
+    }
+
+    @Test
+    fun interactiveSurfacesMustNotBillboard() {
+        val e = assertFailsWith<IllegalArgumentException> {
+            Surface(100, 100, Vec3d.ZERO, 2f, orientation = Billboard.CENTER)
+                .paint { region("x", Rect(0, 0, 4, 4)) {} }
+        }
+        assertTrue(e.message!!.contains("FIXED"))
+    }
+}
