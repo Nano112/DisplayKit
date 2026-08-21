@@ -158,6 +158,16 @@ class Surface(
          * past its true width rather than flush against it.
          */
         private const val LINE_WIDTH_MARGIN_PX = 8
+
+        /**
+         * Cursor sprite. 15x15 and greyscale, so it tints — glyph tint is
+         * multiplicative and only greyscale sources tint cleanly.
+         */
+        val POINTER_SPRITE = SpriteId("gui", "hud/crosshair")
+
+        /** Test seam for the missing-sprite path. */
+        @JvmStatic
+        var pointerSpriteOverride: SpriteId? = null
     }
 
     init {
@@ -406,13 +416,25 @@ class Surface(
     internal fun blockHeightPx(): Int =
         canvas.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
 
-    internal fun entityOrigin(depth: Float = 0f): Vec3d {
+    /**
+     * @param source The canvas whose measured block ([SpriteCanvas.blockWidthPx],
+     *   [SpriteCanvas.emittedRowCount]) the client will centre its render
+     *   against — normally this surface's own [canvas], but [pointerEntityAt]
+     *   passes a separate, unanchored canvas holding just the cursor glyph, so
+     *   the pointer entity's placement is derived from ITS OWN (small) block
+     *   rather than the whole surface's.
+     * @param base Canvas pixel (0,0) of [source] lands here — normally
+     *   [position], the surface's own anchor, but [pointerEntityAt] passes a
+     *   point elsewhere ON the surface plane instead, since the pointer's
+     *   canvas is not anchored at the surface's own origin.
+     */
+    internal fun entityOrigin(depth: Float = 0f, source: SpriteCanvas = canvas, base: Vec3d = position): Vec3d {
         // No text means no measured block and so no centring to undo.
-        if (canvas.itemCount() == 0) return position
+        if (source.itemCount() == 0) return base
         val unit = TextMetrics.PIXEL_SIZE * pixelScale
-        val blockHeightPx = canvas.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
+        val blockHeightPx = source.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
         // Offset of canvas (0,0) from the entity, in the surface's own frame.
-        val localX = unit * (1.0 - canvas.blockWidthPx() / 2.0)
+        val localX = unit * (1.0 - source.blockWidthPx() / 2.0)
         val localY = unit * blockHeightPx.toDouble()
         val theta = Math.toRadians(yawDegrees.toDouble())
         val cos = cos(theta)
@@ -421,9 +443,31 @@ class Surface(
         // `depth` steps along local +Z, the readable side (see yawFacing), so
         // a higher layer sits nearer the viewer.
         return Vec3d(
-            position.x - (localX * cos) + depth * sin,
-            position.y - localY,
-            position.z - (localX * -sin) + depth * cos
+            base.x - (localX * cos) + depth * sin,
+            base.y - localY,
+            base.z - (localX * -sin) + depth * cos
+        )
+    }
+
+    /**
+     * World point on the surface's own plane under canvas pixel ([px], [py]),
+     * [depth] blocks toward the viewer from the plane itself.
+     *
+     * Pure plane geometry — unlike [entityOrigin] it does not depend on any
+     * measured block width, because it is not undoing a text display's own
+     * block-centring, only projecting a 2D canvas point into world space.
+     * [pointerEntityAt] uses this to find where the aimed-at point sits before
+     * handing that point to [entityOrigin] as its `base`.
+     */
+    private fun planePoint(px: Int, py: Int, depth: Float = 0f): Vec3d {
+        val unit = TextMetrics.PIXEL_SIZE * pixelScale
+        val theta = Math.toRadians(yawDegrees.toDouble())
+        val cos = cos(theta)
+        val sin = sin(theta)
+        return Vec3d(
+            position.x + unit * px * cos + depth * sin,
+            position.y - unit * py,
+            position.z - unit * px * sin + depth * cos
         )
     }
 
@@ -505,6 +549,67 @@ class Surface(
             }
         } else {
             canvas.toTextComponent(layer = layer)
+        }
+    }
+
+    /**
+     * A one-glyph entity showing the cursor at canvas ([px], [py]), or null if
+     * the sprite is unavailable.
+     *
+     * Its own entity on purpose. Painting the cursor into the canvas would
+     * repaint every layer each tick — seven layers at 20tps is ~140 metadata
+     * packets a second per viewer, for a crosshair. As an entity it is one
+     * teleport.
+     *
+     * Deviation from the brief's sketch: the glyph is composited on a canvas
+     * sized to exactly [SpriteEntry.width] x [SpriteEntry.height] rather than
+     * the full surface canvas. A canvas built at the surface's own
+     * `widthPx`/`heightPx` measures its block at that same fixed width
+     * regardless of where the glyph is drawn on it ([SpriteCanvas.blockWidthPx]
+     * floors at `widthPx`), so [entityOrigin] would always resolve the same
+     * `position` no matter what ([px], [py]) was passed in — the crosshair
+     * would only ever move via glyph-advance codepoints inside one static
+     * text block, never by moving the entity. That defeats the entity-teleport
+     * design this whole primitive exists for (see the type doc above). Sizing
+     * the canvas to the glyph itself makes its block genuinely tiny, and
+     * [planePoint] + [entityOrigin]'s `base` parameter place that tiny block
+     * directly at the aimed-at point on the surface's plane, so `showPointer`
+     * can move the cursor with a real position change.
+     */
+    fun pointerEntityAt(px: Int, py: Int): VirtualTextDisplay? {
+        val id = pointerSpriteOverride ?: POINTER_SPRITE
+        val entry = SpriteIndex.bundled.get(id) ?: run {
+            SpriteDiagnostics.warnOnce(
+                "pointer-sprite-missing:$id",
+                "Pointer sprite $id is not in the sprite index; surfaces will " +
+                    "render without a cursor."
+            )
+            return null
+        }
+        val cursor = SpriteCanvas(entry.width, entry.height)
+        cursor.anchorToBounds = false
+        cursor.draw(entry, 0, 0)
+
+        // Centre the crosshair on the aimed-at point rather than hanging it
+        // down-right of it; clamp so the anchor never lands off the canvas.
+        val cx = (px - entry.width / 2).coerceAtLeast(0)
+        val cy = (py - entry.height / 2).coerceAtLeast(0)
+
+        // One step in front of the frontmost content layer.
+        val depth = (canvas.layers().size) * LAYER_Z_STEP
+        val anchor = planePoint(cx, cy)
+        return VirtualTextDisplay().also { d ->
+            d.position = entityOrigin(depth, source = cursor, base = anchor)
+            d.billboard = orientation
+            d.backgroundColor = DkColor.TRANSPARENT
+            d.brightness = Brightness.FULL
+            d.textAlignment = TextAlignment.LEFT
+            d.lineWidth = cursor.blockWidthPx() + LINE_WIDTH_MARGIN_PX
+            val s = pixelScale
+            d.transformation = Mat4f(
+                Matrix4f().rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat()).scale(s, s, s)
+            )
+            d.text = cursor.toTextComponent(anchor = false)
         }
     }
 

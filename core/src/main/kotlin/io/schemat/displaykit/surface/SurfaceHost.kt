@@ -21,6 +21,7 @@ class SurfaceHost(
 ) {
     private var layers: List<VirtualTextDisplay> = emptyList()
     private var backing: VirtualBlockDisplay? = null
+    private var pointer: VirtualTextDisplay? = null
     private val viewers get() = setOf(owner.uuid)
 
     var hovered: String? = null
@@ -88,13 +89,37 @@ class SurfaceHost(
         return true
     }
 
+    /** Show or move the cursor to canvas ([px], [py]). */
+    fun showPointer(px: Int, py: Int) {
+        val fresh = surface.pointerEntityAt(px, py) ?: return
+        val existing = pointer
+        if (existing == null) {
+            pointer = fresh
+            platform.packetSender.spawnEntity(fresh, viewers)
+            platform.packetSender.updateMetadata(fresh, viewers)
+        } else {
+            existing.position = fresh.position
+            existing.text = fresh.text
+            platform.packetSender.updateMetadata(existing, viewers)
+        }
+    }
+
+    fun hidePointer() {
+        val p = pointer ?: return
+        platform.packetSender.destroyEntities(listOf(p.entityId), viewers)
+        pointer = null
+    }
+
     fun close() {
-        val ids = layers.map { it.entityId } + listOfNotNull(backing?.entityId)
+        val ids = layers.map { it.entityId } +
+            listOfNotNull(backing?.entityId, pointer?.entityId)
         if (ids.isEmpty()) return
         platform.packetSender.destroyEntities(ids, viewers)
         layers = emptyList()
         backing = null
+        pointer = null
+        SurfaceFocus.clear(owner.uuid)
     }
 
-    fun entities(): List<VirtualEntity> = listOfNotNull(backing) + layers
+    fun entities(): List<VirtualEntity> = listOfNotNull(backing) + layers + listOfNotNull(pointer)
 }
