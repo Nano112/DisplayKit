@@ -75,7 +75,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * One placed item, ready to be flattened.
      *
      * @param y The item's canvas Y, unquantised. [toTextComponent] derives its
-     *   row from this (`y / TextMetrics.LINE_HEIGHT_PX`) — sprite items have
+     *   row from this (`y / TextMetrics.FONT_LINE_HEIGHT_PX`) — sprite items have
      *   already baked their within-row remainder into [content] via
      *   [SpriteGlyphs] ascent, at draw() time.
      * @param advanceWidth How far the text cursor moves once this item is
@@ -99,8 +99,8 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * Draw [entry] with its top-left at ([x], [y]) in canvas pixels, y growing
      * downward.
      *
-     * [y] is split into a row (`y / TextMetrics.LINE_HEIGHT_PX`, handled by
-     * [toTextComponent]) and a within-row remainder (`y % LINE_HEIGHT_PX`),
+     * [y] is split into a row (`y / TextMetrics.FONT_LINE_HEIGHT_PX`, handled by
+     * [toTextComponent]) and a within-row remainder (`y % FONT_LINE_HEIGHT_PX`),
      * which is baked into the glyph's ascent immediately so the sprite lands
      * pixel-exact regardless of which row it falls in.
      *
@@ -121,7 +121,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
                 "the top of the canvas), but got y=$y for ${entry.id}."
         }
         if (tint != null) SpriteDiagnostics.checkTintable(entry)
-        val remainder = y % TextMetrics.LINE_HEIGHT_PX
+        val remainder = y % TextMetrics.FONT_LINE_HEIGHT_PX
         items += Item(
             content = SpriteGlyphs.charsFor(entry, -remainder),
             font = SpriteGlyphs.FONT_ID,
@@ -137,11 +137,11 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      *
      * Text has no per-glyph `ascent` mechanism, so within a row it cannot
      * shift vertically — [y] is quantised to
-     * `TextMetrics.LINE_HEIGHT_PX` (its row, `y / LINE_HEIGHT_PX`) and the
+     * `TextMetrics.FONT_LINE_HEIGHT_PX` (its row, `y / FONT_LINE_HEIGHT_PX`) and the
      * text always sits at that row's baseline. Sprites drawn via [draw] are
      * pixel-exact because their glyph ascent absorbs the remainder; text
      * cannot do the same, so pick `y` values that are multiples of
-     * `TextMetrics.LINE_HEIGHT_PX` when exact placement matters.
+     * `TextMetrics.FONT_LINE_HEIGHT_PX` when exact placement matters.
      */
     fun text(s: String, x: Int, y: Int, tint: DkColor? = null) {
         items += Item(
@@ -164,8 +164,8 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * Draw a slice glyph with its top-left at ([x], [y]) in canvas pixels.
      *
      * Mirrors [draw] exactly, and must keep doing so: [y] is split into a row
-     * (`y / TextMetrics.LINE_HEIGHT_PX`, handled by [toTextComponent]) and a
-     * within-row remainder (`y % LINE_HEIGHT_PX`) that has to be baked into the
+     * (`y / TextMetrics.FONT_LINE_HEIGHT_PX`, handled by [toTextComponent]) and a
+     * within-row remainder (`y % FONT_LINE_HEIGHT_PX`) that has to be baked into the
      * glyph's `ascent`, or the glyph collapses onto its row's baseline.
      *
      * Slice codepoints are not owned by [SpriteGlyphs] — they reference
@@ -189,7 +189,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         resolve: (yOffset: Int) -> String?
     ) {
         require(y >= 0) { "Canvas y must be >= 0 (got $y); the canvas origin is its top-left." }
-        val remainder = y % TextMetrics.LINE_HEIGHT_PX
+        val remainder = y % TextMetrics.FONT_LINE_HEIGHT_PX
         val chars = resolve(-remainder) ?: return
         items += Item(content = chars, font = SpriteGlyphs.SLICE_FONT_ID, x = x, y = y,
                       advanceWidth = advanceWidth, tint = tint)
@@ -198,12 +198,11 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     fun clear() = items.clear()
 
     /**
-     * Flatten to a single component using a row model.
-     *
-     * Each item belongs to row `item.y / TextMetrics.LINE_HEIGHT_PX`. Rows
-     * are emitted in ascending order, separated by a single `"\n"` child —
-     * including rows with no items of their own, since skipping them would
-     * collapse the vertical gap they represent.
+     * Row model: each item belongs to row `item.y / TextMetrics.FONT_LINE_HEIGHT_PX`.
+     * [buildRows] emits rows in ascending order — including rows with no
+     * items of their own, since skipping them would collapse the vertical
+     * gap they represent — and [buildChildren] joins them with a single
+     * `"\n"` child between each pair.
      *
      * Within a row, items are sorted by `x` alone (stable — ties keep
      * insertion order) and strung along a cursor that resets to `0` at the
@@ -212,23 +211,24 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * glyph's advance exceeds its drawn width by 1, so touching or
      * overlapping sprites correct the cursor backward.
      */
+    /** One row's emitted children, plus where its cursor ended up. */
+    private data class Row(val children: List<TextComponent>, val endCursorX: Int)
+
     /**
-     * The row/cursor walk shared by [toTextComponent] and [requiresPack], so
-     * the two can never drift apart — whatever children this produces is
-     * exactly what would render, and exactly what is inspected for pack
-     * dependence.
+     * The row/cursor walk shared by [toTextComponent], [requiresPack], and
+     * [maxRowAdvance], so none of the three can ever drift apart — whatever
+     * this produces is exactly what would render, exactly what is inspected
+     * for pack dependence, and exactly what the widest row actually measures.
      */
-    private fun buildChildren(): List<TextComponent> {
+    private fun buildRows(): List<Row> {
         if (items.isEmpty()) return emptyList()
 
-        val byRow = items.groupBy { it.y / TextMetrics.LINE_HEIGHT_PX }
+        val byRow = items.groupBy { it.y / TextMetrics.FONT_LINE_HEIGHT_PX }
         val maxRow = byRow.keys.max()
 
-        val children = mutableListOf<TextComponent>()
+        val rows = mutableListOf<Row>()
         for (row in 0..maxRow) {
-            if (row > 0) {
-                children += TextComponent(text = "\n")
-            }
+            val children = mutableListOf<TextComponent>()
             var cursorX = 0
             for (item in byRow[row].orEmpty().sortedBy { it.x }) {
                 val gap = item.x - cursorX
@@ -242,8 +242,19 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
                 )
                 cursorX = item.x + item.advanceWidth
             }
+            rows += Row(children, cursorX)
         }
 
+        return rows
+    }
+
+    private fun buildChildren(): List<TextComponent> {
+        val rows = buildRows()
+        val children = mutableListOf<TextComponent>()
+        rows.forEachIndexed { index, row ->
+            if (index > 0) children += TextComponent(text = "\n")
+            children += row.children
+        }
         return children
     }
 
@@ -252,6 +263,20 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         if (children.isEmpty()) return TextComponent.EMPTY
         return TextComponent(children = children)
     }
+
+    /**
+     * The largest end-cursor position across all rows — i.e. the pixel width
+     * of the widest row this canvas would actually emit.
+     *
+     * Callers (see `Surface.toEntity()`) use this to set the text display's
+     * `lineWidth` so Minecraft's client-side line wrapping can never kick in:
+     * `DisplayRenderer$TextDisplayRenderer.splitLines` wraps any row wider
+     * than the entity's `lineWidth`, and [VirtualTextDisplay]'s default of 200
+     * is narrower than plenty of real canvases. Derived from the same
+     * [buildRows] walk [toTextComponent] uses, so this can never drift from
+     * what is actually emitted.
+     */
+    fun maxRowAdvance(): Int = buildRows().maxOfOrNull { it.endCursorX } ?: 0
 
     /**
      * True when rendering this canvas requires the DisplayKit resource pack.

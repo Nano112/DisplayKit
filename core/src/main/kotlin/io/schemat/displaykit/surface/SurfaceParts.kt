@@ -33,7 +33,7 @@ fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> U
     val sprite = resolveSprite(BUTTON, "button '$id'") ?: return
     frame(sprite, rect)
     val textWidth = TextMetrics.textWidthPx(text)
-    label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.LINE_HEIGHT_PX) / 2)
+    label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
     region(id, rect, onClick)
 }
 
@@ -45,7 +45,7 @@ fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> U
  */
 fun SurfacePainter.titleBar(rect: Rect, title: String, onClose: () -> Unit) {
     fill(DkColor(255, 32, 34, 40), rect)
-    label(title, rect.x + 4, rect.y + (rect.h - TextMetrics.LINE_HEIGHT_PX) / 2)
+    label(title, rect.x + 4, rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
     val cross = resolveSprite(CROSS, "a title bar's close button") ?: return
     val cx = rect.right - cross.width - 2
     val cy = rect.y + (rect.h - cross.height) / 2
@@ -86,6 +86,6 @@ fun SurfacePainter.tab(id: String, rect: Rect, text: String, selected: Boolean, 
     val sprite = resolveSprite(spriteId, "tab '$id'") ?: return
     frame(sprite, rect)
     val textWidth = TextMetrics.textWidthPx(text)
-    label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.LINE_HEIGHT_PX) / 2)
+    label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
     region(id, rect, onClick)
 }

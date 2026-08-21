@@ -3,6 +3,7 @@ package io.schemat.displaykit.surface
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.Billboard
 import io.schemat.displaykit.render.DkColor
+import io.schemat.displaykit.render.TextAlignment
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteId
@@ -181,5 +182,38 @@ class SurfaceTest {
             s.paint { fill(DkColor.WHITE, Rect(0, 0, 10, 20)) }
         }
         assertTrue(e.message!!.contains("16"))
+    }
+
+    // --- Layout fixes: rows must not wrap, and must not be centred independently ---
+
+    @Test
+    fun toEntityAlignsTextLeftSoEveryRowSharesTheSameOrigin() {
+        // VirtualTextDisplay defaults to CENTER, which centres each line of
+        // the text component independently — rows of different widths then
+        // slide sideways relative to each other. The canvas model assumes
+        // every row starts at x=0, which only LEFT alignment preserves.
+        val s = surface()
+        s.paint { label("hi", 0, 0, DkColor.WHITE) }
+        assertEquals(TextAlignment.LEFT, s.toEntity().textAlignment)
+    }
+
+    @Test
+    fun toEntityDerivesLineWidthFromTheWidestRowSoItCannotWrap() {
+        // VirtualTextDisplay defaults lineWidth to 200; the client wraps any
+        // row wider than that. A row of real content past 200px must push
+        // lineWidth past both 200 and its own true width, or wrapping is
+        // still possible.
+        val s = surface(w = 600, h = 60)
+        val longLabel = "a label wide enough to guarantee wrapping under the two " +
+            "hundred pixel default line width if lineWidth were left untouched"
+        s.paint { label(longLabel, 0, 0, DkColor.WHITE) }
+
+        val lineWidth = s.toEntity().lineWidth
+        assertTrue(lineWidth > 200, "expected lineWidth > 200, got $lineWidth")
+        assertTrue(
+            lineWidth >= TextMetrics.textWidthPx(longLabel),
+            "lineWidth ($lineWidth) must cover the row's true width " +
+                "(${TextMetrics.textWidthPx(longLabel)})"
+        )
     }
 }

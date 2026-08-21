@@ -5,6 +5,7 @@ import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.Billboard
 import io.schemat.displaykit.render.Brightness
 import io.schemat.displaykit.render.DkColor
+import io.schemat.displaykit.render.TextAlignment
 import io.schemat.displaykit.render.TextComponent
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.render.VirtualTextDisplay
@@ -56,6 +57,13 @@ class Surface(
         val FILL_SPRITE = SpriteId("blocks", "block/lightning_rod_on")
 
         val SLOT_SPRITE = SpriteId("gui", "container/slot")
+
+        /**
+         * Slack added on top of [SpriteCanvas.maxRowAdvance] when deriving
+         * `lineWidth` in [toEntity], so a row's `lineWidth` sits strictly
+         * past its true width rather than flush against it.
+         */
+        private const val LINE_WIDTH_MARGIN_PX = 8
     }
 
     init {
@@ -93,6 +101,21 @@ class Surface(
         d.hasShadow = false
         val s = pixelScale
         d.transformation = Mat4f(Matrix4f().scale(s, s, s))
+
+        // The canvas model assumes every row starts at x=0 and that no row
+        // ever wraps onto a second display line — neither holds under
+        // VirtualTextDisplay's defaults. CENTER centres each line
+        // independently, sliding rows of different widths sideways relative
+        // to each other; LEFT keeps every row's x=0 aligned with the
+        // entity's own origin, matching the canvas.
+        d.textAlignment = TextAlignment.LEFT
+
+        // lineWidth defaults to 200, and the client wraps any row wider than
+        // that (DisplayRenderer$TextDisplayRenderer.splitLines) — pushing
+        // everything below it down by however much the wrapped content
+        // added. Deriving lineWidth from the canvas's own widest row (with a
+        // small margin) makes wrapping impossible regardless of content.
+        d.lineWidth = canvas.maxRowAdvance() + LINE_WIDTH_MARGIN_PX
 
         // Surfaces are glyph-composed, so with no slice source installed a
         // canvas that actually needs glyphs (sprites, slices, or spacing)

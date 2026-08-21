@@ -1,6 +1,7 @@
 package io.schemat.displaykit.sprite
 
 import io.schemat.displaykit.render.DkColor
+import io.schemat.displaykit.render.TextMetrics
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -192,12 +193,12 @@ class SpriteCanvasTest {
 
     @Test
     fun spriteYRequestsAscentOffsetFromTheRowRemainder() {
-        // y=16 with LINE=10 -> row 1 (baseline 10) + remainder 6 -> ascent
-        // offset -6, landing pixel-exact at 16.
+        // y=16 with FONT_LINE_HEIGHT_PX=9 -> row 1 (baseline 9) + remainder 7
+        // -> ascent offset -7, landing pixel-exact at 16.
         val c = SpriteCanvas(64, 64)
         c.draw(entry("dot"), x = 0, y = 16)
         val variant = SpriteGlyphs.requested().single()
-        assertEquals(-6, variant.yOffset)
+        assertEquals(-7, variant.yOffset)
     }
 
     // --- requiresPack(): plain text needs no pack; a non-zero gap does ---
@@ -214,5 +215,23 @@ class SpriteCanvasTest {
         val c = SpriteCanvas(64, 64)
         c.text("hi", x = 0, y = 0)
         assertTrue(!c.requiresPack())
+    }
+
+    // --- maxRowAdvance(): the widest row's end cursor, shared with the walk
+    // toTextComponent() actually emits so it cannot drift ---
+
+    @Test
+    fun maxRowAdvanceIsZeroForAnEmptyCanvas() {
+        val c = SpriteCanvas(64, 64)
+        assertEquals(0, c.maxRowAdvance())
+    }
+
+    @Test
+    fun maxRowAdvanceReturnsTheWidestRowsEndCursor() {
+        val c = SpriteCanvas(600, 64)
+        c.text("short", x = 0, y = 0)
+        val longLine = "a much longer line of text than the other row by far"
+        c.text(longLine, x = 0, y = 9) // row 1 under FONT_LINE_HEIGHT_PX = 9
+        assertEquals(TextMetrics.textWidthPx(longLine), c.maxRowAdvance())
     }
 }

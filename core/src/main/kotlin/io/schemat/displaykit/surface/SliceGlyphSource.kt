@@ -84,8 +84,9 @@ object NineSlicePainter {
             // drawGlyph derives the within-row remainder from y and asks for
             // the matching variant — exactly as SpriteCanvas.draw does for a
             // whole sprite. Resolving a codepoint here without that offset is
-            // what used to collapse every region at a non-multiple-of-10 y
-            // onto its row's baseline.
+            // what used to collapse every region at a y that is not a
+            // multiple of TextMetrics.FONT_LINE_HEIGHT_PX onto its row's
+            // baseline.
             canvas.drawGlyph(
                 x = rect.x + p.dstX,
                 y = rect.y + p.dstY,

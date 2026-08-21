@@ -20,6 +20,21 @@ object TextMetrics {
     const val LINE_HEIGHT_PX = 10
 
     /**
+     * Minecraft's actual font line height, in text pixels.
+     *
+     * Verified from the decompiled 1.21.11 client:
+     * `net.minecraft.client.gui.Font`'s constructor does `bipush 9; putfield
+     * lineHeight`. [LINE_HEIGHT_PX] (10) is a legacy approximation kept only
+     * for the block-widget geometry ([blockHeight], [verticalCenterCorrection])
+     * that has been tuned by eye against it — changing that constant would
+     * shift every existing DisplayKit UI. Anything reasoning about how
+     * `SpriteCanvas`/`NineSlicePainter` rows map onto the text component the
+     * client actually splits into lines (the compositor) must use this
+     * constant instead.
+     */
+    const val FONT_LINE_HEIGHT_PX = 9
+
+    /**
      * Advance width of a character in the default Minecraft font (text pixels).
      * Approximation table — good enough for layout/hitbox math.
      */

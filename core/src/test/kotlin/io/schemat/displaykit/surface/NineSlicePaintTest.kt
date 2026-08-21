@@ -83,22 +83,23 @@ class NineSlicePaintTest {
 
     // A bitmap glyph's vertical placement is baked into its provider `ascent`,
     // which is fixed per font entry. So a crop drawn at a y that is not a
-    // multiple of TextMetrics.LINE_HEIGHT_PX needs its OWN variant, whose
+    // multiple of TextMetrics.FONT_LINE_HEIGHT_PX needs its OWN variant, whose
     // ascent absorbs the within-row remainder — exactly what
     // SpriteCanvas.draw does for whole sprites. Without it every such region
     // collapses onto its row's baseline.
 
     @Test
-    fun aRegionAtANonMultipleOfTenYAsksForTheMatchingNegativeOffset() {
+    fun aRegionAtANonMultipleOfTheLineHeightYAsksForTheMatchingNegativeOffset() {
         val c = SpriteCanvas(400, 200)
-        // rect.y = 9, so the top row of crops lands at y = 9: remainder 9.
-        NineSlicePainter.paint(c, button, Rect(0, 9, 400, 60))
+        // rect.y = 8, so the top row of crops lands at y = 8: remainder 8
+        // (FONT_LINE_HEIGHT_PX = 9).
+        NineSlicePainter.paint(c, button, Rect(0, 8, 400, 60))
 
         val topRow = src.handed.keys.filter { it.srcY == 0 }
         assertTrue(topRow.isNotEmpty(), "the frame must place top-edge crops")
         assertTrue(
-            topRow.all { it.yOffset == -9 },
-            "crops drawn at y=9 must request yOffset -9, got ${topRow.map { it.yOffset }}"
+            topRow.all { it.yOffset == -8 },
+            "crops drawn at y=8 must request yOffset -8, got ${topRow.map { it.yOffset }}"
         )
     }
 
@@ -108,9 +109,9 @@ class NineSlicePaintTest {
         NineSlicePainter.paint(c, button, Rect(0, 9, 400, 220))
 
         // Each drawn item's y must be consistent with an offset that was asked
-        // for, and every offset asked for must be -(y % LINE_HEIGHT_PX).
+        // for, and every offset asked for must be -(y % FONT_LINE_HEIGHT_PX).
         val offsetsAsked = src.handed.keys.map { it.yOffset }.toSet()
-        val expected = c.itemPositions().map { (_, y) -> -(y % TextMetrics.LINE_HEIGHT_PX) }.toSet()
+        val expected = c.itemPositions().map { (_, y) -> -(y % TextMetrics.FONT_LINE_HEIGHT_PX) }.toSet()
         assertEquals(expected, offsetsAsked)
         assertTrue(
             offsetsAsked.any { it != 0 },
