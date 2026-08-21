@@ -25,6 +25,7 @@ class SurfaceNodeTest {
         val child = TestNode("child", 50, 20)
         root.addChild(child)
         root.measure(PxConstraints.exactly(200, 100))
+        child.measure(PxConstraints.upTo(200, 100))   // a container would do this
         root.place(PxOffset(10, 10))
         child.place(PxOffset(5, 7))
         // place() offsets are parent-relative; rect() is absolute.
@@ -37,7 +38,10 @@ class SurfaceNodeTest {
         val mid = TestNode("mid", 50, 50)
         val leaf = TestNode("leaf", 10, 10)
         root.addChild(mid); mid.addChild(leaf)
-        root.measure(PxConstraints.exactly(100, 100)); root.place(PxOffset(0, 0))
+        root.measure(PxConstraints.exactly(100, 100))
+        mid.measure(PxConstraints.upTo(100, 100))   // a container would do this
+        leaf.measure(PxConstraints.upTo(100, 100))  // a container would do this
+        root.place(PxOffset(0, 0))
         mid.place(PxOffset(10, 10)); leaf.place(PxOffset(5, 5))
         // leaf occupies absolute 15,15..25,25
         assertEquals("leaf", root.hitTest(20, 20)?.id)
@@ -53,7 +57,10 @@ class SurfaceNodeTest {
         val under = TestNode("under", 50, 50)
         val over = TestNode("over", 50, 50)
         root.addChild(under); root.addChild(over)
-        root.measure(PxConstraints.exactly(100, 100)); root.place(PxOffset(0, 0))
+        root.measure(PxConstraints.exactly(100, 100))
+        under.measure(PxConstraints.upTo(100, 100))  // a container would do this
+        over.measure(PxConstraints.upTo(100, 100))   // a container would do this
+        root.place(PxOffset(0, 0))
         under.place(PxOffset(0, 0)); over.place(PxOffset(0, 0))
         assertEquals("over", root.hitTest(10, 10)?.id)
     }

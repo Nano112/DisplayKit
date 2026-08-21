@@ -58,7 +58,14 @@ abstract class BaseSurfaceNode(override val id: String) : SurfaceNode {
     override var onEvent: ((SurfaceEvent) -> EventResult)? = null
     override var onGrabMove: ((Int, Int) -> Unit)? = null
 
-    /** Subclass hook: measure own content, already constrained. */
+    /**
+     * Subclass hook: measure own content, already constrained.
+     *
+     * A container measures its OWN children here, with the constraints it has
+     * decided for each. The base class deliberately does not cascade: a cascade
+     * after this call would overwrite per-child sizing (FlexNode's, for one)
+     * with loosened natural sizes.
+     */
     protected abstract fun measureSelf(c: PxConstraints): PxSize
 
     override fun measure(c: PxConstraints): PxSize {
@@ -68,10 +75,6 @@ abstract class BaseSurfaceNode(override val id: String) : SurfaceNode {
         )
         val size = measureSelf(fixed)
         layoutResult = PxLayoutResult(layoutResult?.offset ?: PxOffset.Zero, size)
-        // Cascade into children so a single measure() call on the root sizes the
-        // whole subtree. Loosened, since children are not forced to fill this
-        // node's own fixed box.
-        _children.forEach { it.measure(fixed.loosen()) }
         return size
     }
 
