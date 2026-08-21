@@ -56,9 +56,9 @@ class SpriteSliceProviderTest {
         assertEquals(0, b.imageCount(), "unrequested slices must not ship")
     }
 
-    /** Resolve every crop of [id] at [yOffset], as a paint pass would. */
-    private fun resolveAll(id: SpriteId, yOffset: Int): List<Int?> =
-        SliceCatalog.regionsFor(id)!!.map { SpriteSliceProvider.codepointFor(id, it.x, it.y, yOffset) }
+    /** Resolve every crop of [id] at [ascent], as a paint pass would. */
+    private fun resolveAll(id: SpriteId, ascent: Int): List<Int?> =
+        SliceCatalog.regionsFor(id)!!.map { SpriteSliceProvider.codepointFor(id, it.x, it.y, ascent) }
 
     private fun providersOf(b: PackBuilder) = JsonParser.parseString(
         b.capturedJson("assets/displaykit/font/sprite_slices.json")
@@ -93,14 +93,22 @@ class SpriteSliceProviderTest {
     }
 
     // Vertical placement is baked into a font provider's `ascent`, which is
-    // fixed per entry. So a crop drawn at N distinct within-row offsets costs N
-    // entries — the same rule SpriteGlyphs applies to whole sprites. Emitting
-    // one entry per CROP, with ascent = height, put every frame at a
-    // non-multiple-of-10 y on its row's baseline instead of where it was asked
-    // for.
+    // fixed per entry. So a crop drawn with N distinct ascents costs N
+    // entries — the same rule SpriteGlyphs applies to whole sprites.
 
     @Test
-    fun eachProviderAscentIsItsCropHeightPlusItsOffset() {
+    fun ascentInTheEmittedJsonMatchesExactlyWhatWasRequestedPerVariant() {
+        // Under the OLD API the provider computed ascent = crop.height +
+        // yOffset itself, and this test asserted that computation
+        // ("eachProviderAscentIsItsCropHeightPlusItsOffset"). Placement
+        // (deriving an ascent from a target canvas Y) now lives entirely in
+        // GlyphPlacement/SpriteCanvas — this provider just bakes whatever
+        // ascent the variant carries into the JSON, unchanged. So what is
+        // meaningful to test here is pass-through fidelity, not a
+        // height-relative computation the provider no longer performs.
+        //
+        // Both requested ascents (0 and -7) are legal for every crop of
+        // `button`, including its shortest (the 3px corners/edges).
         SpriteSliceProvider.request(button)
         resolveAll(button, 0)
         resolveAll(button, -7)
@@ -114,20 +122,20 @@ class SpriteSliceProviderTest {
             val o = p.asJsonObject
             o.getAsJsonArray("chars")[0].asString.codePointAt(0) to o
         }
-        assertEquals(18, byCodepoint.size, "two offsets over nine crops is eighteen entries")
+        assertEquals(18, byCodepoint.size, "two ascents over nine crops is eighteen entries")
 
         for (v in SpriteSliceProvider.variants()) {
             val o = byCodepoint.getValue(v.codepoint)
             assertEquals(v.crop.h, o.get("height").asInt)
             assertEquals(
-                v.crop.h + v.yOffset, o.get("ascent").asInt,
-                "ascent must be crop height + yOffset for variant $v"
+                v.ascent, o.get("ascent").asInt,
+                "ascent must pass through unchanged for variant $v"
             )
         }
     }
 
     @Test
-    fun aCropAtTwoOffsetsGetsTwoCodepointsAndTwoProviderEntries() {
+    fun aCropAtTwoAscentsGetsTwoCodepointsAndTwoProviderEntries() {
         SpriteSliceProvider.request(button)
         val flat = SpriteSliceProvider.codepointFor(button, 0, 0, 0)
         val shifted = SpriteSliceProvider.codepointFor(button, 0, 0, -4)
@@ -160,10 +168,17 @@ class SpriteSliceProviderTest {
     }
 
     @Test
-    fun aPositiveOffsetIsRejected() {
+    fun anAscentAboveTheCropHeightIsRejected() {
+        // The (0,0) crop of `button` is its top-left corner, 3px tall
+        // (NineSlice(3,3,3,3)). An ascent of 4 exceeds that.
+        //
+        // (Superseded a test that rejected ANY positive yOffset under the
+        // OLD API. Under the new ascent <= height rule an ascent of 3 -- the
+        // old test's input -- is legal for this crop, since 3 <= 3; only an
+        // ascent that actually exceeds the crop's own height is rejected.)
         SpriteSliceProvider.request(button)
         val e = assertFailsWith<IllegalArgumentException> {
-            SpriteSliceProvider.codepointFor(button, 0, 0, 3)
+            SpriteSliceProvider.codepointFor(button, 0, 0, 4)
         }
         assertTrue(e.message!!.contains("ascent"), "the message must explain the ascent limit")
     }

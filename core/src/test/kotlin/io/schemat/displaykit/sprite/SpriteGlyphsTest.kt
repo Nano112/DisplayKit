@@ -23,20 +23,20 @@ class SpriteGlyphsTest {
     @Test
     fun allocatesFromSupplementaryPuaToAvoidCollidingWithExistingIcons() {
         // SpriteAssetProvider uses U+E000 upward; spacing.json uses U+F001-U+F200.
-        val cp = SpriteGlyphs.codepointFor(entry("a"), yOffset = 0)
+        val cp = SpriteGlyphs.codepointFor(entry("a"), ascent = 0)
         assertTrue(cp >= 0xF0000, "expected supplementary PUA-A, got ${cp.toString(16)}")
     }
 
     @Test
-    fun sameSpriteAndOffsetReturnsTheSameCodepoint() {
+    fun sameSpriteAndAscentReturnsTheSameCodepoint() {
         val first = SpriteGlyphs.codepointFor(entry("a"), 0)
         val second = SpriteGlyphs.codepointFor(entry("a"), 0)
         assertEquals(first, second)
     }
 
     @Test
-    fun differentOffsetsGetDistinctCodepoints() {
-        // ascent is baked per provider entry, so each Y offset is its own glyph.
+    fun differentAscentsGetDistinctCodepoints() {
+        // ascent is baked per provider entry, so each ascent is its own glyph.
         val flat = SpriteGlyphs.codepointFor(entry("a"), 0)
         val shifted = SpriteGlyphs.codepointFor(entry("a"), -4)
         assertNotEquals(flat, shifted)
@@ -60,16 +60,17 @@ class SpriteGlyphsTest {
     }
 
     @Test
-    fun positiveYOffsetIsRejectedRatherThanSilentlyClampedToZero() {
-        // ascent <= height is client-enforced, and yOffset = 0 already puts
-        // ascent at its maximum (height) — there is no upward slack to shift
-        // into, so a positive offset must be an error, not a no-op.
+    fun anAscentAboveHeightIsRejectedRatherThanSilentlyClamped() {
+        // ascent <= height is client-enforced ("Ascent {} higher than height
+        // {}", which fails the WHOLE font file). entry("a") is 16 tall, so an
+        // ascent of 20 must be a hard error, not silently clamped to 16
+        // (which would waste a glyph slot on a byte-identical provider).
         val failure = assertFailsWith<IllegalArgumentException> {
-            SpriteGlyphs.codepointFor(entry("a"), yOffset = 4)
+            SpriteGlyphs.codepointFor(entry("a"), ascent = 20)
         }
         assertTrue(
-            failure.message!!.contains("positive"),
-            "expected message to mention positive offsets being unsupported, got: ${failure.message}"
+            failure.message!!.contains("exceeds") && failure.message!!.contains("height"),
+            "expected message to explain that ascent exceeds height, got: ${failure.message}"
         )
     }
 
@@ -80,6 +81,15 @@ class SpriteGlyphsTest {
         val s = SpriteGlyphs.charsFor(e, 0)
         assertEquals(2, s.length, "supplementary codepoints need a surrogate pair")
         assertEquals(cp, s.codePointAt(0))
+    }
+
+    @Test
+    fun charsForDefaultsToAscentEqualsHeight() {
+        // The natural, non-canvas-clipped rendering (used directly in chat
+        // text rather than through SpriteCanvas) is the maximum legal ascent.
+        val e = entry("a")
+        val cp = SpriteGlyphs.codepointFor(e)
+        assertEquals(cp, SpriteGlyphs.codepointFor(e, ascent = e.height))
     }
 
     @Test
@@ -94,7 +104,7 @@ class SpriteGlyphsTest {
     // codepointFor's guard is `check(next < SLICE_BASE_CODEPOINT)`, evaluated
     // before each allocation and before `next` is incremented. Allocation
     // starts at BASE_CODEPOINT and advances by exactly 1 per distinct
-    // (sprite, yOffset) variant, so the guard permits exactly
+    // (sprite, ascent) variant, so the guard permits exactly
     // (SLICE_BASE_CODEPOINT - BASE_CODEPOINT) whole-sprite allocations before
     // it throws. These tests prove that boundary arithmetically rather than
     // by actually allocating 32768 glyphs.

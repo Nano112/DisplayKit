@@ -38,40 +38,48 @@ object SpriteGlyphs {
 
     data class GlyphVariant(
         val entry: SpriteEntry,
-        val yOffset: Int,
+        val ascent: Int,
         val codepoint: Int
     )
 
     private val variants = LinkedHashMap<Key, GlyphVariant>()
     private var next = BASE_CODEPOINT
 
-    private data class Key(val id: SpriteId, val yOffset: Int)
+    private data class Key(val id: SpriteId, val ascent: Int)
 
     /**
-     * Codepoint for [entry] drawn at [yOffset] pixels below its natural
-     * baseline, allocating one if this variant is new.
+     * Codepoint for [entry] with a font-provider `ascent` of [ascent],
+     * allocating one if this variant is new.
+     *
+     * `ascent` alone determines where the glyph's top sits, relative to the
+     * origin of the line it is emitted on (`TextMetrics.GLYPH_TOP_BEARING_PX
+     * - ascent` — see [io.schemat.displaykit.render.TextMetrics] and
+     * [GlyphPlacement], which derives it from a target canvas Y), so a
+     * sprite drawn at N distinct ascents costs N glyph entries.
+     *
+     * Defaults to [SpriteEntry.height] — the maximum legal ascent, and the
+     * natural, non-canvas-clipped rendering used when a glyph is placed
+     * directly (e.g. inline in chat text) rather than through
+     * [SpriteCanvas].
      *
      * @throws IllegalArgumentException if [entry] is animated — a glyph would
      *   render the entire vertical strip rather than one frame.
-     * @throws IllegalArgumentException if [yOffset] is positive — upward
-     *   shift is not representable. The client enforces `ascent <= height`,
-     *   and `yOffset = 0` already puts `ascent` at its maximum (`height`), so
-     *   there is no slack to shift into; a by-reference vanilla texture has
-     *   no padding to exploit either.
+     * @throws IllegalArgumentException if [ascent] exceeds [SpriteEntry.height]
+     *   — the client throws `"Ascent {} higher than height {}"` and refuses
+     *   to load the WHOLE font file if this is ever violated. Negative
+     *   ascent is unbounded and always fine.
      */
-    fun codepointFor(entry: SpriteEntry, yOffset: Int = 0): Int {
+    fun codepointFor(entry: SpriteEntry, ascent: Int = entry.height): Int {
         require(!entry.animated) {
             "Sprite ${entry.id} is animated and cannot be a font glyph — " +
                 "a glyph renders the whole strip. Use SpriteDisplay instead."
         }
-        require(yOffset <= 0) {
-            "Sprite ${entry.id} requested yOffset $yOffset, but positive " +
-                "offsets are not supported — ascent <= height is client-enforced " +
-                "and ascent already sits at its maximum (height) when yOffset = 0. " +
-                "Shift the whole composition down instead, or use SpriteDisplay " +
-                "for free positioning."
+        require(ascent <= entry.height) {
+            "Sprite ${entry.id} requested ascent $ascent, which exceeds its " +
+                "height ${entry.height} — the client rejects the WHOLE font file " +
+                "(\"Ascent {} higher than height {}\") if this is ever violated."
         }
-        return variants.getOrPut(Key(entry.id, yOffset)) {
+        return variants.getOrPut(Key(entry.id, ascent)) {
             check(next < SLICE_BASE_CODEPOINT) {
                 "Exhausted whole-sprite glyph space: allocating at codepoint " +
                     "0x${next.toString(16).uppercase()} would collide with slice " +
@@ -79,17 +87,17 @@ object SpriteGlyphs {
                     "(SLICE_BASE_CODEPOINT). At most ${SLICE_BASE_CODEPOINT - BASE_CODEPOINT} " +
                     "whole-sprite glyph variants are supported."
             }
-            GlyphVariant(entry, yOffset, next++)
+            GlyphVariant(entry, ascent, next++)
         }.codepoint
     }
 
     /** The codepoint as a string — a surrogate pair, since these are > U+FFFF. */
-    fun charsFor(entry: SpriteEntry, yOffset: Int = 0): String =
-        String(Character.toChars(codepointFor(entry, yOffset)))
+    fun charsFor(entry: SpriteEntry, ascent: Int = entry.height): String =
+        String(Character.toChars(codepointFor(entry, ascent)))
 
     /** Allocate without needing the result, e.g. when pre-warming a pack. */
-    fun request(entry: SpriteEntry, yOffset: Int = 0) {
-        codepointFor(entry, yOffset)
+    fun request(entry: SpriteEntry, ascent: Int = entry.height) {
+        codepointFor(entry, ascent)
     }
 
     /** Every whole-sprite variant allocated so far, in allocation order. */

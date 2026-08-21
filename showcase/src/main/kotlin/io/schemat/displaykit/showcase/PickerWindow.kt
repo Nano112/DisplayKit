@@ -26,6 +26,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.atan2
 
 /**
  * A sprite picker built entirely from surface parts.
@@ -120,6 +121,16 @@ object PickerWindow {
         val pos = Vec3d(eye.x + look.x * 2.5, eye.y + 0.6, eye.z + look.z * 2.5)
 
         val surface = Surface(W, H, pos, targetWidthBlocks = 3f)
+        // Square the window to the player regardless of which way they're
+        // facing: an unrotated surface faces -Z (see SurfacePicking), which
+        // matches a viewer whose look direction is +Z (atan2(0, 1) == 0), so
+        // yawDegrees = atan2(look.x, look.z) turns the surface's front to
+        // face wherever the player is looking.
+        surface.yawDegrees = Math.toDegrees(atan2(look.x, look.z)).toFloat()
+        // Alpha 100-149 and 200-249 are DkColor shader sentinels (glass /
+        // corner-radius) -- 190 sits outside both. Dark neutral graphite so
+        // the vanilla chrome (frame, tabs, slots) stays legible against it.
+        surface.backdrop = DkColor(190, 18, 19, 22)
         val host = SurfaceHost(DisplayKit.platform, ref, surface)
         val session = Session(host, player)
         open[player.uuid] = session

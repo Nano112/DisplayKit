@@ -39,7 +39,8 @@ object TintDemo {
             return
         }
 
-        SpriteGlyphs.request(tintable, 0)
+        // Natural, non-canvas-clipped rendering: ascent = height (the default).
+        SpriteGlyphs.request(tintable)
 
         FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
         FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
@@ -60,11 +61,11 @@ object TintDemo {
         )
         player.sendSystemMessage(
             Component.literal("3. by-reference glyph, no tint: ")
-                .append(Component.literal(SpriteGlyphs.charsFor(tintable, 0)))
+                .append(Component.literal(SpriteGlyphs.charsFor(tintable)))
         )
         player.sendSystemMessage(
             Component.literal("4. by-reference glyph, matrix-green tint: ")
-                .append(Component.literal(SpriteGlyphs.charsFor(tintable, 0)).withStyle(green))
+                .append(Component.literal(SpriteGlyphs.charsFor(tintable)).withStyle(green))
         )
         player.sendSystemMessage(
             Component.literal("Line 2 answers it: red means vanilla AtlasSprite honours Style colour; unchanged means it does not.")

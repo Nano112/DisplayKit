@@ -72,4 +72,38 @@ class SurfacePickingTest {
         s.paint { region("only", Rect(0, 0, 10, 10)) {} }
         assertNull(SurfacePicking.hit(s, Vec3d(0.5, 69.5, -2.0), straightAhead))
     }
+
+    // --- Feature: yawDegrees ---
+
+    @Test
+    fun defaultYawLeavesPickingUnchanged() {
+        // yawDegrees defaults to 0f, and the counter-rotation is a no-op at
+        // that value -- this is really the same assertion as
+        // aRayStraightAtTheOriginHitsTheTopLeftPixel, spelled out to make the
+        // "yaw=0 is unchanged" guarantee explicit.
+        val s = surface()
+        assertEquals(0f, s.yawDegrees)
+        assertEquals(0 to 0, SurfacePicking.localPixel(s, Vec3d(0.0, 70.0, -2.0), straightAhead))
+    }
+
+    @Test
+    fun rotatingTheSurfaceAndMovingTheViewerCorrespondinglyHitsTheSamePixel() {
+        // Base case: viewer at z=-2 looking straight ahead (+Z) hits the
+        // top-left pixel of an unrotated surface (see
+        // aRayStraightAtTheOriginHitsTheTopLeftPixel above).
+        val base = surface()
+        val basePixel = SurfacePicking.localPixel(base, Vec3d(0.0, 70.0, -2.0), straightAhead)
+        assertEquals(0 to 0, basePixel)
+
+        // Rotate the surface 90 degrees about its own position, then move the
+        // viewer to the position/look that is the SAME rigid rotation of the
+        // base eye/look about that position -- eye (0,70,-2) and look
+        // (0,0,1) both rotate to eye (-2,70,0) and look (1,0,0) under a +90
+        // degree turn. A viewer square to the rotated surface must still hit
+        // the same canvas pixel.
+        val rotated = surface().apply { yawDegrees = 90f }
+        val rotatedPixel = SurfacePicking.localPixel(rotated, Vec3d(-2.0, 70.0, 0.0), Vec3d(1.0, 0.0, 0.0))
+
+        assertEquals(basePixel, rotatedPixel)
+    }
 }

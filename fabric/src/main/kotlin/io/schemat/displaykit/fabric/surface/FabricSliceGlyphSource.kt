@@ -12,6 +12,6 @@ import io.schemat.displaykit.surface.SliceGlyphSource
  */
 object FabricSliceGlyphSource : SliceGlyphSource {
     override fun request(id: SpriteId) = SpriteSliceProvider.request(id)
-    override fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, yOffset: Int): Int? =
-        SpriteSliceProvider.codepointFor(id, srcX, srcY, yOffset)
+    override fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int): Int? =
+        SpriteSliceProvider.codepointFor(id, srcX, srcY, ascent)
 }

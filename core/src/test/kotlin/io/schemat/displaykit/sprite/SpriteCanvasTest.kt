@@ -192,13 +192,67 @@ class SpriteCanvasTest {
     }
 
     @Test
-    fun spriteYRequestsAscentOffsetFromTheRowRemainder() {
-        // y=16 with FONT_LINE_HEIGHT_PX=9 -> row 1 (baseline 9) + remainder 7
-        // -> ascent offset -7, landing pixel-exact at 16.
+    fun aSixteenPxGlyphAtY30ProducesAnAscentPuttingItsTopAtExactlyY30() {
+        // y=30 -> natural row 3 (origin 27). Required ascent =
+        // 27 + GLYPH_TOP_BEARING_PX(7) - 30 = 4, which a 16px-tall glyph
+        // satisfies on its natural row (no fallback needed). A glyph's top,
+        // relative to its line's origin, is GLYPH_TOP_BEARING_PX - ascent, so
+        // its absolute top is 27 + 7 - 4 = 30 -- pixel-exact.
+        //
+        // (Superseded a test that asserted yOffset == -7 for y=16 under the
+        // OLD, buggy sign convention -- see TextMetrics.GLYPH_TOP_BEARING_PX.)
         val c = SpriteCanvas(64, 64)
-        c.draw(entry("dot"), x = 0, y = 16)
+        c.draw(entry("tall", w = 16, h = 16), x = 0, y = 30)
         val variant = SpriteGlyphs.requested().single()
-        assertEquals(-7, variant.yOffset)
+        assertEquals(4, variant.ascent)
+    }
+
+    @Test
+    fun anEightyTwoPxCropAtY9LandsAtExactlyY9OnItsNaturalRow() {
+        // y=9 -> natural row 1 (origin 9). Required ascent =
+        // 9 + 7 - 9 = 7, well within an 82px-tall glyph's height, so no row
+        // fallback is needed. Exercised through drawGlyph (the nine-slice
+        // path) rather than draw(), since whole sprites this tall don't occur
+        // in practice.
+        val c = SpriteCanvas(400, 100)
+        var seenAscent: Int? = null
+        c.drawGlyph(x = 0, y = 9, height = 82, advanceWidth = 83) { ascent ->
+            seenAscent = ascent
+            "x"
+        }
+        assertEquals(7, seenAscent)
+    }
+
+    @Test
+    fun aOnePxCropTooShortForItsNaturalRowFallsBackToAnEarlierRowAtTheRightY() {
+        // y=9 -> natural row 1 needs ascent 7, illegal for a 1px-tall glyph
+        // (ascent <= height). GlyphPlacement falls back to row 0, where the
+        // required ascent is 7 - 9 = -2 (legal: any negative ascent is fine).
+        // Row 0's origin is 0, so the glyph's absolute top is still
+        // 0 + 7 - (-2) = 9 -- the fallback changes WHICH row emits it, not
+        // where it lands.
+        val c = SpriteCanvas(400, 100)
+        var seenAscent: Int? = null
+        c.drawGlyph(x = 0, y = 9, height = 1, advanceWidth = 2) { ascent ->
+            seenAscent = ascent
+            "x"
+        }
+        assertEquals(-2, seenAscent)
+    }
+
+    @Test
+    fun aCaseNoRowCanSatisfyWarnsOnceAndDrawsNothing() {
+        // y=0 -> natural row 0 needs ascent 7, illegal for a 1px-tall glyph,
+        // and row 0 is already the floor -- no earlier row to fall back to.
+        SpriteDiagnostics.reset()
+        val c = SpriteCanvas(64, 64)
+        var resolveCalled = false
+        c.drawGlyph(x = 0, y = 0, height = 1, advanceWidth = 2) { resolveCalled = true; "x" }
+
+        assertEquals(0, c.itemCount(), "an unsatisfiable placement must draw nothing")
+        assertTrue(!resolveCalled, "resolve must not be called with an illegal ascent")
+        assertTrue(SpriteDiagnostics.warnings().isNotEmpty(), "an unsatisfiable placement must warn")
+        SpriteDiagnostics.reset()
     }
 
     // --- requiresPack(): plain text needs no pack; a non-zero gap does ---

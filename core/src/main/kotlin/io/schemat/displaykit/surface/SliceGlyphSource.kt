@@ -19,21 +19,23 @@ interface SliceGlyphSource {
     fun request(id: SpriteId)
 
     /**
-     * Codepoint for the crop whose source origin is (srcX, srcY), drawn at
-     * [yOffset] pixels below its natural baseline — or null if this sprite has
-     * no such crop.
+     * Codepoint for the crop whose source origin is (srcX, srcY), with a
+     * font-provider `ascent` of [ascent] — or null if this sprite has no such
+     * crop.
      *
      * A bitmap glyph's vertical placement is baked into its provider `ascent`,
-     * so a crop drawn at N distinct within-row offsets needs N codepoints, the
+     * so a crop drawn at N distinct ascents needs N codepoints, the
      * same way [io.schemat.displaykit.sprite.SpriteGlyphs] treats whole
      * sprites. Implementations allocate on demand and must keep a codepoint
      * stable once handed out — a client that already downloaded the pack would
      * otherwise render tofu.
      *
-     * [yOffset] is never positive: `ascent <= height` is client-enforced and
-     * `ascent` already sits at its maximum when the offset is zero.
+     * [ascent] must not exceed the crop's own height: `ascent <= height` is
+     * client-enforced (`"Ascent {} higher than height {}"` fails the whole
+     * font file otherwise). [io.schemat.displaykit.sprite.GlyphPlacement]
+     * derives an [ascent] that always satisfies this before calling here.
      */
-    fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, yOffset: Int): Int?
+    fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int): Int?
 
     companion object {
         /** Installed by the platform layer. Null means nine-slice is unavailable. */
@@ -81,19 +83,20 @@ object NineSlicePainter {
 
         source.request(entry.id)
         for (p in regions) {
-            // drawGlyph derives the within-row remainder from y and asks for
-            // the matching variant — exactly as SpriteCanvas.draw does for a
-            // whole sprite. Resolving a codepoint here without that offset is
-            // what used to collapse every region at a y that is not a
-            // multiple of TextMetrics.FONT_LINE_HEIGHT_PX onto its row's
+            // drawGlyph resolves the (row, ascent) pair via GlyphPlacement and
+            // asks for the matching variant — exactly as SpriteCanvas.draw
+            // does for a whole sprite. Resolving a codepoint here without that
+            // ascent is what used to collapse every region at a y that is not
+            // a multiple of TextMetrics.FONT_LINE_HEIGHT_PX onto its row's
             // baseline.
             canvas.drawGlyph(
                 x = rect.x + p.dstX,
                 y = rect.y + p.dstY,
+                height = p.srcH,
                 advanceWidth = p.srcW + 1,   // bitmap glyph advance is width + 1
                 tint = tint
-            ) { yOffset ->
-                source.codepointFor(entry.id, p.srcX, p.srcY, yOffset)
+            ) { ascent ->
+                source.codepointFor(entry.id, p.srcX, p.srcY, ascent)
                     ?.let { String(Character.toChars(it)) }
             }
         }

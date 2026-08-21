@@ -75,11 +75,11 @@ object SpriteSliceProvider : AssetProvider {
     data class SliceVariant(
         val id: SpriteId,
         val crop: CatalogCrop,
-        val yOffset: Int,
+        val ascent: Int,
         val codepoint: Int
     )
 
-    private data class Key(val id: SpriteId, val srcX: Int, val srcY: Int, val yOffset: Int)
+    private data class Key(val id: SpriteId, val srcX: Int, val srcY: Int, val ascent: Int)
 
     private val requested = LinkedHashSet<SpriteId>()
     private val variants = LinkedHashMap<Key, SliceVariant>()
@@ -90,33 +90,37 @@ object SpriteSliceProvider : AssetProvider {
     }
 
     /**
-     * Codepoint for the crop at (srcX, srcY) drawn at [yOffset], allocating one
-     * if this variant is new.
+     * Codepoint for the crop at (srcX, srcY) with a font-provider `ascent` of
+     * [ascent], allocating one if this variant is new.
      *
      * Allocation is on demand and the mapping is append-only: a variant keeps
      * its codepoint for the life of the process, so a client that already
      * downloaded the pack never finds a character re-pointed underneath it.
      *
-     * @throws IllegalArgumentException if [yOffset] is positive — the same
-     *   constraint `SpriteGlyphs.codepointFor` enforces, since `ascent` is
-     *   already at its maximum (`height`) at offset zero.
+     * Returns null when the crop itself is unknown, before [ascent] is
+     * validated — an unresolvable crop is a caller bug the pack cannot do
+     * anything about regardless of the ascent asked for.
+     *
+     * @throws IllegalArgumentException if [ascent] exceeds the crop's own
+     *   height — the same `ascent <= height` constraint
+     *   `SpriteGlyphs.codepointFor` enforces for whole sprites.
      */
-    fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, yOffset: Int): Int? {
-        require(yOffset <= 0) {
-            "Slice crop ($srcX,$srcY) of $id requested yOffset $yOffset, but positive " +
-                "offsets are not representable — ascent <= height is client-enforced " +
-                "and ascent already sits at its maximum when yOffset = 0."
-        }
+    fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int): Int? {
         val crop = SliceCatalog.regionsFor(id)?.firstOrNull { it.x == srcX && it.y == srcY }
             ?: return null
-        return variants.getOrPut(Key(id, srcX, srcY, yOffset)) {
-            SliceVariant(id, crop, yOffset, SpriteGlyphs.allocateSlice())
+        require(ascent <= crop.h) {
+            "Slice crop ($srcX,$srcY) of $id requested ascent $ascent, which exceeds " +
+                "its height ${crop.h} — the client rejects the WHOLE font file " +
+                "(\"Ascent {} higher than height {}\") if this is ever violated."
+        }
+        return variants.getOrPut(Key(id, srcX, srcY, ascent)) {
+            SliceVariant(id, crop, ascent, SpriteGlyphs.allocateSlice())
         }.codepoint
     }
 
     fun requestedIds(): Set<SpriteId> = requested.toSet()
 
-    /** Every (crop, yOffset) variant allocated so far, in allocation order. */
+    /** Every (crop, ascent) variant allocated so far, in allocation order. */
     fun variants(): List<SliceVariant> = variants.values.toList()
 
     /**
@@ -155,7 +159,7 @@ object SpriteSliceProvider : AssetProvider {
                 addProperty("type", "bitmap")
                 addProperty("file", "displaykit:font/slices/${v.crop.resource}")
                 addProperty("height", v.crop.h)
-                addProperty("ascent", v.crop.h + v.yOffset)
+                addProperty("ascent", v.ascent)
                 add("chars", JsonArray().apply {
                     add(String(Character.toChars(v.codepoint)))
                 })

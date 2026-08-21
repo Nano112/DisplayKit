@@ -74,6 +74,31 @@ class Surface(
         }
     }
 
+    /**
+     * Optional solid panel behind the whole composition. Null (the default)
+     * keeps the previous fully transparent background.
+     *
+     * One field and zero extra entities, versus a second stretched entity
+     * that would cost an entity and need its own sizing.
+     *
+     * [DkColor]'s first parameter is alpha; 100-149 and 200-249 are reserved
+     * shader sentinels ([DkColor.withGlass] / [DkColor.withCornerRadius]) —
+     * pick a value outside both bands.
+     */
+    var backdrop: DkColor? = null
+
+    /**
+     * Y-axis rotation applied to the whole surface, in degrees, composed with
+     * [toEntity]'s scale.
+     *
+     * An unrotated ([yawDegrees] `== 0f`) surface faces -Z (see
+     * [SurfacePicking]'s KDoc). [SurfacePicking.localPixel] counter-rotates
+     * the incoming eye/look by `-yawDegrees` about [position] before its
+     * planar maths, so the two must stay in lockstep — this is the only
+     * place either may change.
+     */
+    var yawDegrees: Float = 0f
+
     /** World blocks per canvas pixel, derived so callers size in blocks. */
     val pixelScale: Float
         get() = targetWidthBlocks / (widthPx * TextMetrics.PIXEL_SIZE)
@@ -96,11 +121,12 @@ class Surface(
     fun toEntity(): VirtualTextDisplay = VirtualTextDisplay().also { d ->
         d.position = position
         d.billboard = orientation
-        d.backgroundColor = DkColor.TRANSPARENT
+        d.backgroundColor = backdrop ?: DkColor.TRANSPARENT
         d.brightness = Brightness.FULL
         d.hasShadow = false
         val s = pixelScale
-        d.transformation = Mat4f(Matrix4f().scale(s, s, s))
+        val yawRadians = Math.toRadians(yawDegrees.toDouble()).toFloat()
+        d.transformation = Mat4f(Matrix4f().rotateY(yawRadians).scale(s, s, s))
 
         // The canvas model assumes every row starts at x=0 and that no row
         // ever wraps onto a second display line — neither holds under

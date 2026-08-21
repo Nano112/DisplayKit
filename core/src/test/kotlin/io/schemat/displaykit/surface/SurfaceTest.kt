@@ -1,5 +1,6 @@
 package io.schemat.displaykit.surface
 
+import io.schemat.displaykit.math.Mat4f
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.Billboard
 import io.schemat.displaykit.render.DkColor
@@ -7,6 +8,7 @@ import io.schemat.displaykit.render.TextAlignment
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteId
+import org.joml.Matrix4f
 import kotlin.math.abs
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -215,5 +217,53 @@ class SurfaceTest {
             "lineWidth ($lineWidth) must cover the row's true width " +
                 "(${TextMetrics.textWidthPx(longLabel)})"
         )
+    }
+
+    // --- Feature: backdrop ---
+
+    @Test
+    fun backdropDefaultsToTransparent() {
+        val s = surface()
+        assertEquals(DkColor.TRANSPARENT, s.toEntity().backgroundColor)
+    }
+
+    @Test
+    fun settingBackdropBecomesTheEntitysBackgroundColor() {
+        val s = surface()
+        s.backdrop = DkColor(255, 10, 20, 30)
+        assertEquals(DkColor(255, 10, 20, 30), s.toEntity().backgroundColor)
+    }
+
+    // --- Feature: yawDegrees ---
+
+    /**
+     * Float-approximate matrix comparison. `Mat4f` (and JOML's `Matrix4f`)
+     * compares bit-exact, and `rotateY` can legitimately produce `-0.0f`
+     * where a hand-built matrix has `0.0f` for the same mathematically-zero
+     * cell (e.g. `-sin(0f)`) -- equal in value, distinct in bit pattern.
+     */
+    private fun assertMatrixApproxEquals(expected: Mat4f, actual: Mat4f, epsilon: Float = 1e-5f) {
+        val e = expected.toFloatArray()
+        val a = actual.toFloatArray()
+        for (i in e.indices) {
+            assertTrue(abs(e[i] - a[i]) < epsilon, "matrix element $i differs: expected ${e[i]}, got ${a[i]}")
+        }
+    }
+
+    @Test
+    fun toEntityAppliesNoRotationWhenYawIsZero() {
+        val s = surface()
+        val scale = s.pixelScale
+        val expected = Mat4f(Matrix4f().scale(scale, scale, scale))
+        assertMatrixApproxEquals(expected, s.toEntity().transformation)
+    }
+
+    @Test
+    fun toEntityComposesTheYawRotationWithTheExistingScale() {
+        val s = surface()
+        s.yawDegrees = 90f
+        val scale = s.pixelScale
+        val expected = Mat4f(Matrix4f().rotateY(Math.toRadians(90.0).toFloat()).scale(scale, scale, scale))
+        assertMatrixApproxEquals(expected, s.toEntity().transformation)
     }
 }

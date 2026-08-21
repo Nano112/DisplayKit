@@ -74,10 +74,16 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     /**
      * One placed item, ready to be flattened.
      *
-     * @param y The item's canvas Y, unquantised. [toTextComponent] derives its
-     *   row from this (`y / TextMetrics.FONT_LINE_HEIGHT_PX`) — sprite items have
-     *   already baked their within-row remainder into [content] via
-     *   [SpriteGlyphs] ascent, at draw() time.
+     * @param y The item's canvas Y, unquantised. Kept for diagnostics
+     *   ([itemPositions]) — [buildRows] groups by [row], not by re-deriving
+     *   it from [y], because a short sprite/slice glyph's row can fall below
+     *   `y / TextMetrics.FONT_LINE_HEIGHT_PX` (see [GlyphPlacement]). Such
+     *   items have already baked their within-row remainder into [content]
+     *   via [SpriteGlyphs] ascent, at draw() time.
+     * @param row The text-component row (0-based, top to bottom) this item
+     *   is emitted on. Equal to `y / TextMetrics.FONT_LINE_HEIGHT_PX` for
+     *   plain text, but may be an earlier row for a sprite/slice glyph too
+     *   short to satisfy its natural row's required ascent.
      * @param advanceWidth How far the text cursor moves once this item is
      *   emitted — i.e. the pixel position immediately after it. For a sprite
      *   glyph this is `entry.width + 1`, matching the client's bitmap glyph
@@ -89,6 +95,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         val font: String?,
         val x: Int,
         val y: Int,
+        val row: Int,
         val advanceWidth: Int,
         val tint: DkColor?
     )
@@ -99,17 +106,17 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * Draw [entry] with its top-left at ([x], [y]) in canvas pixels, y growing
      * downward.
      *
-     * [y] is split into a row (`y / TextMetrics.FONT_LINE_HEIGHT_PX`, handled by
-     * [toTextComponent]) and a within-row remainder (`y % FONT_LINE_HEIGHT_PX`),
-     * which is baked into the glyph's ascent immediately so the sprite lands
-     * pixel-exact regardless of which row it falls in.
+     * [y] and [SpriteEntry.height] are resolved via [GlyphPlacement] to a
+     * (row, ascent) pair that puts the glyph's TOP at exactly [y] — falling
+     * back to an earlier text-component row when the sprite is too short for
+     * its natural row's required ascent (see [GlyphPlacement] for when that
+     * applies). When even row 0 cannot satisfy `ascent <= height`, this warns
+     * once via [SpriteDiagnostics] and draws nothing rather than handing a
+     * font provider an ascent the client would refuse to load.
      *
      * @throws IllegalArgumentException if [entry] is animated.
-     * @throws IllegalArgumentException if [y] is negative. `draw` shifts the
-     *   glyph's baked `ascent` down by [y]'s remainder (see [SpriteGlyphs]),
-     *   and upward shift is not representable — `ascent <= height` is
-     *   client-enforced and already sits at its maximum when the remainder
-     *   is `0`.
+     * @throws IllegalArgumentException if [y] is negative — the canvas origin
+     *   is its top-left and canvas y never goes negative.
      */
     fun draw(entry: SpriteEntry, x: Int, y: Int, tint: DkColor? = null) {
         require(!entry.animated) {
@@ -121,12 +128,21 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
                 "the top of the canvas), but got y=$y for ${entry.id}."
         }
         if (tint != null) SpriteDiagnostics.checkTintable(entry)
-        val remainder = y % TextMetrics.FONT_LINE_HEIGHT_PX
+        val placement = GlyphPlacement.resolve(y, entry.height) ?: run {
+            SpriteDiagnostics.warnOnce(
+                "ascent-unsatisfiable:${entry.id}:y=$y",
+                "Cannot draw ${entry.id} (height ${entry.height}) with its top at " +
+                    "canvas y=$y: even row 0 cannot produce a legal ascent " +
+                    "(ascent <= height). Skipping this draw."
+            )
+            return
+        }
         items += Item(
-            content = SpriteGlyphs.charsFor(entry, -remainder),
+            content = SpriteGlyphs.charsFor(entry, placement.ascent),
             font = SpriteGlyphs.FONT_ID,
             x = x,
             y = y,
+            row = placement.row,
             advanceWidth = entry.width + 1,
             tint = tint
         )
@@ -149,6 +165,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
             font = null,
             x = x,
             y = y,
+            row = y / TextMetrics.FONT_LINE_HEIGHT_PX,
             advanceWidth = TextMetrics.textWidthPx(s),
             tint = tint
         )
@@ -163,36 +180,48 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     /**
      * Draw a slice glyph with its top-left at ([x], [y]) in canvas pixels.
      *
-     * Mirrors [draw] exactly, and must keep doing so: [y] is split into a row
-     * (`y / TextMetrics.FONT_LINE_HEIGHT_PX`, handled by [toTextComponent]) and a
-     * within-row remainder (`y % FONT_LINE_HEIGHT_PX`) that has to be baked into the
-     * glyph's `ascent`, or the glyph collapses onto its row's baseline.
+     * Mirrors [draw] exactly, and must keep doing so: [y] and [height] are
+     * resolved via [GlyphPlacement] to a (row, ascent) pair that has to be
+     * baked into the glyph's `ascent`, or the glyph collapses onto its row's
+     * baseline. Nine-slice crops can be as short as 1px, which is exactly the
+     * case [GlyphPlacement] falls back to an earlier row for.
      *
      * Slice codepoints are not owned by [SpriteGlyphs] — they reference
      * generated crop textures and live in
      * [io.schemat.displaykit.surface.SliceGlyphSource] — so the caller cannot
-     * be handed a finished string up front: it does not know the offset yet.
+     * be handed a finished string up front: it does not know the ascent yet.
      * Instead it passes [resolve], which this method calls with the required
-     * `yOffset` (`-remainder`, never positive). Computing the offset here
-     * rather than at each call site is what stops the slice path from drifting
-     * away from [draw] again.
+     * `ascent`. Computing it here rather than at each call site is what stops
+     * the slice path from drifting away from [draw] again.
      *
-     * @param resolve Returns the characters for the requested `yOffset`
+     * When [GlyphPlacement] cannot satisfy `ascent <= height` even at row 0,
+     * this warns once via [SpriteDiagnostics] and draws nothing.
+     *
+     * @param resolve Returns the characters for the requested `ascent`
      *   variant, or null when the variant cannot be resolved (in which case
      *   nothing is drawn).
      */
     fun drawGlyph(
         x: Int,
         y: Int,
+        height: Int,
         advanceWidth: Int,
         tint: DkColor? = null,
-        resolve: (yOffset: Int) -> String?
+        resolve: (ascent: Int) -> String?
     ) {
         require(y >= 0) { "Canvas y must be >= 0 (got $y); the canvas origin is its top-left." }
-        val remainder = y % TextMetrics.FONT_LINE_HEIGHT_PX
-        val chars = resolve(-remainder) ?: return
+        val placement = GlyphPlacement.resolve(y, height) ?: run {
+            SpriteDiagnostics.warnOnce(
+                "ascent-unsatisfiable:slice:h=$height:y=$y",
+                "Cannot place a ${height}px-tall slice glyph with its top at canvas " +
+                    "y=$y: even row 0 cannot produce a legal ascent (ascent <= height). " +
+                    "Skipping this draw."
+            )
+            return
+        }
+        val chars = resolve(placement.ascent) ?: return
         items += Item(content = chars, font = SpriteGlyphs.SLICE_FONT_ID, x = x, y = y,
-                      advanceWidth = advanceWidth, tint = tint)
+                      row = placement.row, advanceWidth = advanceWidth, tint = tint)
     }
 
     fun clear() = items.clear()
@@ -223,7 +252,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
     private fun buildRows(): List<Row> {
         if (items.isEmpty()) return emptyList()
 
-        val byRow = items.groupBy { it.y / TextMetrics.FONT_LINE_HEIGHT_PX }
+        val byRow = items.groupBy { it.row }
         val maxRow = byRow.keys.max()
 
         val rows = mutableListOf<Row>()

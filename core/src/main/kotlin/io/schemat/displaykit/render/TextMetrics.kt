@@ -35,6 +35,23 @@ object TextMetrics {
     const val FONT_LINE_HEIGHT_PX = 9
 
     /**
+     * The vertical bearing baked into every bitmap glyph by the client, in
+     * text pixels.
+     *
+     * Verified from the decompiled 1.21.11 client:
+     * `com.mojang.blaze3d.font.GlyphBitmap`'s defaults resolve
+     * `getBearingTop()` to the provider's `ascent` field
+     * (`BitmapProvider$Glyph`) and `getTop()` to `7.0f - getBearingTop()`.
+     * So, relative to the origin of the line a glyph is emitted on, its top
+     * sits at `GLYPH_TOP_BEARING_PX - ascent` and it occupies the vertical
+     * range `[GLYPH_TOP_BEARING_PX - ascent, GLYPH_TOP_BEARING_PX - ascent +
+     * height]`. Anything that derives `ascent` to place a glyph's top at a
+     * specific canvas Y (see [io.schemat.displaykit.sprite.GlyphPlacement])
+     * must start from this constant rather than rediscover the 7.
+     */
+    const val GLYPH_TOP_BEARING_PX = 7
+
+    /**
      * Advance width of a character in the default Minecraft font (text pixels).
      * Approximation table — good enough for layout/hitbox math.
      */
