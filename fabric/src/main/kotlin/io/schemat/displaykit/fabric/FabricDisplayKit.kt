@@ -119,6 +119,8 @@ class FabricDisplayKit : ModInitializer {
                 AnimationTicker.tick()
             })
 
+            io.schemat.displaykit.fabric.surface.SurfaceTicker.register()
+
             LOGGER.info("[DisplayKit] Initialized on Fabric")
         }
 
