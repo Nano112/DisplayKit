@@ -309,6 +309,13 @@ class Surface(
      *
      * Rebuilds from scratch each call, so a caller can re-run it after any
      * content change without tracking which nodes to remove.
+     *
+     * [layout] and [paint] are mutually exclusive, not layered: rendering the
+     * tree ([paintTree]) goes through [paint], which clears the canvas first.
+     * Calling [paint] directly after [layout] therefore DISCARDS the tree's
+     * output rather than merging with it -- a tree-based surface must drive
+     * its content through [paintTree], never a raw [paint] call, once [layout]
+     * has been used.
      */
     fun layout(build: (SurfaceNode) -> Unit) {
         val r = BoxNode("surface-root")
@@ -344,12 +351,52 @@ class Surface(
         return SurfaceEvents.dispatch(r, event, target)
     }
 
-    /** Repaint from scratch. Previous content, hit rects and slots are discarded. */
+    /**
+     * Repaint from scratch. Previous content, hit rects and slots are discarded.
+     *
+     * [layout] and [paint] are mutually exclusive, not layered: this clears
+     * the canvas and sets [SpriteCanvas.anchorToBounds] before running
+     * [block], so calling this directly on a surface built with [layout]
+     * discards the tree's painted output rather than merging with it. Use
+     * [paintTree] to (re-)render a tree-based surface instead of calling this
+     * directly.
+     */
     fun paint(block: SurfacePainter.() -> Unit) {
         canvas.anchorToBounds = true
         canvas.clear(); rects.clear(); slots.clear()
         Painter().block()
     }
+
+    /**
+     * Everything the layer geometry depends on, for `-Ddisplaykit.debug.layers`.
+     *
+     * Per-layer row width is the value the client is expected to measure the
+     * block at. If these differ between layers, each layer centres on a
+     * different width and they slide apart horizontally.
+     */
+    internal fun describeLayersForDebug(spawned: List<VirtualTextDisplay>): String {
+        val sb = StringBuilder()
+        sb.append("[DisplayKit] surface ${widthPx}x${heightPx} yaw=${"%.1f".format(yawDegrees)} ")
+        sb.append("pixelScale=${"%.5f".format(pixelScale)} block=${blockWidthPx()}x${blockHeightPx()}\n")
+        sb.append("[DisplayKit]   position=${position}\n")
+        for ((i, layer) in canvas.layers().withIndex()) {
+            val rows = canvas.layerRowWidths(layer)
+            val e = spawned.getOrNull(i)
+            sb.append(
+                "[DisplayKit]   layer=$layer ordinal=$i maxRow=${rows.maxOrNull()} " +
+                    "rows=${rows.size} items=${canvas.layerItemCount(layer)} " +
+                    "pos=${e?.position} lineWidth=${e?.lineWidth}\n"
+            )
+        }
+        return sb.toString().trimEnd()
+    }
+
+    /** Width of the text block the client will measure, in canvas pixels. */
+    internal fun blockWidthPx(): Int = canvas.blockWidthPx()
+
+    /** Height of that block, in canvas pixels. */
+    internal fun blockHeightPx(): Int =
+        canvas.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
 
     /**
      * The world point to give the entity so that canvas pixel (0,0) — the
@@ -384,39 +431,7 @@ class Surface(
      * it does not shift when a widget changes width.
      *
      * See `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`.
-     */
-    /**
-     * Everything the layer geometry depends on, for `-Ddisplaykit.debug.layers`.
      *
-     * Per-layer row width is the value the client is expected to measure the
-     * block at. If these differ between layers, each layer centres on a
-     * different width and they slide apart horizontally.
-     */
-    internal fun describeLayersForDebug(spawned: List<VirtualTextDisplay>): String {
-        val sb = StringBuilder()
-        sb.append("[DisplayKit] surface ${widthPx}x${heightPx} yaw=${"%.1f".format(yawDegrees)} ")
-        sb.append("pixelScale=${"%.5f".format(pixelScale)} block=${blockWidthPx()}x${blockHeightPx()}\n")
-        sb.append("[DisplayKit]   position=${position}\n")
-        for ((i, layer) in canvas.layers().withIndex()) {
-            val rows = canvas.layerRowWidths(layer)
-            val e = spawned.getOrNull(i)
-            sb.append(
-                "[DisplayKit]   layer=$layer ordinal=$i maxRow=${rows.maxOrNull()} " +
-                    "rows=${rows.size} items=${canvas.layerItemCount(layer)} " +
-                    "pos=${e?.position} lineWidth=${e?.lineWidth}\n"
-            )
-        }
-        return sb.toString().trimEnd()
-    }
-
-    /** Width of the text block the client will measure, in canvas pixels. */
-    internal fun blockWidthPx(): Int = canvas.blockWidthPx()
-
-    /** Height of that block, in canvas pixels. */
-    internal fun blockHeightPx(): Int =
-        canvas.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
-
-    /**
      * @param source The canvas whose measured block ([SpriteCanvas.blockWidthPx],
      *   [SpriteCanvas.emittedRowCount]) the client will centre its render
      *   against — normally this surface's own [canvas], but [pointerEntityAt]

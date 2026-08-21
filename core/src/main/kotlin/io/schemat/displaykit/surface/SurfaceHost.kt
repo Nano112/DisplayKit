@@ -25,9 +25,6 @@ class SurfaceHost(
     private var pointer: VirtualTextDisplay? = null
     private val viewers get() = setOf(owner.uuid)
 
-    var hovered: String? = null
-        private set
-
     /**
      * Last pixel the pointer occupied, so a grab can keep being fed once the
      * ray leaves the surface. A drag must survive the cursor straying off the
@@ -92,14 +89,6 @@ class SurfaceHost(
     private fun handleClickLegacy(): Boolean {
         val hit = SurfacePicking.hit(surface, owner.eyePosition(), owner.lookDirection()) ?: return false
         hit.onClick()
-        return true
-    }
-
-    /** Returns true when the hovered region changed, so the caller can repaint. */
-    fun tickHover(): Boolean {
-        val id = SurfacePicking.hit(surface, owner.eyePosition(), owner.lookDirection())?.id
-        if (id == hovered) return false
-        hovered = id
         return true
     }
 
@@ -172,19 +161,28 @@ class SurfaceHost(
 
     /** Route a click. Returns true when the surface consumed it. */
     fun handleClick(button: PointerButton): Boolean {
-        val point = SurfacePicking.localPixel(surface, owner.eyePosition(), owner.lookDirection())
-            ?: return false
-        val (px, py) = point
         val player = owner.uuid
 
         // Click-to-grab, click-to-release: there is no reliable press-and-hold
         // against a floating entity -- START_DESTROY_BLOCK/STOP_DESTROY_BLOCK
         // only fire against blocks, and swing rate against open-air entities
         // is client- and latency-dependent.
+        //
+        // Checked BEFORE the localPixel null-return below: tick() deliberately
+        // keeps feeding an active grab once the ray leaves the surface (see
+        // lastPointerPx), so a drag that strays off the panel must still be
+        // releasable by a click even while the pointer is off-surface -- a
+        // release gated on a live pixel would strand it grabbed until the ray
+        // happened to come back.
         if (SurfaceFocus.grabbed(player) != null) {
             SurfaceFocus.release(player)
             return true
         }
+
+        val point = SurfacePicking.localPixel(surface, owner.eyePosition(), owner.lookDirection())
+            ?: return false
+        val (px, py) = point
+
         val node = surface.nodeAt(px, py)
         if (node != null && node.onGrabMove != null && SurfaceFocus.grab(player, node)) {
             return true
@@ -234,6 +232,14 @@ class SurfaceHost(
         pointer = null
     }
 
+    /**
+     * Tear down this window's entities. Does NOT touch [SurfaceFocus] --
+     * focus is per-VIEWER, not per-host ([SurfaceFocus]'s own KDoc), so
+     * clearing it here would wipe hover/grab/scrollArmed for every OTHER
+     * surface the player has open. [InteractionRouter.unregisterSurface]
+     * owns that decision, and only takes it once the player has no surfaces
+     * left.
+     */
     fun close() {
         val ids = layers.map { it.entityId } +
             listOfNotNull(backing?.entityId, pointer?.entityId)
@@ -243,7 +249,6 @@ class SurfaceHost(
         backing = null
         pointer = null
         lastPointerPx = null
-        SurfaceFocus.clear(owner.uuid)
     }
 
     fun entities(): List<VirtualEntity> = listOfNotNull(backing) + layers + listOfNotNull(pointer)

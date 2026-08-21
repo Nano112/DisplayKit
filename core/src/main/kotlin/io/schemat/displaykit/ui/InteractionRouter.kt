@@ -74,7 +74,14 @@ object InteractionRouter {
 
     fun unregisterSurface(playerUUID: UUID, host: io.schemat.displaykit.surface.SurfaceHost) {
         activeSurfaces[playerUUID]?.remove(host)
-        if (activeSurfaces[playerUUID]?.isEmpty() == true) activeSurfaces.remove(playerUUID)
+        if (activeSurfaces[playerUUID]?.isEmpty() == true) {
+            activeSurfaces.remove(playerUUID)
+            // Focus is per-VIEWER, not per-host: only drop it once the player
+            // has no surfaces left. Clearing it in SurfaceHost.close() meant a
+            // repaint that changed the layer count cancelled an active drag,
+            // and closing one window disarmed another.
+            io.schemat.displaykit.surface.SurfaceFocus.clear(playerUUID)
+        }
     }
 
     fun getSurfaces(playerUUID: UUID): List<io.schemat.displaykit.surface.SurfaceHost> =
@@ -238,8 +245,13 @@ object InteractionRouter {
         // Surfaces too, for the same reason cleanupPlayer closes them: a host
         // dropped without close() strands its entity client-side until the
         // player relogs. Shutdown is exactly when that is least recoverable.
+        val players = activeSurfaces.keys.toList()
         activeSurfaces.values.flatten().toList().forEach { it.close() }
         activeSurfaces.clear()
+        // close() no longer clears SurfaceFocus itself (that's per-viewer, not
+        // per-host -- see unregisterSurface), so this loop has to do it for
+        // every player being torn down here, same as cleanupPlayer does.
+        players.forEach { io.schemat.displaykit.surface.SurfaceFocus.clear(it) }
     }
 
     fun closeForPlayer(playerUUID: UUID) {

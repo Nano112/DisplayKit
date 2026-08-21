@@ -218,7 +218,15 @@ class SurfaceHostTest {
     }
 
     @Test
-    fun closeDestroysEveryEntityAndClearsFocus() {
+    fun closeDestroysEveryEntityButLeavesFocusAlone() {
+        // Focus is per-VIEWER, not per-host (SurfaceFocus's own KDoc): a
+        // viewer has one pointer across all their surfaces, so close()
+        // tearing down THIS window's entities must not wipe hover/grab state
+        // that may still belong to another open surface. Dropping the last
+        // surface for a player is InteractionRouter.unregisterSurface's job,
+        // not SurfaceHost.close()'s -- see
+        // aRepaintThatChangesTheLayerCountDoesNotCancelAnActiveGrab below for
+        // the regression this used to cause.
         val s = surface()
         s.layout { root -> root.addChild(WidgetNode("node", PxSize(10, 10))) }
         val player = FakePlayer()
@@ -234,6 +242,59 @@ class SurfaceHostTest {
         host.close()
 
         assertEquals(idsBeforeClose, sender.destroyedIds.toSet(), "close() must destroy layers + backing + pointer")
-        assertEquals(SurfaceFocus.State(), SurfaceFocus.state(player.uuid), "close() must clear this player's focus state")
+        assertNotEquals(
+            SurfaceFocus.State(), SurfaceFocus.state(player.uuid),
+            "close() must NOT clear this player's focus state -- that is InteractionRouter's job now"
+        )
+
+        SurfaceFocus.clear(player.uuid)
+    }
+
+    @Test
+    fun aRepaintThatChangesTheLayerCountDoesNotCancelAnActiveGrab() {
+        // repaint() falls back to close()+open() when the layer set changes.
+        // If close() also cleared focus, a tab switch would cancel a drag
+        // mid-gesture -- the user's cursor is still down on the thumb.
+        val s = surface()
+
+        // A grabbable node comes from the layout tree, independent of
+        // whatever the canvas itself is painted with below.
+        s.layout { root ->
+            val thumb = WidgetNode("thumb", PxSize(10, 10))
+            thumb.onGrabMove = { _, _ -> }
+            root.addChild(thumb)
+        }
+        // One painted layer (KIND_TEXT at elevation 0).
+        s.paint { label("first layer", 0, 0) }
+
+        val player = FakePlayer()
+        val host = SurfaceHost(platform(RecordingPacketSender()), player, s)
+        host.open()
+        val layersBefore = s.toEntities().size
+
+        val thumb = s.nodeAt(5, 5)!!
+        assertTrue(SurfaceFocus.grab(player.uuid, thumb), "fixture sanity: the thumb must be grabbable")
+        assertEquals(thumb, SurfaceFocus.grabbed(player.uuid), "fixture sanity: grab must be recorded before repaint")
+
+        // Add a second, elevated label -- elevate() shifts KIND_TEXT's depth,
+        // which lands on a different canvas layer number, growing
+        // canvas.layers() and therefore toEntities()'s size. This is what
+        // drives repaint() into its close()+open() fallback (repaint()
+        // compares fresh.size to the OLD layers.size captured at open()).
+        s.paint {
+            label("first layer", 0, 0)
+            elevate(1) { label("second layer", 0, 20) }
+        }
+        val layersAfter = s.toEntities().size
+        assertNotEquals(layersBefore, layersAfter, "fixture sanity: the layer count must actually change")
+
+        host.repaint()
+
+        assertEquals(
+            thumb, SurfaceFocus.grabbed(player.uuid),
+            "a repaint that changes the layer count must not cancel an in-progress grab"
+        )
+
+        SurfaceFocus.clear(player.uuid)
     }
 }
