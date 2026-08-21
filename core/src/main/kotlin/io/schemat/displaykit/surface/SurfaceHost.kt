@@ -28,6 +28,13 @@ class SurfaceHost(
     var hovered: String? = null
         private set
 
+    /**
+     * Last pixel the pointer occupied, so a grab can keep being fed once the
+     * ray leaves the surface. A drag must survive the cursor straying off the
+     * panel -- that is the whole reason a grab outlives [SurfaceFocus.pointerLost].
+     */
+    private var lastPointerPx: Pair<Int, Int>? = null
+
     fun open() {
         if (layers.isNotEmpty()) return
         // The backing panel spawns first so it is already behind the glyphs
@@ -110,15 +117,22 @@ class SurfaceHost(
 
         if (point == null) {
             hidePointer()
+            // A grab must keep tracking even once the ray leaves the surface
+            // entirely -- feed it the last known pixel rather than dropping
+            // it or teleporting it to (0, 0).
+            lastPointerPx?.let { (lx, ly) -> SurfaceFocus.grabbed(player)?.onGrabMove?.invoke(lx, ly) }
+            val previous = SurfaceFocus.hovered(player)
             val changed = SurfaceFocus.pointerLost(player)
             if (changed) {
-                surface.root?.let { SurfaceEvents.dispatch(it, SurfaceEvent.PointerExit(0, 0)) }
+                val (lx, ly) = lastPointerPx ?: (0 to 0)
+                previous?.let { surface.dispatch(SurfaceEvent.PointerExit(lx, ly), target = it) }
                 repaint()
             }
             return changed
         }
 
         val (px, py) = point
+        lastPointerPx = point
         showPointer(px, py)
 
         // A grab keeps receiving movement even over other nodes; that is the
