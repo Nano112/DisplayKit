@@ -70,14 +70,17 @@ class Surface(
         /**
          * Depth between consecutive surface layers, in blocks.
          *
-         * Deliberately larger than [OVERLAY_Z_STEP]. The client renders
+         * Modestly larger than [OVERLAY_Z_STEP]. The client renders
          * text-display glyphs through `Font$DisplayMode.POLYGON_OFFSET`, which
-         * already biases their depth; a separation of the same order as that
-         * bias does not reliably win, and the layers keep fighting. 2cm across
-         * a metres-wide panel is far below what reads as an air gap while
-         * being unambiguous to the depth buffer.
+         * already biases their depth, so leave a little headroom above that
+         * bias — but only a little: a surface stacks one layer per elevation
+         * per kind, and the total thickness is what eventually reads as an air
+         * gap when the panel is viewed from an angle.
+         *
+         * 1cm per layer keeps a seven-layer window inside 6cm, invisible
+         * against a panel metres wide.
          */
-        const val LAYER_Z_STEP = 0.02f
+        const val LAYER_Z_STEP = 0.01f
 
         /**
          * Depth layers, back to front. Each becomes its own text display,
@@ -396,10 +399,10 @@ class Surface(
                 // is then measured from the content and entityOrigin's size
                 // assumption no longer holds -- acceptable, because this is
                 // already the degraded path.
-                canvas.toTextComponent(anchor = false)
+                canvas.toTextComponent(anchor = false, layer = layer)
             }
         } else {
-            canvas.toTextComponent()
+            canvas.toTextComponent(layer = layer)
         }
     }
 

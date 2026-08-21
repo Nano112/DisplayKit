@@ -282,4 +282,16 @@ class TextDisplayLayoutTruthTest {
         }
     }
 
+    @Test
+    fun aLayerCarriesOnlyItsOwnContent() {
+        val s = surface()
+        s.paint {
+            fill(DkColor.WHITE, Rect(0, 0, 40, 40))
+            label("UNIQUEMARKER", 4, 4, DkColor.WHITE)
+        }
+        val es = s.toEntities()
+        val carrying = es.count { it.text.plain().contains("UNIQUEMARKER") }
+        assertEquals(1, carrying, "the label must appear in exactly one layer, not all of them")
+    }
+
 }
