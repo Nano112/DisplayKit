@@ -43,3 +43,28 @@ tasks.register<JavaExec>("generateSpriteIndex") {
     classpath = sourceSets["main"].runtimeClasspath
     args(jarPath, mcVersion, output.absolutePath)
 }
+
+/**
+ * Regenerates the committed nine-slice crops from a Minecraft client jar.
+ *
+ * Only needs re-running on a Minecraft version bump, alongside
+ * generateSpriteIndex. These are the only image bytes DisplayKit ships.
+ *
+ *   ./gradlew :libs:displaykit:pack:generateSpriteSlices
+ *   ./gradlew :libs:displaykit:pack:generateSpriteSlices -PclientJar=/path/to/client.jar
+ */
+tasks.register<JavaExec>("generateSpriteSlices") {
+    group = "displaykit"
+    description = "Regenerate pack/src/main/resources/displaykit/slices from a client jar"
+
+    val mcVersion = libs.versions.minecraft.get()
+    val defaultJar = "${System.getProperty("user.home")}/Library/Application Support/PrismLauncher" +
+        "/libraries/com/mojang/minecraft/$mcVersion/minecraft-$mcVersion-client.jar"
+    val jarPath = (project.findProperty("clientJar") as String?) ?: defaultJar
+    val indexFile = rootProject.file("libs/displaykit/core/src/main/resources/displaykit/sprites.json")
+    val outDir = project.file("src/main/resources/displaykit/slices")
+
+    mainClass.set("io.schemat.displaykit.pack.gen.SpriteSliceGenerator")
+    classpath = sourceSets["main"].runtimeClasspath
+    args(jarPath, indexFile.absolutePath, outDir.absolutePath)
+}

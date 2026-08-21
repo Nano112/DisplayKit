@@ -1,0 +1,2807 @@
+{
+  "sourceVersion": "1.21.11",
+  "sprites": [
+    {
+      "atlas": "gui",
+      "sprite": "advancements/box_obtained",
+      "width": 200,
+      "height": 26,
+      "border": {
+        "left": 10,
+        "top": 10,
+        "right": 10,
+        "bottom": 10,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_box_obtained__0_0.png"
+        },
+        {
+          "x": 10,
+          "y": 0,
+          "w": 180,
+          "h": 10,
+          "file": "gui__advancements_box_obtained__10_0.png"
+        },
+        {
+          "x": 190,
+          "y": 0,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_box_obtained__190_0.png"
+        },
+        {
+          "x": 0,
+          "y": 10,
+          "w": 10,
+          "h": 6,
+          "file": "gui__advancements_box_obtained__0_10.png"
+        },
+        {
+          "x": 10,
+          "y": 10,
+          "w": 180,
+          "h": 6,
+          "file": "gui__advancements_box_obtained__10_10.png"
+        },
+        {
+          "x": 190,
+          "y": 10,
+          "w": 10,
+          "h": 6,
+          "file": "gui__advancements_box_obtained__190_10.png"
+        },
+        {
+          "x": 0,
+          "y": 16,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_box_obtained__0_16.png"
+        },
+        {
+          "x": 10,
+          "y": 16,
+          "w": 180,
+          "h": 10,
+          "file": "gui__advancements_box_obtained__10_16.png"
+        },
+        {
+          "x": 190,
+          "y": 16,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_box_obtained__190_16.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "advancements/box_unobtained",
+      "width": 200,
+      "height": 26,
+      "border": {
+        "left": 10,
+        "top": 10,
+        "right": 10,
+        "bottom": 10,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_box_unobtained__0_0.png"
+        },
+        {
+          "x": 10,
+          "y": 0,
+          "w": 180,
+          "h": 10,
+          "file": "gui__advancements_box_unobtained__10_0.png"
+        },
+        {
+          "x": 190,
+          "y": 0,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_box_unobtained__190_0.png"
+        },
+        {
+          "x": 0,
+          "y": 10,
+          "w": 10,
+          "h": 6,
+          "file": "gui__advancements_box_unobtained__0_10.png"
+        },
+        {
+          "x": 10,
+          "y": 10,
+          "w": 180,
+          "h": 6,
+          "file": "gui__advancements_box_unobtained__10_10.png"
+        },
+        {
+          "x": 190,
+          "y": 10,
+          "w": 10,
+          "h": 6,
+          "file": "gui__advancements_box_unobtained__190_10.png"
+        },
+        {
+          "x": 0,
+          "y": 16,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_box_unobtained__0_16.png"
+        },
+        {
+          "x": 10,
+          "y": 16,
+          "w": 180,
+          "h": 10,
+          "file": "gui__advancements_box_unobtained__10_16.png"
+        },
+        {
+          "x": 190,
+          "y": 16,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_box_unobtained__190_16.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "advancements/title_box",
+      "width": 200,
+      "height": 26,
+      "border": {
+        "left": 10,
+        "top": 10,
+        "right": 10,
+        "bottom": 10,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_title_box__0_0.png"
+        },
+        {
+          "x": 10,
+          "y": 0,
+          "w": 180,
+          "h": 10,
+          "file": "gui__advancements_title_box__10_0.png"
+        },
+        {
+          "x": 190,
+          "y": 0,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_title_box__190_0.png"
+        },
+        {
+          "x": 0,
+          "y": 10,
+          "w": 10,
+          "h": 6,
+          "file": "gui__advancements_title_box__0_10.png"
+        },
+        {
+          "x": 10,
+          "y": 10,
+          "w": 180,
+          "h": 6,
+          "file": "gui__advancements_title_box__10_10.png"
+        },
+        {
+          "x": 190,
+          "y": 10,
+          "w": 10,
+          "h": 6,
+          "file": "gui__advancements_title_box__190_10.png"
+        },
+        {
+          "x": 0,
+          "y": 16,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_title_box__0_16.png"
+        },
+        {
+          "x": 10,
+          "y": 16,
+          "w": 180,
+          "h": 10,
+          "file": "gui__advancements_title_box__10_16.png"
+        },
+        {
+          "x": 190,
+          "y": 16,
+          "w": 10,
+          "h": 10,
+          "file": "gui__advancements_title_box__190_16.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/bundle/bundle_progressbar_border",
+      "width": 12,
+      "height": 12,
+      "border": {
+        "left": 2,
+        "top": 2,
+        "right": 2,
+        "bottom": 2,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_border__0_0.png"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "w": 8,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_border__2_0.png"
+        },
+        {
+          "x": 10,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_border__10_0.png"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 8,
+          "file": "gui__container_bundle_bundle_progressbar_border__0_2.png"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "w": 8,
+          "h": 8,
+          "file": "gui__container_bundle_bundle_progressbar_border__2_2.png"
+        },
+        {
+          "x": 10,
+          "y": 2,
+          "w": 2,
+          "h": 8,
+          "file": "gui__container_bundle_bundle_progressbar_border__10_2.png"
+        },
+        {
+          "x": 0,
+          "y": 10,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_border__0_10.png"
+        },
+        {
+          "x": 2,
+          "y": 10,
+          "w": 8,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_border__2_10.png"
+        },
+        {
+          "x": 10,
+          "y": 10,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_border__10_10.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/bundle/bundle_progressbar_fill",
+      "width": 6,
+      "height": 6,
+      "border": {
+        "left": 2,
+        "top": 2,
+        "right": 2,
+        "bottom": 2,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_fill__0_0.png"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_fill__2_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_fill__4_0.png"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_fill__0_2.png"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_fill__2_2.png"
+        },
+        {
+          "x": 4,
+          "y": 2,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_fill__4_2.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_fill__0_4.png"
+        },
+        {
+          "x": 2,
+          "y": 4,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_fill__2_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_fill__4_4.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/bundle/bundle_progressbar_full",
+      "width": 6,
+      "height": 6,
+      "border": {
+        "left": 2,
+        "top": 2,
+        "right": 2,
+        "bottom": 2,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_full__0_0.png"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_full__2_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_full__4_0.png"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_full__0_2.png"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_full__2_2.png"
+        },
+        {
+          "x": 4,
+          "y": 2,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_full__4_2.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_full__0_4.png"
+        },
+        {
+          "x": 2,
+          "y": 4,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_full__2_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 2,
+          "h": 2,
+          "file": "gui__container_bundle_bundle_progressbar_full__4_4.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/bundle/slot_background",
+      "width": 24,
+      "height": 24,
+      "border": {
+        "left": 4,
+        "top": 4,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_background__0_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_bundle_slot_background__4_0.png"
+        },
+        {
+          "x": 20,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_background__20_0.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_bundle_slot_background__0_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 16,
+          "h": 16,
+          "file": "gui__container_bundle_slot_background__4_4.png"
+        },
+        {
+          "x": 20,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_bundle_slot_background__20_4.png"
+        },
+        {
+          "x": 0,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_background__0_20.png"
+        },
+        {
+          "x": 4,
+          "y": 20,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_bundle_slot_background__4_20.png"
+        },
+        {
+          "x": 20,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_background__20_20.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/bundle/slot_highlight_back",
+      "width": 24,
+      "height": 24,
+      "border": {
+        "left": 4,
+        "top": 4,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_back__0_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_back__4_0.png"
+        },
+        {
+          "x": 20,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_back__20_0.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_bundle_slot_highlight_back__0_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 16,
+          "h": 16,
+          "file": "gui__container_bundle_slot_highlight_back__4_4.png"
+        },
+        {
+          "x": 20,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_bundle_slot_highlight_back__20_4.png"
+        },
+        {
+          "x": 0,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_back__0_20.png"
+        },
+        {
+          "x": 4,
+          "y": 20,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_back__4_20.png"
+        },
+        {
+          "x": 20,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_back__20_20.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/bundle/slot_highlight_front",
+      "width": 24,
+      "height": 24,
+      "border": {
+        "left": 4,
+        "top": 4,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_front__0_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_front__4_0.png"
+        },
+        {
+          "x": 20,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_front__20_0.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_bundle_slot_highlight_front__0_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 16,
+          "h": 16,
+          "file": "gui__container_bundle_slot_highlight_front__4_4.png"
+        },
+        {
+          "x": 20,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_bundle_slot_highlight_front__20_4.png"
+        },
+        {
+          "x": 0,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_front__0_20.png"
+        },
+        {
+          "x": 4,
+          "y": 20,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_front__4_20.png"
+        },
+        {
+          "x": 20,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_bundle_slot_highlight_front__20_20.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/inventory/effect_background",
+      "width": 32,
+      "height": 32,
+      "border": {
+        "left": 4,
+        "top": 4,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background__0_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 24,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background__4_0.png"
+        },
+        {
+          "x": 28,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background__28_0.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 24,
+          "file": "gui__container_inventory_effect_background__0_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 24,
+          "h": 24,
+          "file": "gui__container_inventory_effect_background__4_4.png"
+        },
+        {
+          "x": 28,
+          "y": 4,
+          "w": 4,
+          "h": 24,
+          "file": "gui__container_inventory_effect_background__28_4.png"
+        },
+        {
+          "x": 0,
+          "y": 28,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background__0_28.png"
+        },
+        {
+          "x": 4,
+          "y": 28,
+          "w": 24,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background__4_28.png"
+        },
+        {
+          "x": 28,
+          "y": 28,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background__28_28.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/inventory/effect_background_ambient",
+      "width": 32,
+      "height": 32,
+      "border": {
+        "left": 4,
+        "top": 4,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background_ambient__0_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 24,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background_ambient__4_0.png"
+        },
+        {
+          "x": 28,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background_ambient__28_0.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 24,
+          "file": "gui__container_inventory_effect_background_ambient__0_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 24,
+          "h": 24,
+          "file": "gui__container_inventory_effect_background_ambient__4_4.png"
+        },
+        {
+          "x": 28,
+          "y": 4,
+          "w": 4,
+          "h": 24,
+          "file": "gui__container_inventory_effect_background_ambient__28_4.png"
+        },
+        {
+          "x": 0,
+          "y": 28,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background_ambient__0_28.png"
+        },
+        {
+          "x": 4,
+          "y": 28,
+          "w": 24,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background_ambient__4_28.png"
+        },
+        {
+          "x": 28,
+          "y": 28,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_inventory_effect_background_ambient__28_28.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/slot_highlight_back",
+      "width": 24,
+      "height": 24,
+      "border": {
+        "left": 4,
+        "top": 4,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_slot_highlight_back__0_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_slot_highlight_back__4_0.png"
+        },
+        {
+          "x": 20,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_slot_highlight_back__20_0.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_slot_highlight_back__0_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 16,
+          "h": 16,
+          "file": "gui__container_slot_highlight_back__4_4.png"
+        },
+        {
+          "x": 20,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_slot_highlight_back__20_4.png"
+        },
+        {
+          "x": 0,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_slot_highlight_back__0_20.png"
+        },
+        {
+          "x": 4,
+          "y": 20,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_slot_highlight_back__4_20.png"
+        },
+        {
+          "x": 20,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_slot_highlight_back__20_20.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "container/slot_highlight_front",
+      "width": 24,
+      "height": 24,
+      "border": {
+        "left": 4,
+        "top": 4,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_slot_highlight_front__0_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_slot_highlight_front__4_0.png"
+        },
+        {
+          "x": 20,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_slot_highlight_front__20_0.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_slot_highlight_front__0_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 16,
+          "h": 16,
+          "file": "gui__container_slot_highlight_front__4_4.png"
+        },
+        {
+          "x": 20,
+          "y": 4,
+          "w": 4,
+          "h": 16,
+          "file": "gui__container_slot_highlight_front__20_4.png"
+        },
+        {
+          "x": 0,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_slot_highlight_front__0_20.png"
+        },
+        {
+          "x": 4,
+          "y": 20,
+          "w": 16,
+          "h": 4,
+          "file": "gui__container_slot_highlight_front__4_20.png"
+        },
+        {
+          "x": 20,
+          "y": 20,
+          "w": 4,
+          "h": 4,
+          "file": "gui__container_slot_highlight_front__20_20.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "hud/locator_bar_background",
+      "width": 12,
+      "height": 5,
+      "border": {
+        "left": 5,
+        "top": 1,
+        "right": 5,
+        "bottom": 1,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 5,
+          "h": 1,
+          "file": "gui__hud_locator_bar_background__0_0.png"
+        },
+        {
+          "x": 5,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "file": "gui__hud_locator_bar_background__5_0.png"
+        },
+        {
+          "x": 7,
+          "y": 0,
+          "w": 5,
+          "h": 1,
+          "file": "gui__hud_locator_bar_background__7_0.png"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "w": 5,
+          "h": 3,
+          "file": "gui__hud_locator_bar_background__0_1.png"
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "w": 2,
+          "h": 3,
+          "file": "gui__hud_locator_bar_background__5_1.png"
+        },
+        {
+          "x": 7,
+          "y": 1,
+          "w": 5,
+          "h": 3,
+          "file": "gui__hud_locator_bar_background__7_1.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 5,
+          "h": 1,
+          "file": "gui__hud_locator_bar_background__0_4.png"
+        },
+        {
+          "x": 5,
+          "y": 4,
+          "w": 2,
+          "h": 1,
+          "file": "gui__hud_locator_bar_background__5_4.png"
+        },
+        {
+          "x": 7,
+          "y": 4,
+          "w": 5,
+          "h": 1,
+          "file": "gui__hud_locator_bar_background__7_4.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "popup/background",
+      "width": 236,
+      "height": 34,
+      "border": {
+        "left": 6,
+        "top": 6,
+        "right": 6,
+        "bottom": 6,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 6,
+          "file": "gui__popup_background__0_0.png"
+        },
+        {
+          "x": 6,
+          "y": 0,
+          "w": 224,
+          "h": 6,
+          "file": "gui__popup_background__6_0.png"
+        },
+        {
+          "x": 230,
+          "y": 0,
+          "w": 6,
+          "h": 6,
+          "file": "gui__popup_background__230_0.png"
+        },
+        {
+          "x": 0,
+          "y": 6,
+          "w": 6,
+          "h": 22,
+          "file": "gui__popup_background__0_6.png"
+        },
+        {
+          "x": 6,
+          "y": 6,
+          "w": 224,
+          "h": 22,
+          "file": "gui__popup_background__6_6.png"
+        },
+        {
+          "x": 230,
+          "y": 6,
+          "w": 6,
+          "h": 22,
+          "file": "gui__popup_background__230_6.png"
+        },
+        {
+          "x": 0,
+          "y": 28,
+          "w": 6,
+          "h": 6,
+          "file": "gui__popup_background__0_28.png"
+        },
+        {
+          "x": 6,
+          "y": 28,
+          "w": 224,
+          "h": 6,
+          "file": "gui__popup_background__6_28.png"
+        },
+        {
+          "x": 230,
+          "y": 28,
+          "w": 6,
+          "h": 6,
+          "file": "gui__popup_background__230_28.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "recipe_book/overlay_recipe",
+      "width": 32,
+      "height": 32,
+      "border": {
+        "left": 4,
+        "top": 4,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__recipe_book_overlay_recipe__0_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 24,
+          "h": 4,
+          "file": "gui__recipe_book_overlay_recipe__4_0.png"
+        },
+        {
+          "x": 28,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__recipe_book_overlay_recipe__28_0.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 24,
+          "file": "gui__recipe_book_overlay_recipe__0_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 24,
+          "h": 24,
+          "file": "gui__recipe_book_overlay_recipe__4_4.png"
+        },
+        {
+          "x": 28,
+          "y": 4,
+          "w": 4,
+          "h": 24,
+          "file": "gui__recipe_book_overlay_recipe__28_4.png"
+        },
+        {
+          "x": 0,
+          "y": 28,
+          "w": 4,
+          "h": 4,
+          "file": "gui__recipe_book_overlay_recipe__0_28.png"
+        },
+        {
+          "x": 4,
+          "y": 28,
+          "w": 24,
+          "h": 4,
+          "file": "gui__recipe_book_overlay_recipe__4_28.png"
+        },
+        {
+          "x": 28,
+          "y": 28,
+          "w": 4,
+          "h": 4,
+          "file": "gui__recipe_book_overlay_recipe__28_28.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "social_interactions/background",
+      "width": 236,
+      "height": 34,
+      "border": {
+        "left": 8,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 8,
+          "h": 8,
+          "file": "gui__social_interactions_background__0_0.png"
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "w": 220,
+          "h": 8,
+          "file": "gui__social_interactions_background__8_0.png"
+        },
+        {
+          "x": 228,
+          "y": 0,
+          "w": 8,
+          "h": 8,
+          "file": "gui__social_interactions_background__228_0.png"
+        },
+        {
+          "x": 0,
+          "y": 8,
+          "w": 8,
+          "h": 18,
+          "file": "gui__social_interactions_background__0_8.png"
+        },
+        {
+          "x": 8,
+          "y": 8,
+          "w": 220,
+          "h": 18,
+          "file": "gui__social_interactions_background__8_8.png"
+        },
+        {
+          "x": 228,
+          "y": 8,
+          "w": 8,
+          "h": 18,
+          "file": "gui__social_interactions_background__228_8.png"
+        },
+        {
+          "x": 0,
+          "y": 26,
+          "w": 8,
+          "h": 8,
+          "file": "gui__social_interactions_background__0_26.png"
+        },
+        {
+          "x": 8,
+          "y": 26,
+          "w": 220,
+          "h": 8,
+          "file": "gui__social_interactions_background__8_26.png"
+        },
+        {
+          "x": 228,
+          "y": 26,
+          "w": 8,
+          "h": 8,
+          "file": "gui__social_interactions_background__228_26.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "toast/now_playing",
+      "width": 160,
+      "height": 32,
+      "border": {
+        "left": 4,
+        "top": 4,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__toast_now_playing__0_0.png"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 152,
+          "h": 4,
+          "file": "gui__toast_now_playing__4_0.png"
+        },
+        {
+          "x": 156,
+          "y": 0,
+          "w": 4,
+          "h": 4,
+          "file": "gui__toast_now_playing__156_0.png"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 24,
+          "file": "gui__toast_now_playing__0_4.png"
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "w": 152,
+          "h": 24,
+          "file": "gui__toast_now_playing__4_4.png"
+        },
+        {
+          "x": 156,
+          "y": 4,
+          "w": 4,
+          "h": 24,
+          "file": "gui__toast_now_playing__156_4.png"
+        },
+        {
+          "x": 0,
+          "y": 28,
+          "w": 4,
+          "h": 4,
+          "file": "gui__toast_now_playing__0_28.png"
+        },
+        {
+          "x": 4,
+          "y": 28,
+          "w": 152,
+          "h": 4,
+          "file": "gui__toast_now_playing__4_28.png"
+        },
+        {
+          "x": 156,
+          "y": 28,
+          "w": 4,
+          "h": 4,
+          "file": "gui__toast_now_playing__156_28.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "toast/system",
+      "width": 160,
+      "height": 64,
+      "border": {
+        "left": 17,
+        "top": 30,
+        "right": 4,
+        "bottom": 4,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 17,
+          "h": 30,
+          "file": "gui__toast_system__0_0.png"
+        },
+        {
+          "x": 17,
+          "y": 0,
+          "w": 139,
+          "h": 30,
+          "file": "gui__toast_system__17_0.png"
+        },
+        {
+          "x": 156,
+          "y": 0,
+          "w": 4,
+          "h": 30,
+          "file": "gui__toast_system__156_0.png"
+        },
+        {
+          "x": 0,
+          "y": 30,
+          "w": 17,
+          "h": 30,
+          "file": "gui__toast_system__0_30.png"
+        },
+        {
+          "x": 17,
+          "y": 30,
+          "w": 139,
+          "h": 30,
+          "file": "gui__toast_system__17_30.png"
+        },
+        {
+          "x": 156,
+          "y": 30,
+          "w": 4,
+          "h": 30,
+          "file": "gui__toast_system__156_30.png"
+        },
+        {
+          "x": 0,
+          "y": 60,
+          "w": 17,
+          "h": 4,
+          "file": "gui__toast_system__0_60.png"
+        },
+        {
+          "x": 17,
+          "y": 60,
+          "w": 139,
+          "h": 4,
+          "file": "gui__toast_system__17_60.png"
+        },
+        {
+          "x": 156,
+          "y": 60,
+          "w": 4,
+          "h": 4,
+          "file": "gui__toast_system__156_60.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "toast/tutorial",
+      "width": 160,
+      "height": 32,
+      "border": {
+        "left": 3,
+        "top": 3,
+        "right": 3,
+        "bottom": 3,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 3,
+          "h": 3,
+          "file": "gui__toast_tutorial__0_0.png"
+        },
+        {
+          "x": 3,
+          "y": 0,
+          "w": 154,
+          "h": 3,
+          "file": "gui__toast_tutorial__3_0.png"
+        },
+        {
+          "x": 157,
+          "y": 0,
+          "w": 3,
+          "h": 3,
+          "file": "gui__toast_tutorial__157_0.png"
+        },
+        {
+          "x": 0,
+          "y": 3,
+          "w": 3,
+          "h": 26,
+          "file": "gui__toast_tutorial__0_3.png"
+        },
+        {
+          "x": 3,
+          "y": 3,
+          "w": 154,
+          "h": 26,
+          "file": "gui__toast_tutorial__3_3.png"
+        },
+        {
+          "x": 157,
+          "y": 3,
+          "w": 3,
+          "h": 26,
+          "file": "gui__toast_tutorial__157_3.png"
+        },
+        {
+          "x": 0,
+          "y": 29,
+          "w": 3,
+          "h": 3,
+          "file": "gui__toast_tutorial__0_29.png"
+        },
+        {
+          "x": 3,
+          "y": 29,
+          "w": 154,
+          "h": 3,
+          "file": "gui__toast_tutorial__3_29.png"
+        },
+        {
+          "x": 157,
+          "y": 29,
+          "w": 3,
+          "h": 3,
+          "file": "gui__toast_tutorial__157_29.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "tooltip/background",
+      "width": 100,
+      "height": 100,
+      "border": {
+        "left": 9,
+        "top": 9,
+        "right": 9,
+        "bottom": 9,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 9,
+          "h": 9,
+          "file": "gui__tooltip_background__0_0.png"
+        },
+        {
+          "x": 9,
+          "y": 0,
+          "w": 82,
+          "h": 9,
+          "file": "gui__tooltip_background__9_0.png"
+        },
+        {
+          "x": 91,
+          "y": 0,
+          "w": 9,
+          "h": 9,
+          "file": "gui__tooltip_background__91_0.png"
+        },
+        {
+          "x": 0,
+          "y": 9,
+          "w": 9,
+          "h": 82,
+          "file": "gui__tooltip_background__0_9.png"
+        },
+        {
+          "x": 9,
+          "y": 9,
+          "w": 82,
+          "h": 82,
+          "file": "gui__tooltip_background__9_9.png"
+        },
+        {
+          "x": 91,
+          "y": 9,
+          "w": 9,
+          "h": 82,
+          "file": "gui__tooltip_background__91_9.png"
+        },
+        {
+          "x": 0,
+          "y": 91,
+          "w": 9,
+          "h": 9,
+          "file": "gui__tooltip_background__0_91.png"
+        },
+        {
+          "x": 9,
+          "y": 91,
+          "w": 82,
+          "h": 9,
+          "file": "gui__tooltip_background__9_91.png"
+        },
+        {
+          "x": 91,
+          "y": 91,
+          "w": 9,
+          "h": 9,
+          "file": "gui__tooltip_background__91_91.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "tooltip/frame",
+      "width": 100,
+      "height": 100,
+      "border": {
+        "left": 10,
+        "top": 10,
+        "right": 10,
+        "bottom": 10,
+        "stretchInner": true
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 10,
+          "h": 10,
+          "file": "gui__tooltip_frame__0_0.png"
+        },
+        {
+          "x": 10,
+          "y": 0,
+          "w": 80,
+          "h": 10,
+          "file": "gui__tooltip_frame__10_0.png"
+        },
+        {
+          "x": 90,
+          "y": 0,
+          "w": 10,
+          "h": 10,
+          "file": "gui__tooltip_frame__90_0.png"
+        },
+        {
+          "x": 0,
+          "y": 10,
+          "w": 10,
+          "h": 80,
+          "file": "gui__tooltip_frame__0_10.png"
+        },
+        {
+          "x": 10,
+          "y": 10,
+          "w": 80,
+          "h": 80,
+          "file": "gui__tooltip_frame__10_10.png"
+        },
+        {
+          "x": 90,
+          "y": 10,
+          "w": 10,
+          "h": 80,
+          "file": "gui__tooltip_frame__90_10.png"
+        },
+        {
+          "x": 0,
+          "y": 90,
+          "w": 10,
+          "h": 10,
+          "file": "gui__tooltip_frame__0_90.png"
+        },
+        {
+          "x": 10,
+          "y": 90,
+          "w": 80,
+          "h": 10,
+          "file": "gui__tooltip_frame__10_90.png"
+        },
+        {
+          "x": 90,
+          "y": 90,
+          "w": 10,
+          "h": 10,
+          "file": "gui__tooltip_frame__90_90.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/button",
+      "width": 200,
+      "height": 20,
+      "border": {
+        "left": 3,
+        "top": 3,
+        "right": 3,
+        "bottom": 3,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 3,
+          "h": 3,
+          "file": "gui__widget_button__0_0.png"
+        },
+        {
+          "x": 3,
+          "y": 0,
+          "w": 194,
+          "h": 3,
+          "file": "gui__widget_button__3_0.png"
+        },
+        {
+          "x": 197,
+          "y": 0,
+          "w": 3,
+          "h": 3,
+          "file": "gui__widget_button__197_0.png"
+        },
+        {
+          "x": 0,
+          "y": 3,
+          "w": 3,
+          "h": 14,
+          "file": "gui__widget_button__0_3.png"
+        },
+        {
+          "x": 3,
+          "y": 3,
+          "w": 194,
+          "h": 14,
+          "file": "gui__widget_button__3_3.png"
+        },
+        {
+          "x": 197,
+          "y": 3,
+          "w": 3,
+          "h": 14,
+          "file": "gui__widget_button__197_3.png"
+        },
+        {
+          "x": 0,
+          "y": 17,
+          "w": 3,
+          "h": 3,
+          "file": "gui__widget_button__0_17.png"
+        },
+        {
+          "x": 3,
+          "y": 17,
+          "w": 194,
+          "h": 3,
+          "file": "gui__widget_button__3_17.png"
+        },
+        {
+          "x": 197,
+          "y": 17,
+          "w": 3,
+          "h": 3,
+          "file": "gui__widget_button__197_17.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/button_disabled",
+      "width": 200,
+      "height": 20,
+      "border": {
+        "left": 1,
+        "top": 1,
+        "right": 1,
+        "bottom": 1,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_button_disabled__0_0.png"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_button_disabled__1_0.png"
+        },
+        {
+          "x": 199,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_button_disabled__199_0.png"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_button_disabled__0_1.png"
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "w": 198,
+          "h": 18,
+          "file": "gui__widget_button_disabled__1_1.png"
+        },
+        {
+          "x": 199,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_button_disabled__199_1.png"
+        },
+        {
+          "x": 0,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_button_disabled__0_19.png"
+        },
+        {
+          "x": 1,
+          "y": 19,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_button_disabled__1_19.png"
+        },
+        {
+          "x": 199,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_button_disabled__199_19.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/button_highlighted",
+      "width": 200,
+      "height": 20,
+      "border": {
+        "left": 3,
+        "top": 3,
+        "right": 3,
+        "bottom": 3,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 3,
+          "h": 3,
+          "file": "gui__widget_button_highlighted__0_0.png"
+        },
+        {
+          "x": 3,
+          "y": 0,
+          "w": 194,
+          "h": 3,
+          "file": "gui__widget_button_highlighted__3_0.png"
+        },
+        {
+          "x": 197,
+          "y": 0,
+          "w": 3,
+          "h": 3,
+          "file": "gui__widget_button_highlighted__197_0.png"
+        },
+        {
+          "x": 0,
+          "y": 3,
+          "w": 3,
+          "h": 14,
+          "file": "gui__widget_button_highlighted__0_3.png"
+        },
+        {
+          "x": 3,
+          "y": 3,
+          "w": 194,
+          "h": 14,
+          "file": "gui__widget_button_highlighted__3_3.png"
+        },
+        {
+          "x": 197,
+          "y": 3,
+          "w": 3,
+          "h": 14,
+          "file": "gui__widget_button_highlighted__197_3.png"
+        },
+        {
+          "x": 0,
+          "y": 17,
+          "w": 3,
+          "h": 3,
+          "file": "gui__widget_button_highlighted__0_17.png"
+        },
+        {
+          "x": 3,
+          "y": 17,
+          "w": 194,
+          "h": 3,
+          "file": "gui__widget_button_highlighted__3_17.png"
+        },
+        {
+          "x": 197,
+          "y": 17,
+          "w": 3,
+          "h": 3,
+          "file": "gui__widget_button_highlighted__197_17.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/scroller",
+      "width": 6,
+      "height": 32,
+      "border": {
+        "left": 1,
+        "top": 1,
+        "right": 1,
+        "bottom": 1,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_scroller__0_0.png"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "w": 4,
+          "h": 1,
+          "file": "gui__widget_scroller__1_0.png"
+        },
+        {
+          "x": 5,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_scroller__5_0.png"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "w": 1,
+          "h": 30,
+          "file": "gui__widget_scroller__0_1.png"
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "w": 4,
+          "h": 30,
+          "file": "gui__widget_scroller__1_1.png"
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "w": 1,
+          "h": 30,
+          "file": "gui__widget_scroller__5_1.png"
+        },
+        {
+          "x": 0,
+          "y": 31,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_scroller__0_31.png"
+        },
+        {
+          "x": 1,
+          "y": 31,
+          "w": 4,
+          "h": 1,
+          "file": "gui__widget_scroller__1_31.png"
+        },
+        {
+          "x": 5,
+          "y": 31,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_scroller__5_31.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/scroller_background",
+      "width": 6,
+      "height": 32,
+      "border": {
+        "left": 1,
+        "top": 1,
+        "right": 1,
+        "bottom": 1,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_scroller_background__0_0.png"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "w": 4,
+          "h": 1,
+          "file": "gui__widget_scroller_background__1_0.png"
+        },
+        {
+          "x": 5,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_scroller_background__5_0.png"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "w": 1,
+          "h": 30,
+          "file": "gui__widget_scroller_background__0_1.png"
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "w": 4,
+          "h": 30,
+          "file": "gui__widget_scroller_background__1_1.png"
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "w": 1,
+          "h": 30,
+          "file": "gui__widget_scroller_background__5_1.png"
+        },
+        {
+          "x": 0,
+          "y": 31,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_scroller_background__0_31.png"
+        },
+        {
+          "x": 1,
+          "y": 31,
+          "w": 4,
+          "h": 1,
+          "file": "gui__widget_scroller_background__1_31.png"
+        },
+        {
+          "x": 5,
+          "y": 31,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_scroller_background__5_31.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/slider",
+      "width": 200,
+      "height": 20,
+      "border": {
+        "left": 1,
+        "top": 1,
+        "right": 1,
+        "bottom": 1,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_slider__0_0.png"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_slider__1_0.png"
+        },
+        {
+          "x": 199,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_slider__199_0.png"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_slider__0_1.png"
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "w": 198,
+          "h": 18,
+          "file": "gui__widget_slider__1_1.png"
+        },
+        {
+          "x": 199,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_slider__199_1.png"
+        },
+        {
+          "x": 0,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_slider__0_19.png"
+        },
+        {
+          "x": 1,
+          "y": 19,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_slider__1_19.png"
+        },
+        {
+          "x": 199,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_slider__199_19.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/slider_handle",
+      "width": 8,
+      "height": 20,
+      "border": {
+        "left": 2,
+        "top": 2,
+        "right": 2,
+        "bottom": 3,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_slider_handle__0_0.png"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "w": 4,
+          "h": 2,
+          "file": "gui__widget_slider_handle__2_0.png"
+        },
+        {
+          "x": 6,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_slider_handle__6_0.png"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 15,
+          "file": "gui__widget_slider_handle__0_2.png"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "w": 4,
+          "h": 15,
+          "file": "gui__widget_slider_handle__2_2.png"
+        },
+        {
+          "x": 6,
+          "y": 2,
+          "w": 2,
+          "h": 15,
+          "file": "gui__widget_slider_handle__6_2.png"
+        },
+        {
+          "x": 0,
+          "y": 17,
+          "w": 2,
+          "h": 3,
+          "file": "gui__widget_slider_handle__0_17.png"
+        },
+        {
+          "x": 2,
+          "y": 17,
+          "w": 4,
+          "h": 3,
+          "file": "gui__widget_slider_handle__2_17.png"
+        },
+        {
+          "x": 6,
+          "y": 17,
+          "w": 2,
+          "h": 3,
+          "file": "gui__widget_slider_handle__6_17.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/slider_handle_highlighted",
+      "width": 8,
+      "height": 20,
+      "border": {
+        "left": 2,
+        "top": 2,
+        "right": 2,
+        "bottom": 3,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_slider_handle_highlighted__0_0.png"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "w": 4,
+          "h": 2,
+          "file": "gui__widget_slider_handle_highlighted__2_0.png"
+        },
+        {
+          "x": 6,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_slider_handle_highlighted__6_0.png"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 15,
+          "file": "gui__widget_slider_handle_highlighted__0_2.png"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "w": 4,
+          "h": 15,
+          "file": "gui__widget_slider_handle_highlighted__2_2.png"
+        },
+        {
+          "x": 6,
+          "y": 2,
+          "w": 2,
+          "h": 15,
+          "file": "gui__widget_slider_handle_highlighted__6_2.png"
+        },
+        {
+          "x": 0,
+          "y": 17,
+          "w": 2,
+          "h": 3,
+          "file": "gui__widget_slider_handle_highlighted__0_17.png"
+        },
+        {
+          "x": 2,
+          "y": 17,
+          "w": 4,
+          "h": 3,
+          "file": "gui__widget_slider_handle_highlighted__2_17.png"
+        },
+        {
+          "x": 6,
+          "y": 17,
+          "w": 2,
+          "h": 3,
+          "file": "gui__widget_slider_handle_highlighted__6_17.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/slider_highlighted",
+      "width": 200,
+      "height": 20,
+      "border": {
+        "left": 1,
+        "top": 1,
+        "right": 1,
+        "bottom": 1,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_slider_highlighted__0_0.png"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_slider_highlighted__1_0.png"
+        },
+        {
+          "x": 199,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_slider_highlighted__199_0.png"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_slider_highlighted__0_1.png"
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "w": 198,
+          "h": 18,
+          "file": "gui__widget_slider_highlighted__1_1.png"
+        },
+        {
+          "x": 199,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_slider_highlighted__199_1.png"
+        },
+        {
+          "x": 0,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_slider_highlighted__0_19.png"
+        },
+        {
+          "x": 1,
+          "y": 19,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_slider_highlighted__1_19.png"
+        },
+        {
+          "x": 199,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_slider_highlighted__199_19.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/tab",
+      "width": 130,
+      "height": 24,
+      "border": {
+        "left": 2,
+        "top": 2,
+        "right": 2,
+        "bottom": 0,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_tab__0_0.png"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "w": 126,
+          "h": 2,
+          "file": "gui__widget_tab__2_0.png"
+        },
+        {
+          "x": 128,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_tab__128_0.png"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 22,
+          "file": "gui__widget_tab__0_2.png"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "w": 126,
+          "h": 22,
+          "file": "gui__widget_tab__2_2.png"
+        },
+        {
+          "x": 128,
+          "y": 2,
+          "w": 2,
+          "h": 22,
+          "file": "gui__widget_tab__128_2.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/tab_highlighted",
+      "width": 130,
+      "height": 24,
+      "border": {
+        "left": 2,
+        "top": 2,
+        "right": 2,
+        "bottom": 0,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_tab_highlighted__0_0.png"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "w": 126,
+          "h": 2,
+          "file": "gui__widget_tab_highlighted__2_0.png"
+        },
+        {
+          "x": 128,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_tab_highlighted__128_0.png"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 22,
+          "file": "gui__widget_tab_highlighted__0_2.png"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "w": 126,
+          "h": 22,
+          "file": "gui__widget_tab_highlighted__2_2.png"
+        },
+        {
+          "x": 128,
+          "y": 2,
+          "w": 2,
+          "h": 22,
+          "file": "gui__widget_tab_highlighted__128_2.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/tab_selected",
+      "width": 130,
+      "height": 24,
+      "border": {
+        "left": 2,
+        "top": 2,
+        "right": 2,
+        "bottom": 0,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_tab_selected__0_0.png"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "w": 126,
+          "h": 2,
+          "file": "gui__widget_tab_selected__2_0.png"
+        },
+        {
+          "x": 128,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_tab_selected__128_0.png"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 22,
+          "file": "gui__widget_tab_selected__0_2.png"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "w": 126,
+          "h": 22,
+          "file": "gui__widget_tab_selected__2_2.png"
+        },
+        {
+          "x": 128,
+          "y": 2,
+          "w": 2,
+          "h": 22,
+          "file": "gui__widget_tab_selected__128_2.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/tab_selected_highlighted",
+      "width": 130,
+      "height": 24,
+      "border": {
+        "left": 2,
+        "top": 2,
+        "right": 2,
+        "bottom": 0,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_tab_selected_highlighted__0_0.png"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "w": 126,
+          "h": 2,
+          "file": "gui__widget_tab_selected_highlighted__2_0.png"
+        },
+        {
+          "x": 128,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "file": "gui__widget_tab_selected_highlighted__128_0.png"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 22,
+          "file": "gui__widget_tab_selected_highlighted__0_2.png"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "w": 126,
+          "h": 22,
+          "file": "gui__widget_tab_selected_highlighted__2_2.png"
+        },
+        {
+          "x": 128,
+          "y": 2,
+          "w": 2,
+          "h": 22,
+          "file": "gui__widget_tab_selected_highlighted__128_2.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/text_field",
+      "width": 200,
+      "height": 20,
+      "border": {
+        "left": 1,
+        "top": 1,
+        "right": 1,
+        "bottom": 1,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_text_field__0_0.png"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_text_field__1_0.png"
+        },
+        {
+          "x": 199,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_text_field__199_0.png"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_text_field__0_1.png"
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "w": 198,
+          "h": 18,
+          "file": "gui__widget_text_field__1_1.png"
+        },
+        {
+          "x": 199,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_text_field__199_1.png"
+        },
+        {
+          "x": 0,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_text_field__0_19.png"
+        },
+        {
+          "x": 1,
+          "y": 19,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_text_field__1_19.png"
+        },
+        {
+          "x": 199,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_text_field__199_19.png"
+        }
+      ]
+    },
+    {
+      "atlas": "gui",
+      "sprite": "widget/text_field_highlighted",
+      "width": 200,
+      "height": 20,
+      "border": {
+        "left": 1,
+        "top": 1,
+        "right": 1,
+        "bottom": 1,
+        "stretchInner": false
+      },
+      "crops": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_text_field_highlighted__0_0.png"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_text_field_highlighted__1_0.png"
+        },
+        {
+          "x": 199,
+          "y": 0,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_text_field_highlighted__199_0.png"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_text_field_highlighted__0_1.png"
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "w": 198,
+          "h": 18,
+          "file": "gui__widget_text_field_highlighted__1_1.png"
+        },
+        {
+          "x": 199,
+          "y": 1,
+          "w": 1,
+          "h": 18,
+          "file": "gui__widget_text_field_highlighted__199_1.png"
+        },
+        {
+          "x": 0,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_text_field_highlighted__0_19.png"
+        },
+        {
+          "x": 1,
+          "y": 19,
+          "w": 198,
+          "h": 1,
+          "file": "gui__widget_text_field_highlighted__1_19.png"
+        },
+        {
+          "x": 199,
+          "y": 19,
+          "w": 1,
+          "h": 1,
+          "file": "gui__widget_text_field_highlighted__199_19.png"
+        }
+      ]
+    }
+  ]
+}
