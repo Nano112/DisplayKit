@@ -33,8 +33,8 @@ object SpriteFontProvider : AssetProvider {
             // already rejects an ascent above height, so this is guaranteed
             // here — no computation needed, just a guard against a future
             // change silently reintroducing an illegal value.
-            check(variant.ascent <= entry.height) {
-                "Variant ascent ${variant.ascent} exceeds height ${entry.height} for " +
+            check(variant.ascent <= variant.renderHeight) {
+                "Variant ascent ${variant.ascent} exceeds height ${variant.renderHeight} for " +
                     "${entry.id} — this should be unreachable since " +
                     "SpriteGlyphs.codepointFor rejects an ascent above height."
             }
@@ -42,7 +42,7 @@ object SpriteFontProvider : AssetProvider {
             providers.add(JsonObject().apply {
                 addProperty("type", "bitmap")
                 addProperty("file", entry.texture)
-                addProperty("height", entry.height)
+                addProperty("height", variant.renderHeight)
                 addProperty("ascent", variant.ascent)
                 add("chars", JsonArray().apply {
                     add(String(Character.toChars(variant.codepoint)))

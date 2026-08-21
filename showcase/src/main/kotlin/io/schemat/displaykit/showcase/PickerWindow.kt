@@ -257,7 +257,9 @@ object PickerWindow {
                 val cx = GRID_X + (i % COLS) * STEP
                 val cy = GRID_Y + (i / COLS) * STEP
                 slot(cx, cy)
-                icon(entry, cx + 1, cy + 1)
+                // Fitted, not native: gui sprites are whole panels (some are
+                // hundreds of pixels across) and at 1:1 they bury the grid.
+                iconFitted(entry, cx + 1, cy + 1, SLOT - 2, SLOT - 2)
                 region("cell-$i", Rect(cx, cy, SLOT, SLOT)) {
                     session.player.sendSystemMessage(
                         Component.literal("${entry.id}  ${entry.width}x${entry.height}")

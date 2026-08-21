@@ -39,13 +39,22 @@ object SpriteGlyphs {
     data class GlyphVariant(
         val entry: SpriteEntry,
         val ascent: Int,
-        val codepoint: Int
+        val codepoint: Int,
+        /**
+         * Rendered height in text pixels — the provider's `height` field.
+         *
+         * The client scales a bitmap glyph by `height / sourcePixelHeight` and
+         * scales its width by the same factor, so this is the one knob that
+         * makes an oversized sprite fit a small cell. Defaults to the sprite's
+         * native height, which renders 1:1.
+         */
+        val renderHeight: Int
     )
 
     private val variants = LinkedHashMap<Key, GlyphVariant>()
     private var next = BASE_CODEPOINT
 
-    private data class Key(val id: SpriteId, val ascent: Int)
+    private data class Key(val id: SpriteId, val ascent: Int, val renderHeight: Int)
 
     /**
      * Codepoint for [entry] with a font-provider `ascent` of [ascent],
@@ -69,17 +78,29 @@ object SpriteGlyphs {
      *   to load the WHOLE font file if this is ever violated. Negative
      *   ascent is unbounded and always fine.
      */
-    fun codepointFor(entry: SpriteEntry, ascent: Int = entry.height): Int {
+    @JvmOverloads
+    fun codepointFor(
+        entry: SpriteEntry,
+        ascent: Int = entry.height,
+        renderHeight: Int = entry.height
+    ): Int {
         require(!entry.animated) {
             "Sprite ${entry.id} is animated and cannot be a font glyph — " +
                 "a glyph renders the whole strip. Use SpriteDisplay instead."
         }
-        require(ascent <= entry.height) {
+        require(renderHeight > 0) {
+            "Sprite ${entry.id} requested renderHeight $renderHeight; a glyph " +
+                "must have a positive height."
+        }
+        // Against renderHeight, NOT the sprite's native height: the client
+        // compares ascent to the `height` field it is given, so a scaled-down
+        // glyph has a correspondingly smaller legal ascent.
+        require(ascent <= renderHeight) {
             "Sprite ${entry.id} requested ascent $ascent, which exceeds its " +
-                "height ${entry.height} — the client rejects the WHOLE font file " +
+                "render height $renderHeight — the client rejects the WHOLE font file " +
                 "(\"Ascent {} higher than height {}\") if this is ever violated."
         }
-        return variants.getOrPut(Key(entry.id, ascent)) {
+        return variants.getOrPut(Key(entry.id, ascent, renderHeight)) {
             check(next < SLICE_BASE_CODEPOINT) {
                 "Exhausted whole-sprite glyph space: allocating at codepoint " +
                     "0x${next.toString(16).uppercase()} would collide with slice " +
@@ -87,17 +108,26 @@ object SpriteGlyphs {
                     "(SLICE_BASE_CODEPOINT). At most ${SLICE_BASE_CODEPOINT - BASE_CODEPOINT} " +
                     "whole-sprite glyph variants are supported."
             }
-            GlyphVariant(entry, ascent, next++)
+            GlyphVariant(entry, ascent, next++, renderHeight)
         }.codepoint
     }
 
     /** The codepoint as a string — a surrogate pair, since these are > U+FFFF. */
-    fun charsFor(entry: SpriteEntry, ascent: Int = entry.height): String =
-        String(Character.toChars(codepointFor(entry, ascent)))
+    @JvmOverloads
+    fun charsFor(
+        entry: SpriteEntry,
+        ascent: Int = entry.height,
+        renderHeight: Int = entry.height
+    ): String = String(Character.toChars(codepointFor(entry, ascent, renderHeight)))
 
     /** Allocate without needing the result, e.g. when pre-warming a pack. */
-    fun request(entry: SpriteEntry, ascent: Int = entry.height) {
-        codepointFor(entry, ascent)
+    @JvmOverloads
+    fun request(
+        entry: SpriteEntry,
+        ascent: Int = entry.height,
+        renderHeight: Int = entry.height
+    ) {
+        codepointFor(entry, ascent, renderHeight)
     }
 
     /** Every whole-sprite variant allocated so far, in allocation order. */

@@ -64,4 +64,32 @@ data class SpriteEntry(
     val glyphAdvance: Int get() = trimmedWidth + 1
 
     val aspectRatio: Float get() = width.toFloat() / height.toFloat()
+
+    /**
+     * The render height that makes this sprite fit inside [boxW] x [boxH]
+     * without distorting it.
+     *
+     * A bitmap glyph is scaled by `renderHeight / height`, and its width
+     * scales by the same factor — there is no independent width control — so
+     * fitting a box means choosing the height whose induced width also fits.
+     * Never returns less than 1: a zero-height glyph is rejected by the
+     * client.
+     */
+    fun fitHeight(boxW: Int, boxH: Int): Int {
+        if (width <= 0 || height <= 0) return 1
+        val byWidth = (boxW.toLong() * height / width).toInt()
+        return maxOf(1, minOf(boxH, byWidth))
+    }
+
+    /** Rendered width once scaled to [renderHeight]. */
+    fun scaledWidth(renderHeight: Int): Int =
+        if (height <= 0) 0 else Math.round(width.toFloat() * renderHeight / height)
+
+    /**
+     * Cursor advance once scaled to [renderHeight] — the client's
+     * `round(trimmedWidth * scale) + 1`, with `scale = renderHeight / height`.
+     */
+    fun scaledAdvance(renderHeight: Int): Int =
+        if (height <= 0) 1
+        else Math.round(trimmedWidth.toFloat() * renderHeight / height) + 1
 }

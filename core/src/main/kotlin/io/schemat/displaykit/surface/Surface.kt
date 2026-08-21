@@ -33,6 +33,27 @@ interface SurfacePainter {
     fun frame(entry: SpriteEntry, rect: Rect, tint: DkColor? = null)
     fun fill(color: DkColor, rect: Rect)
     fun icon(entry: SpriteEntry, x: Int, y: Int, tint: DkColor? = null)
+
+    /**
+     * Draw [entry] scaled to fit inside a [boxW] x [boxH] box at ([x], [y]),
+     * centred, without distorting it.
+     *
+     * A sprite drawn at native size overflows any cell smaller than itself —
+     * gui sprites are whole panels, hundreds of pixels across, so a grid of
+     * them at 1:1 is unreadable. Scaling is free: a bitmap glyph's rendered
+     * size is its provider `height`, so this costs a font entry, not a
+     * texture.
+     *
+     * Returns the size it actually rendered at.
+     */
+    fun iconFitted(
+        entry: SpriteEntry,
+        x: Int,
+        y: Int,
+        boxW: Int,
+        boxH: Int,
+        tint: DkColor? = null
+    ): Pair<Int, Int>
     fun label(text: String, x: Int, y: Int, color: DkColor? = null)
     fun slot(x: Int, y: Int, item: ItemRef? = null)
     fun region(id: String, rect: Rect, onClick: () -> Unit)
@@ -477,6 +498,23 @@ class Surface(
                     canvas.draw(e, x, y, color)
                 }
             }
+        }
+
+        override fun iconFitted(
+            entry: SpriteEntry,
+            x: Int,
+            y: Int,
+            boxW: Int,
+            boxH: Int,
+            tint: DkColor?
+        ): Pair<Int, Int> {
+            canvas.currentLayer = depth(KIND_ICON)
+            val h = entry.fitHeight(boxW, boxH)
+            val w = entry.scaledWidth(h)
+            // Centre in the box so a wide sprite and a tall one both sit in
+            // the middle of their cell rather than hugging its corner.
+            canvas.draw(entry, x + (boxW - w) / 2, y + (boxH - h) / 2, tint, renderHeight = h)
+            return w to h
         }
 
         override fun icon(entry: SpriteEntry, x: Int, y: Int, tint: DkColor?) {

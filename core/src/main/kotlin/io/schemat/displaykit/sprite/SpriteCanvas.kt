@@ -126,7 +126,14 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * @throws IllegalArgumentException if [y] is negative — the canvas origin
      *   is its top-left and canvas y never goes negative.
      */
-    fun draw(entry: SpriteEntry, x: Int, y: Int, tint: DkColor? = null) {
+    @JvmOverloads
+    fun draw(
+        entry: SpriteEntry,
+        x: Int,
+        y: Int,
+        tint: DkColor? = null,
+        renderHeight: Int = entry.height
+    ) {
         require(!entry.animated) {
             "Sprite ${entry.id} is animated and cannot be composited — " +
                 "a glyph renders the whole strip. Use SpriteDisplay instead."
@@ -135,23 +142,29 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
             "SpriteCanvas.draw requires y >= 0 (canvas y grows downward from " +
                 "the top of the canvas), but got y=$y for ${entry.id}."
         }
+        require(renderHeight > 0) {
+            "SpriteCanvas.draw requires renderHeight > 0, got $renderHeight " +
+                "for ${entry.id}."
+        }
         if (tint != null) SpriteDiagnostics.checkTintable(entry)
-        val placement = GlyphPlacement.resolve(y, entry.height) ?: run {
+        // Placement and advance both follow the RENDERED size, not the
+        // sprite's native size -- a scaled glyph occupies a scaled box.
+        val placement = GlyphPlacement.resolve(y, renderHeight) ?: run {
             SpriteDiagnostics.warnOnce(
-                "ascent-unsatisfiable:${entry.id}:y=$y",
-                "Cannot draw ${entry.id} (height ${entry.height}) with its top at " +
+                "ascent-unsatisfiable:${entry.id}:y=$y:h=$renderHeight",
+                "Cannot draw ${entry.id} (render height $renderHeight) with its top at " +
                     "canvas y=$y: even row 0 cannot produce a legal ascent " +
                     "(ascent <= height). Skipping this draw."
             )
             return
         }
         items += Item(
-            content = SpriteGlyphs.charsFor(entry, placement.ascent),
+            content = SpriteGlyphs.charsFor(entry, placement.ascent, renderHeight),
             font = SpriteGlyphs.FONT_ID,
             x = x,
             y = y,
             row = placement.row,
-            advanceWidth = entry.glyphAdvance,
+            advanceWidth = entry.scaledAdvance(renderHeight),
             tint = tint,
             layer = currentLayer
         )

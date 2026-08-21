@@ -5,6 +5,7 @@ import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.SpriteEntry
+import io.schemat.displaykit.sprite.SpriteGlyphs
 import io.schemat.displaykit.sprite.SpriteId
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -292,6 +293,55 @@ class TextDisplayLayoutTruthTest {
         val es = s.toEntities()
         val carrying = es.count { it.text.plain().contains("UNIQUEMARKER") }
         assertEquals(1, carrying, "the label must appear in exactly one layer, not all of them")
+    }
+
+    // --- Scaling: an oversized sprite must fit its cell ---
+
+    @Test
+    fun fitHeightNeverLetsASpriteExceedItsBox() {
+        val wide = SpriteEntry(
+            id = SpriteId("gui", "wide"), width = 200, height = 26,
+            texture = "minecraft:wide.png", trimmedWidth = 200
+        )
+        val h = wide.fitHeight(16, 16)
+        assertTrue(wide.scaledWidth(h) <= 16, "scaled width ${wide.scaledWidth(h)} must fit 16")
+        assertTrue(h <= 16, "scaled height $h must fit 16")
+        assertTrue(h >= 1, "a glyph height of 0 is rejected by the client")
+
+        val tall = SpriteEntry(
+            id = SpriteId("gui", "tall"), width = 26, height = 200,
+            texture = "minecraft:tall.png", trimmedWidth = 26
+        )
+        val th = tall.fitHeight(16, 16)
+        assertTrue(tall.scaledWidth(th) <= 16 && th <= 16)
+    }
+
+    @Test
+    fun aScaledGlyphAdvancesByItsScaledWidth() {
+        // The client advances by round(trimmedWidth * scale) + 1. Advancing by
+        // the NATIVE width would push everything after a scaled sprite far to
+        // the right -- the same accumulation bug as the untrimmed advance.
+        val e = SpriteEntry(
+            id = SpriteId("gui", "big"), width = 256, height = 256,
+            texture = "minecraft:big.png", trimmedWidth = 256
+        )
+        assertEquals(257, e.scaledAdvance(256), "1:1 is trimmedWidth + 1")
+        assertEquals(17, e.scaledAdvance(16), "scaled to 16px it advances 17, not 257")
+    }
+
+    @Test
+    fun scalingAGlyphAllocatesADistinctVariant() {
+        // renderHeight is part of the font entry, so the same sprite at two
+        // sizes needs two codepoints -- sharing one would render both at
+        // whichever height was registered last.
+        val e = SpriteEntry(
+            id = SpriteId("gui", "v"), width = 32, height = 32,
+            texture = "minecraft:v.png", trimmedWidth = 32
+        )
+        val a = SpriteGlyphs.codepointFor(e, ascent = 7, renderHeight = 32)
+        val b = SpriteGlyphs.codepointFor(e, ascent = 7, renderHeight = 16)
+        assertTrue(a != b, "distinct render heights must not share a codepoint")
+        assertEquals(a, SpriteGlyphs.codepointFor(e, ascent = 7, renderHeight = 32), "stable")
     }
 
 }
