@@ -631,13 +631,29 @@ class Surface(
      * two elements at the same key keep their paint order as the tiebreak --
      * the same painter's-algorithm rule [Surface.KIND_CHROME] etc. already
      * encode for [RenderMode.COMPOSITED]), then stepped by [LAYER_Z_STEP] per
-     * ordinal exactly like [toEntitiesComposited] steps whole layers, so
-     * overlapping elements never share a depth.
+     * DISTINCT key -- not per element.
+     *
+     * Depth only has to separate elements that can actually overlap, and that
+     * is exactly what `depthKey` already encodes: two elements sharing a key
+     * are disjoint rects on the same conceptual layer (e.g. two grid-cell
+     * icons), and anything that DOES overlap another element -- an icon over
+     * a slot over chrome -- is on a different key by construction
+     * ([KIND_CHROME]/[KIND_SLOT]/[KIND_ICON]/[KIND_TEXT], plus
+     * [recordFrame]'s `+0.5`). Stepping by raw element ordinal instead of
+     * distinct-key rank was a real bug: a ~120-element page put 1.2 blocks of
+     * physical depth between its first and last element (`120 *
+     * LAYER_Z_STEP`), which reads as a window tilted into a wedge rather than
+     * a flat panel. Ranking by distinct key instead caps the SAME window's
+     * total depth at `(distinct key count) * LAYER_Z_STEP`, matching what
+     * [toEntitiesComposited] already does per whole layer regardless of how
+     * many glyphs live on it.
      */
     private fun toEntitiesFlat(): List<VirtualTextDisplay> {
         val ordered = elements.sortedBy { it.depthKey }
-        return ordered.mapIndexed { ordinal, el ->
-            val depth = ordinal * LAYER_Z_STEP
+        val depthRank = ordered.map { it.depthKey }.distinct().withIndex()
+            .associate { (i, key) -> key to i }
+        return ordered.map { el ->
+            val depth = (depthRank.getValue(el.depthKey)) * LAYER_Z_STEP
             when (el) {
                 is EntityElement.SpriteEl -> spriteEntity(el, depth)
                 is EntityElement.LabelEl -> labelEntity(el, depth)

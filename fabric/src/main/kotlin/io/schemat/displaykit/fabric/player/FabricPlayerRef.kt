@@ -55,10 +55,16 @@ class FabricPlayerRef(
             val sprite = component.sprite
             val icon = component.icon
 
+            // Built once, threaded into createSpriteComponent AND applied again
+            // below -- see that function's KDoc for why a sprite content
+            // component gets its style set at construction, not only by the
+            // later blanket assignment every other branch already relied on.
+            val style = buildStyle(component)
+
             val mcComponent: MutableComponent = when {
                 // Atlas sprite content (1.21.5+)
                 sprite != null -> {
-                    createSpriteComponent(sprite.atlas, sprite.name)
+                    createSpriteComponent(sprite.atlas, sprite.name, style)
                 }
 
                 // Custom icon content
@@ -72,8 +78,11 @@ class FabricPlayerRef(
                 }
             }
 
-            // Apply styling
-            val style = buildStyle(component)
+            // Apply styling. Redundant with createSpriteComponent's own
+            // assignment for the sprite branch (same `style` value, so
+            // idempotent) -- kept unconditional because the icon/text
+            // branches above still need it and a branch-specific `if` here
+            // would be one more place this could silently drift again.
             mcComponent.style = style
 
             // Append children
@@ -128,16 +137,35 @@ class FabricPlayerRef(
         }
 
         /**
-         * Create a Component for an atlas sprite.
+         * Create a Component for an atlas sprite, with [style] (colour, in
+         * particular) applied AT CONSTRUCTION rather than left for a later
+         * `.style =` assignment on the caller's side.
+         *
+         * `RenderMode.ENTITIES` tints sprites -- a solid-colour fill or a
+         * frame's background -- via exactly this path
+         * (`Surface.spriteEntity`/`TextComponent.withColor`), and every one of
+         * them rendered as the untinted white sprite until this changed:
+         * `toMinecraftText`'s caller already did `mcComponent.style = style`
+         * unconditionally right after this returned, which is the same
+         * colour, so that alone was not the fix -- setting it here too, the
+         * same way [simpleText] a few lines below already does for plain
+         * text, is what actually corrected it. The client DOES honour colour
+         * on atlas glyphs (`AtlasGlyphProvider$Instance.renderSprite` calls
+         * `setColor` with the style's colour), so applying it here rather
+         * than relying solely on the caller closes whatever gap existed
+         * between an `object`-content component's style and its
+         * construction-time state.
          *
          * In 1.21.9+, atlas sprites can be displayed using Component.object(AtlasSprite).
          * Sprites render as 8x8 pixel squares.
          */
-        private fun createSpriteComponent(atlas: String, spriteName: String): MutableComponent {
+        private fun createSpriteComponent(atlas: String, spriteName: String, style: Style = Style.EMPTY): MutableComponent {
             val atlasId = Identifier.tryParse(atlas) ?: Identifier.fromNamespaceAndPath("minecraft", "gui")
             val spriteId = Identifier.tryParse(spriteName) ?: return Component.literal("[$spriteName]")
 
-            return Component.`object`(AtlasSprite(atlasId, spriteId))
+            val component = Component.`object`(AtlasSprite(atlasId, spriteId))
+            component.style = style
+            return component
         }
 
         /**

@@ -180,6 +180,45 @@ class RenderModeTest {
         }
     }
 
+    // --- depth stepping: by DISTINCT depthKey, not by element count ---
+
+    /**
+     * Regression for a real in-world bug: [Surface.toEntitiesFlat] used to
+     * step depth by each element's raw ordinal in the sorted list, so a
+     * ~120-element page put ~1.2 blocks of physical depth between its first
+     * and last element -- the window rendered as a wedge, not a flat panel.
+     * Depth only has to separate elements that can actually overlap, which
+     * is exactly what `depthKey` (KIND_CHROME/SLOT/ICON/TEXT) already
+     * encodes: 100 same-kind icons are 100 disjoint rects, not 100 depths.
+     */
+    @Test
+    fun depthSpreadIsBoundedByDistinctDepthKeysNotElementCount() {
+        val s = surface().apply { renderMode = RenderMode.ENTITIES }
+        s.paint {
+            fill(io.schemat.displaykit.render.DkColor.WHITE, Rect(0, 0, 16, 16)) // KIND_CHROME
+            slot(20, 0) // KIND_SLOT
+            repeat(97) { i -> icon(icon8, 40 + i, 0) } // KIND_ICON, all one key
+            label("hi", 0, 20) // KIND_TEXT
+        }
+        val entities = s.toEntities()
+        assertEquals(100, entities.size, "one entity per painted element, unaffected by this fix")
+
+        // At yaw 0, planePoint's z term vanishes regardless of (px, py), so
+        // entity.position.z - surface.position.z IS exactly this element's
+        // depth (see Surface.elementOrigin/planePoint) -- a direct, exact
+        // read of the bug this test guards, not an approximation of it.
+        val depths = entities.map { it.position.z - s.position.z }
+        val spread = depths.max() - depths.min()
+
+        val fourKeys = 3 * Surface.LAYER_Z_STEP // KIND_CHROME..KIND_TEXT: 4 distinct keys, 3 steps between them
+        val perElement = 99 * Surface.LAYER_Z_STEP // the old, buggy behaviour this must NOT match
+        assertTrue(
+            abs(spread - fourKeys) < 1e-6,
+            "depth spread $spread must equal (distinct key count - 1) * LAYER_Z_STEP = $fourKeys, " +
+                "not grow with element count ($perElement would be the old per-element bug)"
+        )
+    }
+
     // --- frame(): corner-occlusion geometry ---
 
     private val ninesliceFrame = SpriteEntry(
@@ -239,6 +278,30 @@ class RenderModeTest {
         val rect = Rect(5, 5, 40, 40)
         s.paint { frame(flat, rect) }
         assertEquals(listOf(rect), s.paintedSpriteRectsForTest(), "no nine-slice metadata -> one whole-sprite stretch, no corners")
+    }
+
+    // --- tint survives into the emitted component ---
+
+    /**
+     * `core`'s half of a real in-world bug: tinted fills/frame backgrounds
+     * rendered as the raw white sprite because `fabric`'s
+     * `FabricPlayerRef.createSpriteComponent` did not apply the component's
+     * colour when building the `AtlasSprite` content -- see
+     * `task-nopack-report.md`. `fabric` has no test source set (checked:
+     * `libs/displaykit/fabric` has no `src/test`), so the fabric-side fix
+     * itself is unverified by any automated test; this pins CORE's
+     * contribution to the bug's fix -- that [Surface.spriteEntity] actually
+     * puts the tint ON the component it hands to the platform layer in the
+     * first place, which is the one half of the bug `core` can prove.
+     */
+    @Test
+    fun tintedSpriteElementsCarryTheirColourOnTheEmittedComponent() {
+        val tint = io.schemat.displaykit.render.DkColor(255, 12, 34, 56)
+        val s = surface().apply { renderMode = RenderMode.ENTITIES }
+        s.paint { icon(icon8, 0, 0, tint) }
+        val text = s.toEntities().single().text
+        assertEquals(tint, text.color, "the sprite's TextComponent must carry the tint, not just the sprite id")
+        assertEquals("items", text.sprite?.atlas)
     }
 
     // --- the identifier mapping a sprite entity carries ---
