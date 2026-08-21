@@ -15,6 +15,8 @@ import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
 import org.joml.Matrix4f
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * What a surface can be painted with.
@@ -114,12 +116,66 @@ class Surface(
 
     /** Repaint from scratch. Previous content, hit rects and slots are discarded. */
     fun paint(block: SurfacePainter.() -> Unit) {
+        canvas.anchorToBounds = true
         canvas.clear(); rects.clear(); slots.clear()
         Painter().block()
     }
 
+    /**
+     * The world point to give the entity so that canvas pixel (0,0) — the
+     * top-left, which is what [position] means — lands on [position].
+     *
+     * A text display is NOT positioned by its top-left. Verified in the
+     * 1.21.11 client (`DisplayRenderer$TextDisplayRenderer.render`, offsets
+     * 181-219), the renderer does
+     *
+     *     translate(1.0f - blockWidth / 2.0f, -(lineCount * 10 - 1), 0.0f)
+     *
+     * and then scales the whole matrix by `-0.025`. So the entity sits at the
+     * horizontal CENTRE and the vertical BOTTOM of the measured text block,
+     * one pixel off in x. Resolving the double negation, canvas pixel
+     * `(px, py)` ends up at this offset from the entity, before [yawDegrees]:
+     *
+     *     dx = PIXEL_SIZE * scale * (blockWidth / 2 - 1 - px)
+     *     dy = PIXEL_SIZE * scale * (blockHeight - py)
+     *
+     * A `rotateY(PI)` at offset 137 precedes that scale and cancels the
+     * negation on x and z, so canvas +X is local +X and only canvas +Y is
+     * flipped (it runs downward). Hence:
+     *
+     *     dx = PIXEL_SIZE * scale * (px + 1 - blockWidth / 2)
+     *     dy = PIXEL_SIZE * scale * (blockHeight - py)
+     *
+     * `blockWidth` is [SpriteCanvas.maxRowAdvance] and `blockHeight` follows
+     * from [SpriteCanvas.emittedRowCount]. Both are exact rather than
+     * predicted: every glyph advance now matches what the client measures
+     * (see [SpriteEntry.glyphAdvance]), and anchoring
+     * ([SpriteCanvas.anchorToBounds]) floors the block at the canvas bounds so
+     * it does not shift when a widget changes width.
+     *
+     * See `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`.
+     */
+    internal fun entityOrigin(): Vec3d {
+        // No text means no measured block and so no centring to undo.
+        if (canvas.itemCount() == 0) return position
+        val unit = TextMetrics.PIXEL_SIZE * pixelScale
+        val blockHeightPx = canvas.emittedRowCount() * TextMetrics.FONT_LINE_HEIGHT_PX - 1
+        // Offset of canvas (0,0) from the entity, in the surface's own frame.
+        val localX = unit * (1.0 - canvas.maxRowAdvance() / 2.0)
+        val localY = unit * blockHeightPx.toDouble()
+        val theta = Math.toRadians(yawDegrees.toDouble())
+        val cos = cos(theta)
+        val sin = sin(theta)
+        // rotateY applied to local +X, matching SurfacePicking's inverse.
+        return Vec3d(
+            position.x - (localX * cos),
+            position.y - localY,
+            position.z - (localX * -sin)
+        )
+    }
+
     fun toEntity(): VirtualTextDisplay = VirtualTextDisplay().also { d ->
-        d.position = position
+        d.position = entityOrigin()
         d.billboard = orientation
         d.backgroundColor = backdrop ?: DkColor.TRANSPARENT
         d.brightness = Brightness.FULL
@@ -148,9 +204,18 @@ class Surface(
         // would render as a field of missing-glyph boxes. Say so in words
         // instead — a legible message beats tofu. Plain text needs no pack at
         // all, so it must never be discarded here (see requiresPack()).
-        d.text = if (SliceGlyphSource.installed == null && canvas.requiresPack()) {
-            SpriteDiagnostics.packDisabled()
-            TextComponent.of("[DisplayKit surface unavailable: resource pack disabled]")
+        d.text = if (SliceGlyphSource.installed == null) {
+            if (canvas.requiresPack()) {
+                SpriteDiagnostics.packDisabled()
+                TextComponent.of("[DisplayKit surface unavailable: resource pack disabled]")
+            } else {
+                // Anchor padding is written in the spacing font, so emitting it
+                // without a pack would turn legible text into tofu. The block
+                // is then measured from the content and entityOrigin's size
+                // assumption no longer holds -- acceptable, because this is
+                // already the degraded path.
+                canvas.toTextComponent(anchor = false)
+            }
         } else {
             canvas.toTextComponent()
         }

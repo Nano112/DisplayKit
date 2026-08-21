@@ -193,25 +193,26 @@ class SpriteCanvasTest {
 
     @Test
     fun aSixteenPxGlyphAtY30ProducesAnAscentPuttingItsTopAtExactlyY30() {
-        // y=30 -> natural row 3 (origin 27). Required ascent =
-        // 27 + GLYPH_TOP_BEARING_PX(7) - 30 = 4, which a 16px-tall glyph
-        // satisfies on its natural row (no fallback needed). A glyph's top,
-        // relative to its line's origin, is GLYPH_TOP_BEARING_PX - ascent, so
-        // its absolute top is 27 + 7 - 4 = 30 -- pixel-exact.
+        // y=30 -> natural row 3 (origin 30, at the renderer's line pitch of
+        // 10). Required ascent = 30 + GLYPH_TOP_BEARING_PX(7) - 30 = 7, which
+        // a 16px-tall glyph satisfies on its natural row (no fallback). A
+        // glyph's top, relative to its line's origin, is
+        // GLYPH_TOP_BEARING_PX - ascent, so its absolute top is
+        // 30 + 7 - 7 = 30 -- pixel-exact.
         //
         // (Superseded a test that asserted yOffset == -7 for y=16 under the
         // OLD, buggy sign convention -- see TextMetrics.GLYPH_TOP_BEARING_PX.)
         val c = SpriteCanvas(64, 64)
         c.draw(entry("tall", w = 16, h = 16), x = 0, y = 30)
         val variant = SpriteGlyphs.requested().single()
-        assertEquals(4, variant.ascent)
+        assertEquals(7, variant.ascent)
     }
 
     @Test
     fun anEightyTwoPxCropAtY9LandsAtExactlyY9OnItsNaturalRow() {
-        // y=9 -> natural row 1 (origin 9). Required ascent =
-        // 9 + 7 - 9 = 7, well within an 82px-tall glyph's height, so no row
-        // fallback is needed. Exercised through drawGlyph (the nine-slice
+        // y=9 -> natural row 0 (origin 0, at the renderer's line pitch of
+        // 10). Required ascent = 0 + 7 - 9 = -2; a negative ascent is legal
+        // (only ascent > height is rejected), so no row fallback is needed. Exercised through drawGlyph (the nine-slice
         // path) rather than draw(), since whole sprites this tall don't occur
         // in practice.
         val c = SpriteCanvas(400, 100)
@@ -220,7 +221,7 @@ class SpriteCanvasTest {
             seenAscent = ascent
             "x"
         }
-        assertEquals(7, seenAscent)
+        assertEquals(-2, seenAscent)
     }
 
     @Test

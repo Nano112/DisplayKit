@@ -27,6 +27,12 @@ data class NineSlice(
  *   Such sprites can never be font glyphs — a glyph renders the whole strip.
  * @param greyscale True when every non-transparent pixel is grey. Font glyph
  *   tinting is multiplicative, so only greyscale sources tint cleanly.
+ * @param trimmedWidth The rightmost non-empty pixel column, plus one — the
+ *   width the client measures this texture at when it becomes a bitmap glyph.
+ *   Transparent right-hand padding is NOT counted, so this is `<= width` and
+ *   frequently strictly less (real vanilla items measured 16 -> 14). Defaults
+ *   to [width] for hand-built entries that carry no pixel data; the generated
+ *   index always records the measured value. See [glyphAdvance].
  */
 data class SpriteEntry(
     val id: SpriteId,
@@ -35,10 +41,27 @@ data class SpriteEntry(
     val texture: String,
     val animated: Boolean = false,
     val greyscale: Boolean = false,
-    val nineSlice: NineSlice? = null
+    val nineSlice: NineSlice? = null,
+    val trimmedWidth: Int = width
 ) {
     /** Eligible to be emitted as a by-reference bitmap font glyph. */
     val glyphEligible: Boolean get() = !animated
+
+    /**
+     * How far the text cursor moves when this sprite is drawn as a glyph.
+     *
+     * The client does NOT advance by the declared width. `BitmapProvider$
+     * Definition.getActualGlyphWidth` scans columns right-to-left and stops at
+     * the first with any non-zero luminance-or-alpha, yielding
+     * [trimmedWidth]; the advance is then `round(trimmedWidth * scale) + 1`.
+     * DisplayKit emits one glyph per texture at its native height, so the
+     * scale is 1 and this reduces to `trimmedWidth + 1`.
+     *
+     * Using [width] here instead is a per-sprite under-advance that
+     * accumulates across a row and collapses a grid into an overlapping heap.
+     * See `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`.
+     */
+    val glyphAdvance: Int get() = trimmedWidth + 1
 
     val aspectRatio: Float get() = width.toFloat() / height.toFloat()
 }

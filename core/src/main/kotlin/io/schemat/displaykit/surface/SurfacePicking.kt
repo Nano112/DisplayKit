@@ -56,8 +56,13 @@ object SurfacePicking {
         val hx = localEye.x + localLook.x * t
         val hy = localEye.y + localLook.y * t
 
+        // Canvas +X is world +X and canvas +Y runs DOWNWARD. The client's
+        // text matrix scales by -0.025 on every axis, but a rotateY(PI)
+        // applied before it (DisplayRenderer$TextDisplayRenderer.render,
+        // offset 137) cancels the negation on x and z, leaving y the only
+        // flipped axis.
         val px = floor((hx - surface.position.x) / unit + PIXEL_EPSILON).toInt()
-        val py = floor((surface.position.y - hy) / unit + PIXEL_EPSILON).toInt()   // canvas y grows downward
+        val py = floor((surface.position.y - hy) / unit + PIXEL_EPSILON).toInt()
 
         if (px < 0 || py < 0 || px >= surface.widthPx || py >= surface.heightPx) return null
         return px to py

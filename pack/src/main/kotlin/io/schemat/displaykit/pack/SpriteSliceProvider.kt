@@ -9,8 +9,17 @@ import io.schemat.displaykit.sprite.SpriteId
 /** One committed crop of a nine-sliced sprite. */
 data class CatalogCrop(
     val x: Int, val y: Int, val w: Int, val h: Int,
-    val resource: String
-)
+    val resource: String,
+    /**
+     * The crop's rightmost non-empty pixel column, plus one — what the client
+     * will measure this crop at as a bitmap glyph. `<= w`, and strictly less
+     * whenever the crop has transparent right-hand padding.
+     */
+    val trimmedW: Int = w
+) {
+    /** Cursor advance for this crop as a glyph: trimmed width plus one. */
+    val advance: Int get() = trimmedW + 1
+}
 
 /**
  * The committed nine-slice crops, read from the pack module's own resources.
@@ -46,7 +55,8 @@ object SliceCatalog {
                 CatalogCrop(
                     x = co.get("x").asInt, y = co.get("y").asInt,
                     w = co.get("w").asInt, h = co.get("h").asInt,
-                    resource = co.get("file").asString
+                    resource = co.get("file").asString,
+                    trimmedW = co.get("trimmedW")?.asInt ?: co.get("w").asInt
                 )
             }
         }
@@ -105,6 +115,15 @@ object SpriteSliceProvider : AssetProvider {
      *   height — the same `ascent <= height` constraint
      *   `SpriteGlyphs.codepointFor` enforces for whole sprites.
      */
+    /**
+     * Cursor advance for the crop at (srcX, srcY): its measured trimmed width
+     * plus one, or null when this sprite has no such crop.
+     */
+    fun advanceFor(id: SpriteId, srcX: Int, srcY: Int): Int? =
+        SliceCatalog.regionsFor(id)
+            ?.firstOrNull { it.x == srcX && it.y == srcY }
+            ?.advance
+
     fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int): Int? {
         val crop = SliceCatalog.regionsFor(id)?.firstOrNull { it.x == srcX && it.y == srcY }
             ?: return null

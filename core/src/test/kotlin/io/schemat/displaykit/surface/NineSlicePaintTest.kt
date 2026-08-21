@@ -34,6 +34,10 @@ class NineSlicePaintTest {
         override fun request(id: SpriteId) { requests += id }
         override fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int): Int =
             handed.getOrPut(Ask(id, srcX, srcY, ascent)) { next++ }
+        // Null exercises NineSlicePainter's declared-width fallback;
+        // the fake has no pixels for a real trimmed measurement.
+        override fun advanceFor(id: SpriteId, srcX: Int, srcY: Int): Int? = null
+
     }
 
     private lateinit var src: FakeSource

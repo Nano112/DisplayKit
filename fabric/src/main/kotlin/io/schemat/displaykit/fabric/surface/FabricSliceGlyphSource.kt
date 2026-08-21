@@ -14,4 +14,7 @@ object FabricSliceGlyphSource : SliceGlyphSource {
     override fun request(id: SpriteId) = SpriteSliceProvider.request(id)
     override fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int): Int? =
         SpriteSliceProvider.codepointFor(id, srcX, srcY, ascent)
+
+    override fun advanceFor(id: SpriteId, srcX: Int, srcY: Int): Int? =
+        SpriteSliceProvider.advanceFor(id, srcX, srcY)
 }

@@ -69,6 +69,11 @@ object SpriteSliceGenerator {
                     cropArr.add(JsonObject().apply {
                         addProperty("x", ox); addProperty("y", oy)
                         addProperty("w", w); addProperty("h", h)
+                        // The client advances a bitmap glyph by its rightmost
+                        // non-empty column + 1, not by its declared width.
+                        // Measure the crop we just wrote so NineSlicePainter
+                        // can step the cursor by what will actually happen.
+                        addProperty("trimmedW", SpriteIndexGenerator.actualGlyphWidth(sub))
                         addProperty("file", name)
                     })
                     crops++

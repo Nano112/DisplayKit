@@ -108,6 +108,13 @@ object SpriteIndexGenerator {
                             addProperty("texture", "minecraft:" + path.removePrefix(TEXTURE_DIR))
                             if (isAnimated) addProperty("animated", true)
                             addProperty("greyscale", isGreyscale(image))
+                            // An animated strip is never a glyph, so its
+                            // advance is meaningless -- and measuring it would
+                            // scan the whole strip rather than one frame.
+                            addProperty(
+                                "trimmedWidth",
+                                if (isAnimated) width else actualGlyphWidth(image)
+                            )
                             slice?.let { add("nineSlice", it) }
                         }
                         sprites.add(obj)
@@ -160,6 +167,44 @@ object SpriteIndexGenerator {
             }
         }
         return true
+    }
+
+    /**
+     * The width the client will measure this texture at when it becomes a
+     * bitmap glyph — the rightmost non-empty column, plus one.
+     *
+     * A faithful port of `BitmapProvider$Definition.getActualGlyphWidth` in
+     * the 1.21.11 client, which scans columns right-to-left and returns as
+     * soon as one contains a pixel whose `getLuminanceOrAlpha` is non-zero.
+     * A fully empty texture yields 0.
+     *
+     * `NativeImage.getLuminanceOrAlpha` returns the ALPHA channel when the
+     * format has one and the LUMINANCE otherwise, so an opaque RGB texture
+     * has its black columns trimmed just like a transparent one — reproduced
+     * here via [BufferedImage.getColorModel]'s alpha support.
+     *
+     * Getting this wrong under-advances the text cursor by a per-sprite
+     * amount that accumulates across a row. See
+     * `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`.
+     */
+    internal fun actualGlyphWidth(image: java.awt.image.BufferedImage): Int {
+        val hasAlpha = image.colorModel.hasAlpha()
+        for (x in image.width - 1 downTo 0) {
+            for (y in 0 until image.height) {
+                val argb = image.getRGB(x, y)
+                val sample = if (hasAlpha) {
+                    (argb ushr 24) and 0xFF
+                } else {
+                    // NativeImage's luminance is the low byte of the colour in
+                    // its single-channel formats; for an RGB source every
+                    // channel is equal for greys, and any non-black pixel
+                    // terminates the scan regardless of which we sample.
+                    ((argb shr 16) and 0xFF) or ((argb shr 8) and 0xFF) or (argb and 0xFF)
+                }
+                if (sample != 0) return x + 1
+            }
+        }
+        return 0
     }
 
     @JvmStatic

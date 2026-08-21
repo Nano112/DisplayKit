@@ -20,19 +20,28 @@ object TextMetrics {
     const val LINE_HEIGHT_PX = 10
 
     /**
-     * Minecraft's actual font line height, in text pixels.
+     * The vertical pitch between consecutive lines of a **text display**, in
+     * text pixels.
      *
-     * Verified from the decompiled 1.21.11 client:
-     * `net.minecraft.client.gui.Font`'s constructor does `bipush 9; putfield
-     * lineHeight`. [LINE_HEIGHT_PX] (10) is a legacy approximation kept only
-     * for the block-widget geometry ([blockHeight], [verticalCenterCorrection])
-     * that has been tuned by eye against it — changing that constant would
-     * shift every existing DisplayKit UI. Anything reasoning about how
-     * `SpriteCanvas`/`NineSlicePainter` rows map onto the text component the
-     * client actually splits into lines (the compositor) must use this
-     * constant instead.
+     * This is deliberately NOT `Font.lineHeight`. Verified from the decompiled
+     * 1.21.11 client, the two differ and confusing them costs one pixel of
+     * drift per row:
+     *
+     * - `net.minecraft.client.gui.Font`'s constructor does `bipush 9; putfield
+     *   lineHeight` — 9 is the font's own measure/wrap metric.
+     * - `DisplayRenderer$TextDisplayRenderer.render` computes its row pitch at
+     *   offset 175 as `bipush 9; iconst_1; iadd` — **9 + 1 = 10** — and uses
+     *   that for both the per-line step and the block height
+     *   (`lines.size() * pitch - 1`).
+     *
+     * Anything positional — mapping a `SpriteCanvas`/`NineSlicePainter` row
+     * onto the line the client renders it as, or deriving a glyph `ascent` —
+     * must use this constant. Only text measurement/wrapping uses 9, and
+     * nothing in DisplayKit currently needs that.
+     *
+     * See `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`.
      */
-    const val FONT_LINE_HEIGHT_PX = 9
+    const val FONT_LINE_HEIGHT_PX = 10
 
     /**
      * The vertical bearing baked into every bitmap glyph by the client, in

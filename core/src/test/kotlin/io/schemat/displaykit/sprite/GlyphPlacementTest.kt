@@ -14,14 +14,14 @@ class GlyphPlacementTest {
     @Test
     fun aSixteenPxGlyphAtY30LandsWithItsTopAtExactlyY30() {
         val p = GlyphPlacement.resolve(y = 30, height = 16)
-        assertEquals(GlyphPlacement.Placement(row = 3, ascent = 4), p)
+        assertEquals(GlyphPlacement.Placement(row = 3, ascent = 7), p)
         assertEquals(30, top(p!!))
     }
 
     @Test
     fun anEightyTwoPxGlyphAtY9LandsWithItsTopAtExactlyY9() {
         val p = GlyphPlacement.resolve(y = 9, height = 82)
-        assertEquals(GlyphPlacement.Placement(row = 1, ascent = 7), p)
+        assertEquals(GlyphPlacement.Placement(row = 0, ascent = -2), p)
         assertEquals(9, top(p!!))
     }
 

@@ -62,6 +62,10 @@ class SpriteIndex private constructor(
                 texture = obj.get("texture").asString,
                 animated = obj.get("animated")?.asBoolean ?: false,
                 greyscale = obj.get("greyscale")?.asBoolean ?: false,
+                // Absent only in an index generated before advance trimming
+                // was understood; falling back to the declared width restores
+                // the old (wrong, but non-crashing) behaviour for that case.
+                trimmedWidth = obj.get("trimmedWidth")?.asInt ?: obj.get("width").asInt,
                 nineSlice = sliceObj?.let {
                     NineSlice(
                         left = it.get("left").asInt,

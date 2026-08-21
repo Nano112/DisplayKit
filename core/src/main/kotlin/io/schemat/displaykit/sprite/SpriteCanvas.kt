@@ -86,9 +86,11 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      *   short to satisfy its natural row's required ascent.
      * @param advanceWidth How far the text cursor moves once this item is
      *   emitted — i.e. the pixel position immediately after it. For a sprite
-     *   glyph this is `entry.width + 1`, matching the client's bitmap glyph
-     *   advance formula `round(width * height / textureHeight) + 1` once
-     *   `height` is set to the sprite's true height (scale factor 1).
+     *   glyph this is [SpriteEntry.glyphAdvance], which is the sprite's
+     *   TRIMMED width plus one, not its declared width plus one: the client
+     *   measures a bitmap glyph by scanning for its rightmost non-empty
+     *   column. Using the declared width here under-advances by a per-sprite
+     *   amount that accumulates across a row.
      */
     private data class Item(
         val content: String,
@@ -143,7 +145,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
             x = x,
             y = y,
             row = placement.row,
-            advanceWidth = entry.width + 1,
+            advanceWidth = entry.glyphAdvance,
             tint = tint
         )
     }
@@ -240,6 +242,41 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * glyph's advance exceeds its drawn width by 1, so touching or
      * overlapping sprites correct the cursor backward.
      */
+    /**
+     * Pad every emitted row out to [widthPx], and emit at least
+     * [anchoredRowCount] rows, so the client measures this canvas's text block
+     * at exactly its declared bounds.
+     *
+     * A text display is positioned by the CENTRE of the block the client
+     * measures, not by the canvas origin (see
+     * `docs/superpowers/specs/2026-08-21-text-display-layout-truth.md`). That
+     * measurement depends on the content, so without anchoring a surface would
+     * shift underneath itself whenever a widget changed width — and any
+     * placement maths would have to predict the client's own measurement to
+     * stay aligned. Anchoring makes the block size a constant the caller
+     * already knows.
+     *
+     * Off by default: the padding uses the spacing font, which would make
+     * [requiresPack] true for an otherwise plain-text canvas and cost it the
+     * legible pack-disabled fallback. [requiresPack] therefore always inspects
+     * the UNANCHORED children.
+     */
+    var anchorToBounds: Boolean = false
+
+    /**
+     * Rows this canvas actually emits — the block height the client measures,
+     * divided by the line pitch. Content taller than [heightPx] still emits
+     * its own rows, so this is a max, not [anchoredRowCount].
+     */
+    fun emittedRowCount(): Int = buildRows().size
+
+    /**
+     * Rows needed to cover [heightPx] at the renderer's line pitch — the block
+     * height an anchored canvas guarantees.
+     */
+    fun anchoredRowCount(): Int =
+        (heightPx + TextMetrics.FONT_LINE_HEIGHT_PX - 1) / TextMetrics.FONT_LINE_HEIGHT_PX
+
     /** One row's emitted children, plus where its cursor ended up. */
     private data class Row(val children: List<TextComponent>, val endCursorX: Int)
 
@@ -249,14 +286,19 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * this produces is exactly what would render, exactly what is inspected
      * for pack dependence, and exactly what the widest row actually measures.
      */
-    private fun buildRows(): List<Row> {
+    private fun buildRows(anchor: Boolean = anchorToBounds): List<Row> {
         if (items.isEmpty()) return emptyList()
 
         val byRow = items.groupBy { it.row }
         val maxRow = byRow.keys.max()
+        // Anchoring pads out to the canvas bounds so the client measures the
+        // block at exactly (width x anchoredRowCount), which is what lets
+        // Surface place the entity from a known offset instead of predicting
+        // the measurement. See the property's KDoc.
+        val lastRow = if (anchor) maxOf(maxRow, anchoredRowCount() - 1) else maxRow
 
         val rows = mutableListOf<Row>()
-        for (row in 0..maxRow) {
+        for (row in 0..lastRow) {
             val children = mutableListOf<TextComponent>()
             var cursorX = 0
             for (item in byRow[row].orEmpty().sortedBy { it.x }) {
@@ -271,14 +313,21 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
                 )
                 cursorX = item.x + item.advanceWidth
             }
+            if (anchor && cursorX < widthPx) {
+                children += TextComponent(
+                    text = Spacing.advance(widthPx - cursorX),
+                    font = Spacing.FONT_ID
+                )
+                cursorX = widthPx
+            }
             rows += Row(children, cursorX)
         }
 
         return rows
     }
 
-    private fun buildChildren(): List<TextComponent> {
-        val rows = buildRows()
+    private fun buildChildren(anchor: Boolean = anchorToBounds): List<TextComponent> {
+        val rows = buildRows(anchor)
         val children = mutableListOf<TextComponent>()
         rows.forEachIndexed { index, row ->
             if (index > 0) children += TextComponent(text = "\n")
@@ -287,8 +336,8 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         return children
     }
 
-    fun toTextComponent(): TextComponent {
-        val children = buildChildren()
+    fun toTextComponent(anchor: Boolean = anchorToBounds): TextComponent {
+        val children = buildChildren(anchor)
         if (children.isEmpty()) return TextComponent.EMPTY
         return TextComponent(children = children)
     }
@@ -318,5 +367,5 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * proxy like "the canvas is non-empty" — an empty text-only canvas with a
      * leading gap still needs the pack for its spacing character.
      */
-    fun requiresPack(): Boolean = buildChildren().any { it.font != null }
+    fun requiresPack(): Boolean = buildChildren(anchor = false).any { it.font != null }
 }

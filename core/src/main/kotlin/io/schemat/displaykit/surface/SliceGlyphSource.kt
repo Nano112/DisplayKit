@@ -37,6 +37,21 @@ interface SliceGlyphSource {
      */
     fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int): Int?
 
+    /**
+     * How far the text cursor moves when the crop at (srcX, srcY) is drawn —
+     * its TRIMMED width plus one.
+     *
+     * The client measures a bitmap glyph by scanning for its rightmost
+     * non-empty column, so a crop with transparent right-hand padding
+     * advances less than its declared width. Frame corners and edges are
+     * routinely padded that way, and assuming `srcW + 1` walked every
+     * subsequent region of a row leftward.
+     *
+     * Returns null when this sprite has no such crop, in which case
+     * [NineSlicePainter] falls back to the declared width.
+     */
+    fun advanceFor(id: SpriteId, srcX: Int, srcY: Int): Int?
+
     companion object {
         /** Installed by the platform layer. Null means nine-slice is unavailable. */
         @JvmStatic
@@ -93,7 +108,10 @@ object NineSlicePainter {
                 x = rect.x + p.dstX,
                 y = rect.y + p.dstY,
                 height = p.srcH,
-                advanceWidth = p.srcW + 1,   // bitmap glyph advance is width + 1
+                // Trimmed advance from the crop's own pixels; the declared
+                // width is only a fallback for a crop the source has not
+                // measured. See SliceGlyphSource.advanceFor.
+                advanceWidth = source.advanceFor(entry.id, p.srcX, p.srcY) ?: (p.srcW + 1),
                 tint = tint
             ) { ascent ->
                 source.codepointFor(entry.id, p.srcX, p.srcY, ascent)
