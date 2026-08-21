@@ -1,77 +1,102 @@
 package io.schemat.displaykit.pack
 
-import io.schemat.displaykit.sprite.NineSlice
-import io.schemat.displaykit.sprite.SpriteEntry
+import com.google.gson.JsonParser
 import io.schemat.displaykit.sprite.SpriteGlyphs
 import io.schemat.displaykit.sprite.SpriteId
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SpriteSliceProviderTest {
 
-    @BeforeTest fun reset() { SpriteGlyphs.clear(); SpriteSlicer.clear() }
-    @AfterTest fun tearDown() { SpriteGlyphs.clear(); SpriteSlicer.clear() }
+    private val button = SpriteId("gui", "widget/button")
+    private val tab = SpriteId("gui", "widget/tab")
 
-    private val button = SpriteEntry(
-        id = SpriteId("gui", "widget/button"),
-        width = 200, height = 20,
-        texture = "minecraft:gui/sprites/widget/button.png",
-        nineSlice = NineSlice(left = 3, top = 3, right = 3, bottom = 3)
-    )
+    @BeforeTest fun reset() { SpriteGlyphs.clear(); SpriteSliceProvider.clear() }
+    @AfterTest fun tearDown() { SpriteGlyphs.clear(); SpriteSliceProvider.clear() }
 
     @Test
-    fun ninePatchProducesNineRegions() {
-        assertEquals(9, SpriteSlicer.ninePatch(button).size)
+    fun catalogLoadsTheCommittedManifest() {
+        val crops = SliceCatalog.regionsFor(button)
+        assertNotNull(crops, "widget/button must be in the committed manifest")
+        assertEquals(9, crops.size)
     }
 
     @Test
-    fun cornerRegionsUseTheBorderInsets() {
-        val regions = SpriteSlicer.ninePatch(button)
-        val topLeft = regions.first()
-        assertEquals(0, topLeft.x)
-        assertEquals(0, topLeft.y)
-        assertEquals(3, topLeft.w)
-        assertEquals(3, topLeft.h)
+    fun degenerateRegionsAreAbsentFromTheCatalog() {
+        val crops = SliceCatalog.regionsFor(tab)
+        assertNotNull(crops)
+        assertEquals(6, crops.size, "tab has bottom=0, so no bottom row")
     }
 
     @Test
-    fun centerRegionIsTheInteriorAfterBorders() {
-        val center = SpriteSlicer.ninePatch(button)[4]
-        assertEquals(3, center.x)
-        assertEquals(3, center.y)
-        assertEquals(200 - 6, center.w)
-        assertEquals(20 - 6, center.h)
+    fun aSpriteWithNoNineSliceIsNotInTheCatalog() {
+        assertNull(SliceCatalog.regionsFor(SpriteId("gui", "hud/hotbar")))
     }
 
     @Test
-    fun regionsTileTheFullSpriteWithoutGapsOrOverlap() {
-        val area = SpriteSlicer.ninePatch(button).sumOf { it.w * it.h }
-        assertEquals(200 * 20, area)
+    fun everyCatalogCropResolvesToAPackagedResource() {
+        for (c in SliceCatalog.regionsFor(button)!!) {
+            val stream = SliceCatalog::class.java.getResourceAsStream("/displaykit/slices/${c.resource}")
+            assertNotNull(stream, "missing packaged crop ${c.resource}")
+            stream.close()
+        }
     }
 
     @Test
-    fun everyRegionGetsADistinctCodepointInTheSliceRange() {
-        val codepoints = SpriteSlicer.ninePatch(button).map { it.codepoint }
-        assertEquals(9, codepoints.toSet().size)
-        assertTrue(
-            codepoints.all { it >= SpriteGlyphs.SLICE_BASE_CODEPOINT },
-            "slices must not share the whole-sprite glyph range"
-        )
+    fun nothingIsEmittedUntilRequested() {
+        val b = PackBuilder(PackConfig())
+        SpriteSliceProvider.contributeAssets(b)
+        assertEquals(0, b.imageCount(), "unrequested slices must not ship")
     }
 
     @Test
-    fun repeatedCallsReuseTheSameCodepointsRatherThanLeaking() {
-        val first = SpriteSlicer.ninePatch(button).map { it.codepoint }
-        val second = SpriteSlicer.ninePatch(button).map { it.codepoint }
+    fun requestingASpriteEmitsItsCropsAndAFontProvider() {
+        SpriteSliceProvider.request(button)
+        val b = PackBuilder(PackConfig())
+        SpriteSliceProvider.contributeAssets(b)
+        assertEquals(9, b.imageCount())
+        val json = JsonParser.parseString(
+            b.capturedJson("assets/displaykit/font/sprite_slices.json")
+        ).asJsonObject
+        assertEquals(9, json.getAsJsonArray("providers").size())
+    }
+
+    @Test
+    fun sliceCodepointsComeFromTheSliceRange() {
+        SpriteSliceProvider.request(button)
+        for (c in SliceCatalog.regionsFor(button)!!) {
+            val cp = SpriteSliceProvider.codepointFor(button, c.x, c.y)
+            assertNotNull(cp)
+            assertTrue(cp >= SpriteGlyphs.SLICE_BASE_CODEPOINT,
+                "slice codepoints must not collide with whole-sprite glyphs")
+        }
+    }
+
+    @Test
+    fun requestingTwiceReusesTheSameCodepoints() {
+        SpriteSliceProvider.request(button)
+        val first = SliceCatalog.regionsFor(button)!!.map { SpriteSliceProvider.codepointFor(button, it.x, it.y) }
+        SpriteSliceProvider.request(button)
+        val second = SliceCatalog.regionsFor(button)!!.map { SpriteSliceProvider.codepointFor(button, it.x, it.y) }
         assertEquals(first, second)
     }
 
     @Test
-    fun spritesWithoutNineSliceMetadataProduceNoRegions() {
-        val plain = button.copy(nineSlice = null)
-        assertEquals(0, SpriteSlicer.ninePatch(plain).size)
+    fun eachProviderAscentEqualsItsCropHeight() {
+        SpriteSliceProvider.request(button)
+        val b = PackBuilder(PackConfig())
+        SpriteSliceProvider.contributeAssets(b)
+        val providers = JsonParser.parseString(
+            b.capturedJson("assets/displaykit/font/sprite_slices.json")
+        ).asJsonObject.getAsJsonArray("providers")
+        for (p in providers) {
+            val o = p.asJsonObject
+            assertEquals(o.get("height").asInt, o.get("ascent").asInt)
+        }
     }
 }

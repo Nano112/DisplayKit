@@ -1,20 +1,18 @@
 package io.schemat.displaykit.showcase
 
-import io.schemat.displaykit.pack.SpriteSlicer
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 
 /**
- * `/dk demo frame` — reports the nine-slice regions a resizable frame is built
- * from, proving the harvested insets tile the sprite exactly.
+ * `/dk demo frame` — reports the nine-slice crops a resizable frame is built
+ * from, proving the committed crops tile the sprite exactly.
  *
  * Rendering a live resizable window is an L3 consumer and out of scope; this
- * demo verifies the primitive the consumer will sit on. It reports region
- * geometry only, so it needs no source image — see the KDoc on
- * `SpriteSliceProvider.requestSlices` for why a dedicated server has no
- * runtime path to that image anyway.
+ * demo verifies the primitive the consumer will sit on. It reports crop
+ * geometry from the committed manifest, which is generated at build time so
+ * a dedicated server never needs a runtime source image.
  */
 object FrameDemo {
 
@@ -29,24 +27,21 @@ object FrameDemo {
             return
         }
 
-        val regions = SpriteSlicer.ninePatch(button)
-        val area = regions.sumOf { it.w * it.h }
-
-        player.sendSystemMessage(
-            Component.literal("${button.id}: ${button.width}x${button.height}, border ${button.nineSlice}")
-        )
-        for (r in regions) {
-            player.sendSystemMessage(
-                Component.literal("  region ${r.x},${r.y} ${r.w}x${r.h}")
-            )
+        val crops = io.schemat.displaykit.pack.SliceCatalog.regionsFor(button.id)
+        if (crops == null) {
+            player.sendSystemMessage(Component.literal("widget/button has no committed slices"))
+            return
         }
+        player.sendSystemMessage(Component.literal("${button.id}: ${button.width}x${button.height}"))
+        for (c in crops) {
+            player.sendSystemMessage(Component.literal("  crop ${c.x},${c.y} ${c.w}x${c.h}"))
+        }
+        val area = crops.sumOf { it.w * it.h }
         player.sendSystemMessage(
-            Component.literal(
-                "Regions tile the sprite exactly: $area == ${button.width * button.height}"
-            )
+            Component.literal("Crops tile the sprite exactly: $area == ${button.width * button.height}")
         )
-
-        val sliceCount = SpriteIndex.bundled.all().count { it.nineSlice != null }
-        player.sendSystemMessage(Component.literal("$sliceCount sprites carry nine-slice metadata"))
+        player.sendSystemMessage(
+            Component.literal("${io.schemat.displaykit.pack.SliceCatalog.all().size} sprites carry nine-slice metadata")
+        )
     }
 }
