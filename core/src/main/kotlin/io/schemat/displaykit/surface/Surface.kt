@@ -1,5 +1,7 @@
 package io.schemat.displaykit.surface
 
+import io.schemat.displaykit.composite.DepthAllocator
+import io.schemat.displaykit.composite.DepthLayer
 import io.schemat.displaykit.math.Mat4f
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.Billboard
@@ -698,10 +700,18 @@ class Surface(
      */
     private fun toEntitiesFlat(): List<VirtualTextDisplay> {
         val ordered = elements.sortedBy { it.depthKey }
-        val depthRank = ordered.map { it.depthKey }.distinct().withIndex()
-            .associate { (i, key) -> key to i }
+        // Delegated to the one authority that orders every medium, rather
+        // than ranking keys here. Identical output today -- every element on
+        // this path is a flat plane, so a thickness of zero reduces the
+        // allocator exactly to `rank * LAYER_Z_STEP` -- but it is the same
+        // arithmetic a block display's real volume will go through, so the
+        // two cannot drift into disagreeing about what is in front of what.
+        val depths = DepthAllocator.allocate(
+            ordered.map { DepthLayer(it.depthKey) },
+            separation = LAYER_Z_STEP
+        )
         return ordered.map { el ->
-            val depth = (depthRank.getValue(el.depthKey)) * LAYER_Z_STEP
+            val depth = depths.getValue(el.depthKey)
             when (el) {
                 is EntityElement.SpriteEl -> spriteEntity(el, depth)
                 is EntityElement.LabelEl -> labelEntity(el, depth)
