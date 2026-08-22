@@ -2,6 +2,7 @@ package io.schemat.displaykit.fabric.mixin;
 
 import io.schemat.displaykit.fabric.FabricDisplayKit;
 import io.schemat.displaykit.fabric.input.FabricTextInput;
+import io.schemat.displaykit.fabric.input.TerminalChatCapture;
 import net.minecraft.network.protocol.game.ServerboundChatPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
@@ -17,12 +18,17 @@ public class ChatPacketMixin {
     @Shadow
     public ServerPlayer player;
 
+    // Alongside the existing FabricTextInput check below, not a second
+    // mixin: both live in this ONE injection at HEAD of handleChat.
     @Inject(method = "handleChat", at = @At("HEAD"), cancellable = true)
     private void displaykit$onChat(ServerboundChatPacket packet, CallbackInfo ci) {
         FabricTextInput textInput = FabricDisplayKit.Companion.getInstance().getTextInput();
-        if (textInput == null) return;
+        if (textInput != null && textInput.handleChatMessage(player.getUUID(), packet.message())) {
+            ci.cancel();
+            return;
+        }
 
-        if (textInput.handleChatMessage(player.getUUID(), packet.message())) {
+        if (TerminalChatCapture.INSTANCE.onChatMessage(player, packet.message())) {
             ci.cancel();
         }
     }

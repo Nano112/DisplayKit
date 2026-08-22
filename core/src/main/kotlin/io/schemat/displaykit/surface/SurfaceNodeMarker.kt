@@ -7,4 +7,7 @@ package io.schemat.displaykit.surface
 object SurfaceNodeMarker {
     /** Arms hotbar scroll capture while the pointer is inside. */
     interface Scrollable
+
+    /** Arms chat capture (see SurfaceFocus.isTextArmed) while the pointer is inside. */
+    interface TextCapturing
 }

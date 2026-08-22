@@ -13,6 +13,11 @@ private class N(id: String) : BaseSurfaceNode(id) {
     override fun measureSelf(c: PxConstraints): PxSize = c.constrain(PxSize(10, 10))
 }
 
+/** Arms ONLY chat capture -- used to prove the two markers don't cross-arm. */
+private class TextOnly(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.TextCapturing {
+    override fun measureSelf(c: PxConstraints): PxSize = c.constrain(PxSize(10, 10))
+}
+
 class SurfaceFocusTest {
 
     private val player = UUID.randomUUID()
@@ -50,6 +55,38 @@ class SurfaceFocusTest {
         pane.addChild(mid); mid.addChild(deep)
         SurfaceFocus.pointerAt(player, deep)
         assertTrue(SurfaceFocus.isScrollArmed(player), "ancestor chain reaches a ScrollNode")
+    }
+
+    @Test
+    fun textArmsOnlyInsideATextCapturingAncestry() {
+        val plain = N("plain")
+        SurfaceFocus.pointerAt(player, plain)
+        assertFalse(SurfaceFocus.isTextArmed(player), "no TextCapturing ancestor")
+
+        val capturing = TextOnly("terminal")
+        val deep = N("deep")
+        capturing.addChild(deep)
+        SurfaceFocus.pointerAt(player, deep)
+        assertTrue(SurfaceFocus.isTextArmed(player), "ancestor chain reaches a TextCapturing node")
+    }
+
+    @Test
+    fun textAndScrollArmingAreIndependent() {
+        // Both markers now share one ancestor walk (hasMarkedAncestor); this
+        // guards against that sharing accidentally coupling the two.
+        val scrollOnly = ScrollNode("scroll-only")
+        val insideScroll = N("inside-scroll")
+        scrollOnly.addChild(insideScroll)
+        SurfaceFocus.pointerAt(player, insideScroll)
+        assertTrue(SurfaceFocus.isScrollArmed(player), "sits under a Scrollable")
+        assertFalse(SurfaceFocus.isTextArmed(player), "Scrollable alone must not arm text capture")
+
+        val textOnly = TextOnly("text-only")
+        val insideText = N("inside-text")
+        textOnly.addChild(insideText)
+        SurfaceFocus.pointerAt(player, insideText)
+        assertTrue(SurfaceFocus.isTextArmed(player), "sits under a TextCapturing node")
+        assertFalse(SurfaceFocus.isScrollArmed(player), "TextCapturing alone must not arm scroll")
     }
 
     @Test

@@ -14,8 +14,13 @@ import io.schemat.displaykit.surface.SurfaceNodeMarker
  * therefore emits only children fully inside the viewport, and scrolling moves
  * in [stepPx] increments so rows stay aligned with the viewport edge. Set
  * [stepPx] to your row pitch.
+ *
+ * Open so a caller can attach an additional marker interface to just ONE use
+ * site (e.g. `class TerminalScrollNode(id: String) : ScrollNode(id),
+ * SurfaceNodeMarker.TextCapturing`) without arming that marker for every
+ * scroll pane in the codebase -- see `io.schemat.displaykit.surface.terminal`.
  */
-class ScrollNode(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.Scrollable {
+open class ScrollNode(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.Scrollable {
 
     /** Current scroll offset in pixels from the top of the content. */
     var scrollPx: Int = 0

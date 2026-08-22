@@ -90,6 +90,17 @@ object ShowcaseMod : ModInitializer {
                                 1
                             }
                     )
+                    .then(
+                        Commands.literal("terminal")
+                            .executes { ctx -> openTerminal(ctx.source) }
+                    )
+                    .then(
+                        Commands.literal("closeterminal")
+                            .executes { ctx ->
+                                ctx.source.player?.let { TerminalWindow.closeFor(it.uuid) }
+                                1
+                            }
+                    )
             )
         }
 
@@ -111,6 +122,24 @@ object ShowcaseMod : ModInitializer {
             java.io.File("/tmp/dk-picker-error.txt").writeText(t.stackTraceToString())
             p.sendSystemMessage(
                 Component.literal("picker failed: ${t::class.java.simpleName}: ${t.message}")
+            )
+            throw t
+        }
+        return 1
+    }
+
+    private fun openTerminal(source: CommandSourceStack): Int {
+        val p = source.player
+        if (p == null) {
+            source.sendFailure(Component.literal("Terminal requires a player"))
+            return 0
+        }
+        try {
+            TerminalWindow.open(p)
+        } catch (t: Throwable) {
+            java.io.File("/tmp/dk-terminal-error.txt").writeText(t.stackTraceToString())
+            p.sendSystemMessage(
+                Component.literal("terminal failed: ${t::class.java.simpleName}: ${t.message}")
             )
             throw t
         }
