@@ -14,6 +14,7 @@ import io.schemat.displaykit.surface.layout.ScrollNode
 import io.schemat.displaykit.surface.layout.SurfaceNode
 import io.schemat.displaykit.surface.layout.WidgetNode
 import io.schemat.displaykit.surface.scrollThumb
+import io.schemat.displaykit.surface.scrollThumbHeight
 import io.schemat.displaykit.surface.scrollTrack
 import io.schemat.displaykit.surface.titleBar
 
@@ -163,7 +164,7 @@ class TerminalWidget(
         val bar = WidgetNode("terminal-scrollbar", PxSize(scrollBarWidth, 0)) { p, r ->
             p.scrollTrack(r)
             val max = newPane.maxScroll()
-            val thumbH = thumbHeightFor(r.h, max)
+            val thumbH = scrollThumbHeight(r.h, max)
             val rawY = if (max == 0) 0 else (newPane.scrollPx * (r.h - thumbH)) / max
             val thumbY = r.y + rawY.coerceIn(0, (r.h - thumbH).coerceAtLeast(0))
             p.scrollThumb(Rect(r.x, thumbY, scrollBarWidth, thumbH))
@@ -173,7 +174,7 @@ class TerminalWidget(
         bar.onGrabMove = { _, y ->
             val r = bar.rect()
             val max = newPane.maxScroll()
-            val thumbH = thumbHeightFor(r.h, max)
+            val thumbH = scrollThumbHeight(r.h, max)
             val span = (r.h - thumbH).coerceAtLeast(1)
             val fraction = ((y - r.y).toDouble() / span).coerceIn(0.0, 1.0)
             if (newPane.scrollTo((fraction * max).toInt())) {
@@ -208,15 +209,4 @@ class TerminalWidget(
         val target = if (scrolledAway) lastScrollPx else pane.maxScroll()
         pane.scrollTo(target)
     }
-
-    /**
-     * Scrollbar thumb height for a track of [trackH] px given [max] scroll.
-     *
-     * Same shape as `PickerWindow`'s private `thumbHeightFor` — duplicated
-     * rather than shared, since promoting it to a common home is outside
-     * this feature's scope and the function is small enough that the
-     * duplication costs little.
-     */
-    private fun thumbHeightFor(trackH: Int, max: Int): Int =
-        if (max == 0) trackH else maxOf(32, trackH * trackH / (trackH + max))
 }

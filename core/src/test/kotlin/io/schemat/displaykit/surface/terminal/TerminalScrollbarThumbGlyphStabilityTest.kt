@@ -1,6 +1,8 @@
 package io.schemat.displaykit.surface.terminal
 
 import io.schemat.displaykit.math.Vec3d
+import io.schemat.displaykit.surface.scrollThumbHeight
+import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.NineSlice
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteGlyphs
@@ -251,6 +253,86 @@ class TerminalScrollbarThumbGlyphStabilityTest {
             "negative control: WITHOUT the snap, dragging across the track must drift onto ascent " +
                 "phases the initial paint did not cover, and allocate new slices " +
                 "(got baseline=$unsnappedBaseline, after=$unsnappedAfter)"
+        )
+    }
+
+    /**
+     * The growth axis, which the test above cannot reach.
+     *
+     * Every test here scrolls a scrollback that is already its final length,
+     * so `maxScroll()` never changes and the thumb keeps one height
+     * throughout. A live terminal is the opposite: it APPENDS, `maxScroll()`
+     * rises on every line, and the unquantised `trackH^2 / (trackH + max)`
+     * returns a slightly shorter thumb almost every time. Height keys a glyph
+     * variant exactly as ascent does, so each of those was a fresh codepoint,
+     * a pack rebuild, and a client resource reload -- observed in-world as a
+     * download loop on a 25-line burst, AFTER the Y snap had already landed.
+     *
+     * The bound asserted here is the real invariant: the number of distinct
+     * thumb heights a track can ever show is fixed by the track, not by how
+     * much content scrolls through it.
+     */
+    @Test
+    fun appendingLinesDoesNotMintAThumbHeightPerLine() {
+        val model = TerminalModel(columns = 40)
+        val surface = Surface(300, 120, Vec3d.ZERO, targetWidthBlocks = 3f)
+        val widget = TerminalWidget(model, contentWidth = 280)
+
+        surface.layout { root -> widget.build(root, "Terminal", "type here", onClose = {}) }
+        widget.afterLayout()
+        surface.paintTree()
+
+        val bar = surface.root!!.findById("terminal-scrollbar")
+            ?: error("terminal-scrollbar node not found in the built tree")
+        val trackH = bar.rect().h
+        assertTrue(trackH > 0, "the scrollbar must have a real track, or this test is vacuous")
+
+        val heights = LinkedHashSet<Int>()
+        repeat(60) { i ->
+            model.append("burst line $i")
+            surface.layout { root -> widget.build(root, "Terminal", "type here", onClose = {}) }
+            widget.afterLayout()
+            surface.paintTree()
+            heights += scrollThumbHeight(trackH, widget.pane.maxScroll())
+        }
+
+        assertTrue(
+            widget.pane.maxScroll() > 0,
+            "the scrollback must have overflowed while appending, or nothing was exercised"
+        )
+        // trackH / pitch + 1 quantised steps are reachable at most; the
+        // unquantised version returned a near-unique height per append and
+        // blew straight past this.
+        val bound = trackH / TextMetrics.FONT_LINE_HEIGHT_PX + 1
+        assertTrue(
+            heights.size <= bound,
+            "appending 60 lines produced ${heights.size} distinct thumb heights " +
+                "(bound $bound for a ${trackH}px track): $heights"
+        )
+    }
+
+    /** Without quantising, the same 60 appends mint far more heights. */
+    @Test
+    fun negativeControl_unquantisedThumbHeightGrowsWithContent() {
+        val trackH = 90
+        fun unquantised(max: Int) =
+            if (max == 0) trackH else maxOf(32, trackH * trackH / (trackH + max))
+
+        val quantised = LinkedHashSet<Int>()
+        val raw = LinkedHashSet<Int>()
+        for (line in 1..60) {
+            val max = line * TextMetrics.FONT_LINE_HEIGHT_PX
+            quantised += scrollThumbHeight(trackH, max)
+            raw += unquantised(max)
+        }
+        assertTrue(
+            raw.size > quantised.size,
+            "the negative control must actually differ, or the quantisation proves nothing " +
+                "(raw=${raw.size} quantised=${quantised.size})"
+        )
+        assertTrue(
+            quantised.size <= trackH / TextMetrics.FONT_LINE_HEIGHT_PX + 1,
+            "quantised heights must stay bounded by the track: $quantised"
         )
     }
 }

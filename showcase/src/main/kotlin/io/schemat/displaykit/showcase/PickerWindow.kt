@@ -31,6 +31,7 @@ import io.schemat.displaykit.surface.layout.PxSize
 import io.schemat.displaykit.surface.layout.ScrollNode
 import io.schemat.displaykit.surface.layout.WidgetNode
 import io.schemat.displaykit.surface.scrollThumb
+import io.schemat.displaykit.surface.scrollThumbHeight
 import io.schemat.displaykit.surface.scrollTrack
 import io.schemat.displaykit.surface.tab
 import io.schemat.displaykit.surface.titleBar
@@ -373,18 +374,6 @@ object PickerWindow {
             .sortedBy { it.id.sprite }
 
     /**
-     * Scrollbar thumb height for a track of [trackH] px given [max] scroll.
-     *
-     * Shared by the thumb's render and its drag handler so the two can never
-     * drift apart: the render positions the thumb over `(trackH - thumbH)`,
-     * so a drag handler computing `fraction` over anything else (plain
-     * `trackH`, or a differently-rounded thumbH) is not that position's
-     * inverse, and the thumb visibly lags the cursor mid-drag.
-     */
-    private fun thumbHeightFor(trackH: Int, max: Int): Int =
-        if (max == 0) trackH else maxOf(32, trackH * trackH / (trackH + max))
-
-    /**
      * Rebuild the layout tree from scratch and paint it.
      *
      * Only called for a genuine content change (initial open, atlas switch):
@@ -548,7 +537,7 @@ object PickerWindow {
             bar = WidgetNode("scrollbar", PxSize(SCROLL_W, 0)) { p, r ->
                 p.scrollTrack(r)
                 val max = pane.maxScroll()
-                val thumbH = thumbHeightFor(r.h, max)
+                val thumbH = scrollThumbHeight(r.h, max)
                 val rawY = if (max == 0) 0 else (pane.scrollPx * (r.h - thumbH)) / max
                 // The line-pitch snap that used to live here now lives in
                 // io.schemat.displaykit.surface.scrollThumb itself, so every
@@ -570,7 +559,7 @@ object PickerWindow {
                 // track height (rather than the same `r.h - thumbH` span the
                 // render positions the thumb over) makes the thumb visibly
                 // lag the cursor mid-drag, worse the taller the thumb.
-                val thumbH = thumbHeightFor(r.h, max)
+                val thumbH = scrollThumbHeight(r.h, max)
                 val span = (r.h - thumbH).coerceAtLeast(1)
                 val fraction = ((y - r.y).toDouble() / span).coerceIn(0.0, 1.0)
                 if (pane.scrollTo((fraction * max).toInt())) repaintTree(session)
@@ -694,7 +683,7 @@ object PickerWindow {
         val sprite = SpriteIndex.bundled.get(SCROLL_THUMB_SPRITE) ?: return
         val r = bar.rect()
         if (r.h <= 0) return
-        val thumbH = thumbHeightFor(r.h, pane.maxScroll())
+        val thumbH = scrollThumbHeight(r.h, pane.maxScroll())
         val probeY = r.y + TextMetrics.FONT_LINE_HEIGHT_PX
         NineSlicePainter.prewarm(sprite, Rect(0, probeY, SCROLL_W, thumbH))
     }

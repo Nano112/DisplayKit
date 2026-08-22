@@ -72,6 +72,39 @@ fun SurfacePainter.scrollTrack(rect: Rect) = elevate {
 internal fun snapToLinePitch(y: Int): Int =
     (y / TextMetrics.FONT_LINE_HEIGHT_PX) * TextMetrics.FONT_LINE_HEIGHT_PX
 
+/** The `gui/widget/scroller` sprite's own height; [frame] throws below it. */
+const val SCROLL_THUMB_MIN_H = 32
+
+/**
+ * Thumb height for a [trackH]-tall track carrying [max] pixels of overflow,
+ * quantised to the renderer's line pitch.
+ *
+ * The unquantised ratio `trackH^2 / (trackH + max)` is a continuous function
+ * of the content's length, so a view whose content GROWS -- a terminal
+ * appending lines, a log tailing -- mints a slightly shorter thumb on almost
+ * every append. Height is part of a glyph variant's cache key just as ascent
+ * is, so each of those is a new codepoint, a pack rebuild, and a client
+ * resource reload. Quantising bounds the whole track to at most
+ * `trackH / FONT_LINE_HEIGHT_PX + 1` distinct thumbs, every one of them warm
+ * after its first use.
+ *
+ * This is the same defect [scrollThumb] fixes for the thumb's Y, on the other
+ * axis: Y varies as you scroll fixed content, height varies as the content
+ * itself grows. The picker only ever exercised the first -- its grid's extent
+ * is fixed once an atlas is chosen -- which is why the terminal was the window
+ * that shipped the loop.
+ *
+ * Callers MUST take the thumb's height from here rather than computing their
+ * own, including on the drag path: a grab that inverts against a different
+ * height than the painter drew makes the thumb lag the cursor.
+ */
+fun scrollThumbHeight(trackH: Int, max: Int): Int {
+    if (max <= 0) return trackH
+    val ideal = trackH.toLong() * trackH / (trackH + max)
+    val snapped = snapToLinePitch(ideal.toInt())
+    return snapped.coerceIn(SCROLL_THUMB_MIN_H, maxOf(SCROLL_THUMB_MIN_H, trackH))
+}
+
 /**
  * The draggable thumb.
  *
