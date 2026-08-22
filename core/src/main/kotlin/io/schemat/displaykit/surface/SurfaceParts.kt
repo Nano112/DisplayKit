@@ -64,13 +64,31 @@ fun SurfacePainter.scrollTrack(rect: Rect) = elevate {
 }
 
 /**
+ * Snap [y] down to the nearest multiple of [TextMetrics.FONT_LINE_HEIGHT_PX].
+ *
+ * Pulled out of [scrollThumb] as its own pure function so the snap itself can
+ * be asserted directly, without going through a painter.
+ */
+internal fun snapToLinePitch(y: Int): Int =
+    (y / TextMetrics.FONT_LINE_HEIGHT_PX) * TextMetrics.FONT_LINE_HEIGHT_PX
+
+/**
  * The draggable thumb.
  *
  * Minimum size is 6x32 — the `gui/widget/scroller` sprite's own. [frame] will
  * throw if [rect] is smaller.
+ *
+ * The thumb's Y is snapped to the renderer's line pitch. A glyph's ascent is
+ * baked per vertical phase, so an unsnapped thumb lands on a new phase every
+ * time it moves, allocates new codepoints, and forces a full client resource
+ * reload mid-scroll. Snapping costs at most a few pixels of thumb precision
+ * on a track hundreds of pixels tall, and it belongs here rather than in each
+ * window: the picker had it, the terminal did not, and the terminal shipped a
+ * download loop.
  */
 fun SurfacePainter.scrollThumb(rect: Rect) = elevate(2) {
-    frame(resolveSprite(SCROLL_THUMB, "a scrollbar thumb") ?: return@elevate, rect)
+    val snapped = rect.copy(y = snapToLinePitch(rect.y))
+    frame(resolveSprite(SCROLL_THUMB, "a scrollbar thumb") ?: return@elevate, snapped)
 }
 
 /**

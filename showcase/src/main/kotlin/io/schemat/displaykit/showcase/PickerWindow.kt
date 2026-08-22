@@ -550,13 +550,15 @@ object PickerWindow {
                 val max = pane.maxScroll()
                 val thumbH = thumbHeightFor(r.h, max)
                 val rawY = if (max == 0) 0 else (pane.scrollPx * (r.h - thumbH)) / max
-                // Snap to the renderer's line pitch. A glyph's ascent is baked
-                // per vertical phase, so an unsnapped thumb lands on a new
-                // phase every notch, allocates new codepoints, and forces a
-                // full client pack reload mid-scroll. Snapping costs at most
-                // 9px of thumb precision on a track hundreds of pixels tall.
-                val snapped = (rawY / TextMetrics.FONT_LINE_HEIGHT_PX) * TextMetrics.FONT_LINE_HEIGHT_PX
-                val thumbY = r.y + snapped.coerceIn(0, (r.h - thumbH).coerceAtLeast(0))
+                // The line-pitch snap that used to live here now lives in
+                // io.schemat.displaykit.surface.scrollThumb itself, so every
+                // caller gets it rather than just this one -- see that
+                // function's KDoc for why an unsnapped thumb forces a pack
+                // reload. Nothing below needs to account for it: it is
+                // idempotent over the already-aligned Y this window produces
+                // (see prewarmScrollThumb's KDoc on why bar.rect().y sits on
+                // a stable FONT_LINE_HEIGHT_PX phase here).
+                val thumbY = r.y + rawY.coerceIn(0, (r.h - thumbH).coerceAtLeast(0))
                 p.scrollThumb(Rect(r.x, thumbY, SCROLL_W, thumbH))
             }
             bar.width = SCROLL_W
