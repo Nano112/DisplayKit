@@ -187,7 +187,11 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
             font = null,
             x = x,
             y = y,
-            row = y / TextMetrics.FONT_LINE_HEIGHT_PX,
+            // Nearest row, not the one below. Truncating sent a label up to
+            // a full row above where it was asked for; rounding halves the
+            // worst case and centres the residual. Exact placement needs a
+            // row-aligned y -- see TextMetrics.rowAlignedY.
+            row = TextMetrics.rowAlignedY(y) / TextMetrics.FONT_LINE_HEIGHT_PX,
             advanceWidth = TextMetrics.textWidthPx(s),
             layer = currentLayer,
             tint = tint

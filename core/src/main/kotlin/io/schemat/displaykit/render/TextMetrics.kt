@@ -44,6 +44,31 @@ object TextMetrics {
     const val FONT_LINE_HEIGHT_PX = 10
 
     /**
+     * [y] rounded to the nearest text ROW boundary.
+     *
+     * Plain text can only sit on a row: the composited canvas places it at
+     * `y / FONT_LINE_HEIGHT_PX`, and unlike a sprite -- which reaches an
+     * arbitrary y through a per-glyph ascent -- there is no sub-row control
+     * over a vanilla glyph. So a label asked for an unaligned y is silently
+     * moved, by up to a whole row.
+     *
+     * That is what skews every widget built from chrome PLUS text. A title
+     * bar centres its label at `rect.y + (rect.h - 10) / 2`; for a 16px bar at
+     * y=10 that is y=13, which lands on row 1 -- y=10 -- so the label sits
+     * three pixels above where the centring asked, while the strip behind it
+     * is exactly where it was put.
+     *
+     * Callers that want text and chrome to agree should place text here
+     * FIRST, so the snap is a no-op and the drawn position is the requested
+     * one.
+     */
+    fun rowAlignedY(y: Int): Int {
+        val pitch = FONT_LINE_HEIGHT_PX
+        val rounded = Math.floorDiv(y + pitch / 2, pitch) * pitch
+        return rounded
+    }
+
+    /**
      * The smallest canvas height at or above [minHeight] whose rendered text
      * block is EXACTLY that tall.
      *

@@ -30,10 +30,15 @@ private val SCROLL_THUMB = SpriteId("gui", "widget/scroller")
  * worse than nothing there at all.
  */
 fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> Unit) = elevate {
+    // Label placement goes through TextMetrics.rowAlignedY here and in tab()
+    // and titleBar(): a composited canvas can only put plain text on a row,
+    // so an unaligned y is moved silently and the label drifts against the
+    // chrome drawn behind it. Aligning first makes the snap a no-op, so the
+    // label lands exactly where this says.
     val sprite = resolveSprite(BUTTON, "button '$id'") ?: return@elevate
     frame(sprite, rect)
     val textWidth = TextMetrics.textWidthPx(text)
-    label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
+    label(text, rect.x + (rect.w - textWidth) / 2, TextMetrics.rowAlignedY(rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2))
     region(id, rect, onClick)
 }
 
@@ -45,7 +50,7 @@ fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> U
  */
 fun SurfacePainter.titleBar(rect: Rect, title: String, onClose: () -> Unit) = elevate {
     fill(DkColor(255, 32, 34, 40), rect)
-    label(title, rect.x + 4, rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
+    label(title, rect.x + 4, TextMetrics.rowAlignedY(rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2))
     val cross = resolveSprite(CROSS, "a title bar's close button") ?: return@elevate
     val cx = rect.right - cross.width - 2
     val cy = rect.y + (rect.h - cross.height) / 2
@@ -137,6 +142,6 @@ fun SurfacePainter.tab(id: String, rect: Rect, text: String, selected: Boolean, 
     val sprite = resolveSprite(spriteId, "tab '$id'") ?: return@elevate
     frame(sprite, rect)
     val textWidth = TextMetrics.textWidthPx(text)
-    label(text, rect.x + (rect.w - textWidth) / 2, rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
+    label(text, rect.x + (rect.w - textWidth) / 2, TextMetrics.rowAlignedY(rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2))
     region(id, rect, onClick)
 }

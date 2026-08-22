@@ -95,6 +95,19 @@ object CalibrationWindow {
      * purpose: `frame` takes a different code path from `icon`, and mixing
      * the two would confound the measurement.
      */
+    /**
+     * Index selecting the CROSS-LAYER target instead of a sprite: a fill, an
+     * icon and a label all asked for the same canvas Y, in three separate
+     * x-bands so each can be measured on its own.
+     *
+     * `fill` paints on the chrome layer, `icon` on the icon layer and `label`
+     * on the text layer, and every layer is its own text display. If those
+     * entities do not share a vertical origin then everything composed of
+     * more than one of them is skewed -- which is what a title bar is: strip,
+     * label and close button, one per layer.
+     */
+    const val LAYERS_INDEX = 99
+
     val TARGETS: List<SpriteId> = listOf(
         SpriteId("particles", "critical_hit"),                  // 8x8
         SpriteId("gui", "container/cartography_table/locked"),  // 10x14
@@ -142,12 +155,21 @@ object CalibrationWindow {
         val host = SurfaceHost(DisplayKit.platform, ref, surface)
         open[player.uuid] = host
 
+        val layersMode = targetIndex == LAYERS_INDEX
         val id = TARGETS[targetIndex.coerceIn(TARGETS.indices)]
         val entry: SpriteEntry? = SpriteIndex.bundled.get(id)
         val (topA, topB) = expectedTops()
         val paint = {
             surface.paint {
-                if (entry != null) {
+                if (layersMode) {
+                    // All three at the SAME canvas y, in separate x-bands.
+                    val y = topA
+                    fill(MARK, Rect(16, y, 40, 16))
+                    SpriteIndex.bundled.get(SpriteId("gui", "hud/crosshair"))?.let {
+                        icon(it, 80, y, MARK)
+                    }
+                    label("MMMMMM", 120, y, MARK)
+                } else if (entry != null) {
                     // ONE sprite per capture, drawn TWICE. Rendering the whole
                     // set at once could not be measured reliably: a sprite
                     // with a hollow centre (the crosshair) splits into several

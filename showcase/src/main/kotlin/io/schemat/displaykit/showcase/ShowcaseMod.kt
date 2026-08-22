@@ -98,7 +98,7 @@ object ShowcaseMod : ModInitializer {
                         // why there is no hand-built reference mark.
                         Commands.literal("calib")
                             .then(
-                                Commands.argument("index", IntegerArgumentType.integer(0, 32))
+                                Commands.argument("index", IntegerArgumentType.integer(0, 99))
                                     .executes { ctx ->
                                         openCalibration(
                                             ctx.source, RenderMode.COMPOSITED,
