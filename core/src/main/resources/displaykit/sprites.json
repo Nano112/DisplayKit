@@ -1540,8 +1540,7 @@
       "texture": "minecraft:block/blast_furnace_front_on.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2071,8 +2070,7 @@
       "texture": "minecraft:block/campfire_fire.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2092,8 +2090,7 @@
       "texture": "minecraft:block/campfire_log_lit.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2293,8 +2290,7 @@
       "texture": "minecraft:block/chain_command_block_back.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2304,8 +2300,7 @@
       "texture": "minecraft:block/chain_command_block_conditional.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2315,8 +2310,7 @@
       "texture": "minecraft:block/chain_command_block_front.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2326,8 +2320,7 @@
       "texture": "minecraft:block/chain_command_block_side.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2757,8 +2750,7 @@
       "texture": "minecraft:block/command_block_back.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2768,8 +2760,7 @@
       "texture": "minecraft:block/command_block_conditional.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2779,8 +2770,7 @@
       "texture": "minecraft:block/command_block_front.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2790,8 +2780,7 @@
       "texture": "minecraft:block/command_block_side.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -2981,8 +2970,7 @@
       "texture": "minecraft:block/copper_lantern.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -3402,8 +3390,7 @@
       "texture": "minecraft:block/crimson_stem.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -4793,8 +4780,7 @@
       "texture": "minecraft:block/exposed_copper_lantern.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -4864,8 +4850,7 @@
       "texture": "minecraft:block/fire_0.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -4875,8 +4860,7 @@
       "texture": "minecraft:block/fire_1.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -4926,8 +4910,7 @@
       "texture": "minecraft:block/firefly_bush_emissive.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -5857,8 +5840,7 @@
       "texture": "minecraft:block/kelp.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -5868,8 +5850,7 @@
       "texture": "minecraft:block/kelp_plant.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -5889,8 +5870,7 @@
       "texture": "minecraft:block/lantern.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -5950,8 +5930,7 @@
       "texture": "minecraft:block/lava_flow.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 32,
-      "averageColor": 16777215
+      "trimmedWidth": 32
     },
     {
       "atlas": "blocks",
@@ -5961,8 +5940,7 @@
       "texture": "minecraft:block/lava_still.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -6552,8 +6530,7 @@
       "texture": "minecraft:block/magma.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -6853,8 +6830,7 @@
       "texture": "minecraft:block/nether_portal.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -7374,8 +7350,7 @@
       "texture": "minecraft:block/oxidized_copper_lantern.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -8245,8 +8220,7 @@
       "texture": "minecraft:block/prismarine.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -8755,8 +8729,7 @@
       "height": 16,
       "texture": "minecraft:block/redstone_dust_overlay.png",
       "greyscale": true,
-      "trimmedWidth": 0,
-      "averageColor": 16777215
+      "trimmedWidth": 0
     },
     {
       "atlas": "blocks",
@@ -8866,8 +8839,7 @@
       "texture": "minecraft:block/repeating_command_block_back.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -8877,8 +8849,7 @@
       "texture": "minecraft:block/repeating_command_block_conditional.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -8888,8 +8859,7 @@
       "texture": "minecraft:block/repeating_command_block_front.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -8899,8 +8869,7 @@
       "texture": "minecraft:block/repeating_command_block_side.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9000,8 +8969,7 @@
       "texture": "minecraft:block/respawn_anchor_top.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9121,8 +9089,7 @@
       "texture": "minecraft:block/sculk.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9152,8 +9119,7 @@
       "texture": "minecraft:block/sculk_catalyst_side_bloom.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9173,8 +9139,7 @@
       "texture": "minecraft:block/sculk_catalyst_top_bloom.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9204,8 +9169,7 @@
       "texture": "minecraft:block/sculk_sensor_tendril_active.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9215,8 +9179,7 @@
       "texture": "minecraft:block/sculk_sensor_tendril_inactive.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9246,8 +9209,7 @@
       "texture": "minecraft:block/sculk_shrieker_can_summon_inner_top.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9257,8 +9219,7 @@
       "texture": "minecraft:block/sculk_shrieker_inner_top.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9288,8 +9249,7 @@
       "texture": "minecraft:block/sculk_vein.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9299,8 +9259,7 @@
       "texture": "minecraft:block/sea_lantern.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9320,8 +9279,7 @@
       "texture": "minecraft:block/seagrass.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9491,8 +9449,7 @@
       "texture": "minecraft:block/smoker_front_on.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9742,8 +9699,7 @@
       "texture": "minecraft:block/soul_campfire_fire.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9753,8 +9709,7 @@
       "texture": "minecraft:block/soul_campfire_log_lit.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9764,8 +9719,7 @@
       "texture": "minecraft:block/soul_fire_0.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9775,8 +9729,7 @@
       "texture": "minecraft:block/soul_fire_1.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9786,8 +9739,7 @@
       "texture": "minecraft:block/soul_lantern.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -9987,8 +9939,7 @@
       "texture": "minecraft:block/stonecutter_saw.png",
       "animated": true,
       "greyscale": true,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -10508,8 +10459,7 @@
       "texture": "minecraft:block/tall_seagrass_bottom.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -10519,8 +10469,7 @@
       "texture": "minecraft:block/tall_seagrass_top.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -11200,8 +11149,7 @@
       "texture": "minecraft:block/warped_stem.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -11241,8 +11189,7 @@
       "texture": "minecraft:block/water_flow.png",
       "animated": true,
       "greyscale": true,
-      "trimmedWidth": 32,
-      "averageColor": 16777215
+      "trimmedWidth": 32
     },
     {
       "atlas": "blocks",
@@ -11262,8 +11209,7 @@
       "texture": "minecraft:block/water_still.png",
       "animated": true,
       "greyscale": true,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -11383,8 +11329,7 @@
       "texture": "minecraft:block/weathered_copper_lantern.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "blocks",
@@ -11824,8 +11769,7 @@
       "texture": "minecraft:entity/conduit/wind.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 64,
-      "averageColor": 16777215
+      "trimmedWidth": 64
     },
     {
       "atlas": "blocks",
@@ -11835,8 +11779,7 @@
       "texture": "minecraft:entity/conduit/wind_vertical.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 64,
-      "averageColor": 16777215
+      "trimmedWidth": 64
     },
     {
       "atlas": "blocks",
@@ -13147,7 +13090,6 @@
       "texture": "minecraft:gui/sprites/container/bundle/bundle_progressbar_border.png",
       "greyscale": true,
       "trimmedWidth": 12,
-      "averageColor": 16777215,
       "nineSlice": {
         "left": 2,
         "top": 2,
@@ -13792,8 +13734,7 @@
       "height": 26,
       "texture": "minecraft:gui/sprites/container/loom/error.png",
       "greyscale": true,
-      "trimmedWidth": 0,
-      "averageColor": 16777215
+      "trimmedWidth": 0
     },
     {
       "atlas": "gui",
@@ -15177,8 +15118,7 @@
       "texture": "minecraft:gui/sprites/hud/locator_bar_arrow_down.png",
       "animated": true,
       "greyscale": true,
-      "trimmedWidth": 7,
-      "averageColor": 16777215
+      "trimmedWidth": 7
     },
     {
       "atlas": "gui",
@@ -15188,8 +15128,7 @@
       "texture": "minecraft:gui/sprites/hud/locator_bar_arrow_up.png",
       "animated": true,
       "greyscale": true,
-      "trimmedWidth": 7,
-      "averageColor": 16777215
+      "trimmedWidth": 7
     },
     {
       "atlas": "gui",
@@ -15356,8 +15295,7 @@
       "texture": "minecraft:gui/sprites/icon/music_notes.png",
       "animated": true,
       "greyscale": true,
-      "trimmedWidth": 16,
-      "averageColor": 16777215
+      "trimmedWidth": 16
     },
     {
       "atlas": "gui",
@@ -15457,8 +15395,7 @@
       "texture": "minecraft:gui/sprites/icon/trial_available.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 8,
-      "averageColor": 16777215
+      "trimmedWidth": 8
     },
     {
       "atlas": "gui",
@@ -15665,8 +15602,7 @@
       "texture": "minecraft:gui/sprites/realm_status/expires_soon.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 10,
-      "averageColor": 16777215
+      "trimmedWidth": 10
     },
     {
       "atlas": "gui",
@@ -16548,7 +16484,6 @@
       "texture": "minecraft:gui/sprites/tooltip/frame.png",
       "greyscale": false,
       "trimmedWidth": 91,
-      "averageColor": 16777215,
       "nineSlice": {
         "left": 10,
         "top": 10,
@@ -16972,7 +16907,6 @@
       "texture": "minecraft:gui/sprites/widget/tab_selected.png",
       "greyscale": true,
       "trimmedWidth": 130,
-      "averageColor": 16777215,
       "nineSlice": {
         "left": 2,
         "top": 2,
@@ -16989,7 +16923,6 @@
       "texture": "minecraft:gui/sprites/widget/tab_selected_highlighted.png",
       "greyscale": true,
       "trimmedWidth": 130,
-      "averageColor": 16777215,
       "nineSlice": {
         "left": 2,
         "top": 2,
@@ -21779,8 +21712,7 @@
       "height": 16,
       "texture": "minecraft:item/leather_chestplate_overlay.png",
       "greyscale": true,
-      "trimmedWidth": 0,
-      "averageColor": 16777215
+      "trimmedWidth": 0
     },
     {
       "atlas": "items",
@@ -28870,8 +28802,7 @@
       "texture": "minecraft:particle/vibration.png",
       "animated": true,
       "greyscale": false,
-      "trimmedWidth": 18,
-      "averageColor": 16777215
+      "trimmedWidth": 18
     },
     {
       "atlas": "shield_patterns",

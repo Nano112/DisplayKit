@@ -1081,6 +1081,17 @@ class Surface(
             elements += EntityElement.SpriteEl(entry, rect, tint, baseKey)
             return
         }
+        // At exactly native size there is nothing to stretch, so slicing is
+        // pure loss: it spends nine elements reproducing what one draw already
+        // renders perfectly, and each flat fill discards the real pixels it
+        // stands in for. `gui/widget/tab_selected` is drawn at its native
+        // 130x24 and its centre is entirely transparent, so the substitute
+        // fill painted an opaque slab over a frame vanilla leaves hollow --
+        // the selected tab came out a solid white box with its label buried.
+        if (rect.w == entry.width && rect.h == entry.height) {
+            elements += EntityElement.SpriteEl(entry, rect, tint, baseKey)
+            return
+        }
         val l = slice.left; val t = slice.top; val r = slice.right; val b = slice.bottom
 
         // Corners: native size, anchored so their spill runs inward, never
@@ -1105,10 +1116,16 @@ class Surface(
         // A caller-supplied tint always wins; otherwise fall back to the real
         // frame's own average colour so the flat fill reads as the same
         // material as the corners rather than FILL_SPRITE's raw white.
-        val fillTint = tint ?: run {
-            val c = entry.averageColor
+        //
+        // A null averageColor means the measured region has no opaque pixels
+        // at all, so there is no colour to stand in for and an opaque slab is
+        // strictly worse than nothing. The corners still spill inward
+        // un-occluded, but a hollow frame's corners are mostly transparent
+        // too, so what shows through is the frame -- which is what vanilla
+        // draws. See SpriteEntry.averageColor.
+        val fillTint = tint ?: entry.averageColor?.let { c ->
             DkColor(255, (c shr 16) and 0xFF, (c shr 8) and 0xFF, c and 0xFF)
-        }
+        } ?: return
         val innerW = rect.w - l - r
         val innerH = rect.h - t - b
         if (innerW > 0 && innerH > 0) {

@@ -38,10 +38,18 @@ data class NineSlice(
  *   tint for the flat fills that stand in for a nine-slice crop under
  *   [io.schemat.displaykit.surface.RenderMode.ENTITIES]. For a sprite WITH
  *   [nineSlice] metadata this is measured from the CENTRE region only (inside
- *   the borders) — that is the part a flat fill actually replaces. Defaults
- *   to white for hand-built entries that carry no pixel data; the generated
- *   index always records the measured value, or white for animated sprites
- *   (measuring a strip would average across frames).
+ *   the borders) — that is the part a flat fill actually replaces.
+ *
+ *   `null` means the measured region has NO opaque pixels, and is a distinct
+ *   instruction from any colour: substitute nothing, because the real sprite
+ *   draws nothing there. This used to be reported as white, which is also a
+ *   perfectly ordinary colour for a sprite to be, so a hollow frame
+ *   (`gui/widget/tab_selected`, whose centre is entirely transparent) was
+ *   indistinguishable from a white one and got filled with an opaque white
+ *   slab. Animated sprites are also `null`: averaging a strip would blend
+ *   every frame together. Hand-built entries that carry no pixel data default
+ *   to `null` for the same reason — no measurement was made, so no
+ *   substitution is warranted.
  */
 data class SpriteEntry(
     val id: SpriteId,
@@ -52,7 +60,7 @@ data class SpriteEntry(
     val greyscale: Boolean = false,
     val nineSlice: NineSlice? = null,
     val trimmedWidth: Int = width,
-    val averageColor: Int = 0xFFFFFF
+    val averageColor: Int? = null
 ) {
     /** Eligible to be emitted as a by-reference bitmap font glyph. */
     val glyphEligible: Boolean get() = !animated

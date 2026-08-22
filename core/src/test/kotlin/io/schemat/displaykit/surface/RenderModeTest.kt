@@ -224,7 +224,12 @@ class RenderModeTest {
     private val ninesliceFrame = SpriteEntry(
         id = SpriteId("gui", "test_frame"), width = 16, height = 16,
         texture = "minecraft:gui/test_frame.png",
-        nineSlice = NineSlice(left = 3, top = 3, right = 3, bottom = 3)
+        nineSlice = NineSlice(left = 3, top = 3, right = 3, bottom = 3),
+        // An opaque centre, so the flat-fill substitution applies at all --
+        // a null averageColor means "this region draws nothing", and the
+        // background assertions below would then be asserting the absence
+        // they are meant to prove present. See SpriteEntry.averageColor.
+        averageColor = 0x808080
     )
 
     @Test
@@ -265,6 +270,64 @@ class RenderModeTest {
             expectedBackground in rects,
             "background must be inset by exactly the nine-slice insets, so it occludes precisely " +
                 "what the corners spilled and nothing more"
+        )
+    }
+
+    @Test
+    fun frameAtExactlyNativeSizeIsDrawnOnceRatherThanSliced() {
+        val s = surface().apply { renderMode = RenderMode.ENTITIES }
+        // Exactly the sprite's own 16x16: nothing needs stretching, so there
+        // is nothing for slicing to buy. It used to emit four native-size
+        // corners plus five flat fills -- nine entities reproducing, badly,
+        // what one draw renders exactly. `gui/widget/tab_selected` is drawn
+        // at native size by the picker and came out a solid white box.
+        val rect = Rect(10, 10, 16, 16)
+        s.paint { frame(ninesliceFrame, rect) }
+        val rects = s.paintedSpriteRectsForTest()
+
+        assertEquals(
+            listOf(rect), rects,
+            "a frame at native size must be exactly one sprite at the rect"
+        )
+    }
+
+    @Test
+    fun frameWithAFullyTransparentCentreSubstitutesNoFill() {
+        // averageColor = null is the generator saying "no opaque pixels
+        // here". Vanilla draws nothing in this region, so an opaque slab is
+        // strictly worse than leaving it empty.
+        val hollow = SpriteEntry(
+            id = SpriteId("gui", "hollow_frame"), width = 16, height = 16,
+            texture = "minecraft:gui/hollow_frame.png",
+            nineSlice = NineSlice(left = 3, top = 3, right = 3, bottom = 3),
+            averageColor = null
+        )
+        val s = surface().apply { renderMode = RenderMode.ENTITIES }
+        val rect = Rect(10, 10, 60, 50)
+        s.paint { frame(hollow, rect) }
+        val rects = s.paintedSpriteRectsForTest()
+
+        assertEquals(
+            4, rects.size,
+            "only the four corners may be emitted; every flat fill must be skipped, got $rects"
+        )
+        val background = Rect(rect.x + 3, rect.y + 3, rect.w - 6, rect.h - 6)
+        assertTrue(background !in rects, "the background slab must not be painted at all")
+    }
+
+    @Test
+    fun frameWithAnOpaqueCentreStillGetsItsFill() {
+        // The negative control for the test above: same shape, same rect, the
+        // only difference is a measured colour -- and the fill comes back. So
+        // the skip is driven by the measurement, not by the geometry.
+        val s = surface().apply { renderMode = RenderMode.ENTITIES }
+        val rect = Rect(10, 10, 60, 50)
+        s.paint { frame(ninesliceFrame, rect) }
+        val rects = s.paintedSpriteRectsForTest()
+
+        assertTrue(
+            rects.size > 4,
+            "an opaque-centred frame must still emit its fills, or the null case proves nothing"
         )
     }
 

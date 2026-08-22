@@ -115,13 +115,16 @@ object SpriteIndexGenerator {
                                 "trimmedWidth",
                                 if (isAnimated) width else actualGlyphWidth(image)
                             )
-                            // An animated strip's average would blend every
-                            // frame together, so it stays white -- the same
-                            // sentinel SpriteEntry defaults to.
-                            addProperty(
-                                "averageColor",
-                                if (isAnimated) 0xFFFFFF else averageColor(image, slice)
-                            )
+                            // Omitted entirely when there is nothing to
+                            // measure: an animated strip (averaging one would
+                            // blend every frame together) or a region with no
+                            // opaque pixels. An absent field parses back to
+                            // null, which tells the ENTITIES renderer to
+                            // substitute no fill at all -- distinct from any
+                            // colour it could have named. See
+                            // SpriteEntry.averageColor.
+                            val avg = if (isAnimated) null else averageColor(image, slice)
+                            if (avg != null) addProperty("averageColor", avg)
                             slice?.let { add("nineSlice", it) }
                         }
                         sprites.add(obj)
@@ -193,11 +196,15 @@ object SpriteIndexGenerator {
      *
      * Pixels at or below [ALPHA_THRESHOLD] alpha are skipped -- a
      * near-transparent anti-aliased edge would otherwise pull the mean toward
-     * black regardless of the sprite's real colour. Falls back to white (the
-     * same sentinel [SpriteEntry.averageColor] defaults to) when nothing
-     * qualifies, e.g. a fully transparent centre.
+     * black regardless of the sprite's real colour.
+     *
+     * Returns null when nothing qualifies, i.e. the measured region is fully
+     * transparent. That is a real answer, not a missing one: it says the
+     * sprite draws nothing there, so the renderer must substitute nothing.
+     * Reporting white instead made a hollow frame look like a white one --
+     * `gui/widget/tab_selected` rendered as an opaque white box.
      */
-    internal fun averageColor(image: java.awt.image.BufferedImage, border: JsonObject?): Int {
+    internal fun averageColor(image: java.awt.image.BufferedImage, border: JsonObject?): Int? {
         val width = image.width
         val height = image.height
         val left = (border?.get("left")?.asInt ?: 0).coerceIn(0, width)
@@ -223,7 +230,7 @@ object SpriteIndexGenerator {
                 count++
             }
         }
-        if (count == 0L) return 0xFFFFFF
+        if (count == 0L) return null
         return (((rSum / count).toInt()) shl 16) or
             (((gSum / count).toInt()) shl 8) or
             ((bSum / count).toInt())

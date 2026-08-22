@@ -113,15 +113,24 @@ object ShowcaseMod : ModInitializer {
             source.sendFailure(Component.literal("Picker requires a player"))
             return 0
         }
-        // TEMPORARY DIAGNOSTIC: Minecraft's command dispatcher reports "an
-        // unexpected error" and logs through an appender whose buffer we
-        // could not flush. Write the trace straight to a file.
+        return openWindow(p, "picker") { PickerWindow.open(p, renderMode) }
+    }
+
+    /**
+     * Run a window's open path, surfacing any failure to the player.
+     *
+     * Minecraft's command dispatcher catches whatever a command throws and
+     * tells the player only "an unexpected error occurred", so without this
+     * the actual exception is invisible in-game and easy to miss in the log.
+     * The throw is preserved so the dispatcher still reports failure.
+     */
+    private fun openWindow(p: ServerPlayer, what: String, open: () -> Unit): Int {
         try {
-            PickerWindow.open(p, renderMode)
+            open()
         } catch (t: Throwable) {
-            java.io.File("/tmp/dk-picker-error.txt").writeText(t.stackTraceToString())
+            logger.error("/dk {} failed to open", what, t)
             p.sendSystemMessage(
-                Component.literal("picker failed: ${t::class.java.simpleName}: ${t.message}")
+                Component.literal("$what failed: ${t::class.java.simpleName}: ${t.message}")
             )
             throw t
         }
@@ -134,16 +143,7 @@ object ShowcaseMod : ModInitializer {
             source.sendFailure(Component.literal("Terminal requires a player"))
             return 0
         }
-        try {
-            TerminalWindow.open(p)
-        } catch (t: Throwable) {
-            java.io.File("/tmp/dk-terminal-error.txt").writeText(t.stackTraceToString())
-            p.sendSystemMessage(
-                Component.literal("terminal failed: ${t::class.java.simpleName}: ${t.message}")
-            )
-            throw t
-        }
-        return 1
+        return openWindow(p, "terminal") { TerminalWindow.open(p) }
     }
 
     private fun querySprites(source: CommandSourceStack, query: String): Int {
