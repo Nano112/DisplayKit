@@ -956,15 +956,6 @@ class Surface(
             )
             return null
         }
-        // glyphAdvance (trimmedWidth + 1), not width -- the client measures a
-        // row by what the glyph actually advances, and a trimmed sprite (the
-        // bundled crosshair is 15px wide but trims to 12) advances less than
-        // its raw width. Sizing the canvas by width would predict a block one
-        // pixel wider than what gets emitted, landing entityOrigin a pixel off.
-        val cursor = SpriteCanvas(entry.glyphAdvance, entry.height)
-        cursor.anchorToBounds = false
-        cursor.draw(entry, 0, 0)
-
         // Centre the crosshair on the aimed-at point rather than hanging it
         // down-right of it. NOT clamped to the canvas: a cursor dragged back
         // inside near an edge stops tracking exactly where precision matters
@@ -975,45 +966,29 @@ class Surface(
         // One step in front of the frontmost content layer.
         val depth = (canvas.layers().size) * LAYER_Z_STEP
 
-        // The pointer must be built the same way every OTHER sprite on this
-        // surface is built, or it lands somewhere else entirely.
+        // ONE path, both render modes.
         //
-        // This used to construct a SpriteCanvas unconditionally -- the
-        // pack-backed bitmap-glyph path -- while an ordinary icon() under
-        // RenderMode.ENTITIES emits an atlas-sprite object instead. Two
-        // different mechanisms with two different anchor conventions, so the
-        // cursor sat a constant 7.9 canvas pixels above and 0.1 left of the
-        // pixel it was reporting, at every yaw. On a zero-pack surface it was
-        // worse than misplaced: nothing rendered at all, because the canvas
-        // path needs slice glyphs that a no-pack client never received.
+        // The pointer is its own entity by design -- painting it into the
+        // canvas would repaint every layer each tick, ~140 metadata packets a
+        // second for a cursor -- so it never needed the shared canvas at all.
+        // It nonetheless used to build a SpriteCanvas, the pack-backed
+        // bitmap-glyph path, which anchors differently from the atlas-sprite
+        // entity an ordinary icon() emits. The result was a cursor that did
+        // not sit where it said it did, and differently per mode: measured at
+        // 9.75 canvas pixels above the ray hit under COMPOSITED, and under
+        // ENTITIES not drawn at all, because that path needs slice glyphs a
+        // no-pack client never receives.
         //
-        // Delegating to spriteEntity fixes both at once and keeps the cursor
-        // honest by construction: it is now placed by exactly the code whose
-        // agreement with SurfacePicking is asserted in RenderModeTest.
-        if (effectiveRenderMode() == RenderMode.ENTITIES) {
-            return spriteEntity(
-                EntityElement.SpriteEl(
-                    entry, Rect(cx, cy, entry.width, entry.height), null, 0.0
-                ),
-                depth
-            )
-        }
-
-        val anchor = planePoint(cx, cy)
-        return VirtualTextDisplay().also { d ->
-            d.position = entityOrigin(depth, source = cursor, base = anchor)
-            d.billboard = orientation
-            d.backgroundColor = DkColor.TRANSPARENT
-            d.brightness = Brightness.FULL
-            d.hasShadow = false
-            d.textAlignment = TextAlignment.LEFT
-            d.lineWidth = cursor.blockWidthPx() + LINE_WIDTH_MARGIN_PX
-            val s = pixelScale
-            d.transformation = Mat4f(
-                Matrix4f().rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat()).scale(s, s, s)
-            )
-            d.text = cursor.toTextComponent(anchor = false)
-        }
+        // Going through spriteEntity keeps the cursor honest by construction:
+        // it is placed by exactly the code measured against the backing slab
+        // in CalibrationWindow, and there is no second convention left to
+        // drift from. PointerAcrossModesTest holds the two modes together.
+        return spriteEntity(
+            EntityElement.SpriteEl(
+                entry, Rect(cx, cy, entry.width, entry.height), null, 0.0
+            ),
+            depth
+        )
     }
 
     private inner class Painter : SurfacePainter {
