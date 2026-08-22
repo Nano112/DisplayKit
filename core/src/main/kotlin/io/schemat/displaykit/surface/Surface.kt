@@ -948,12 +948,39 @@ class Surface(
         cursor.draw(entry, 0, 0)
 
         // Centre the crosshair on the aimed-at point rather than hanging it
-        // down-right of it; clamp so the anchor never lands off the canvas.
-        val cx = (px - entry.width / 2).coerceAtLeast(0)
-        val cy = (py - entry.height / 2).coerceAtLeast(0)
+        // down-right of it. NOT clamped to the canvas: a cursor dragged back
+        // inside near an edge stops tracking exactly where precision matters
+        // most, and the corner is where the close button lives.
+        val cx = px - entry.width / 2
+        val cy = py - entry.height / 2
 
         // One step in front of the frontmost content layer.
         val depth = (canvas.layers().size) * LAYER_Z_STEP
+
+        // The pointer must be built the same way every OTHER sprite on this
+        // surface is built, or it lands somewhere else entirely.
+        //
+        // This used to construct a SpriteCanvas unconditionally -- the
+        // pack-backed bitmap-glyph path -- while an ordinary icon() under
+        // RenderMode.ENTITIES emits an atlas-sprite object instead. Two
+        // different mechanisms with two different anchor conventions, so the
+        // cursor sat a constant 7.9 canvas pixels above and 0.1 left of the
+        // pixel it was reporting, at every yaw. On a zero-pack surface it was
+        // worse than misplaced: nothing rendered at all, because the canvas
+        // path needs slice glyphs that a no-pack client never received.
+        //
+        // Delegating to spriteEntity fixes both at once and keeps the cursor
+        // honest by construction: it is now placed by exactly the code whose
+        // agreement with SurfacePicking is asserted in RenderModeTest.
+        if (effectiveRenderMode() == RenderMode.ENTITIES) {
+            return spriteEntity(
+                EntityElement.SpriteEl(
+                    entry, Rect(cx, cy, entry.width, entry.height), null, 0.0
+                ),
+                depth
+            )
+        }
+
         val anchor = planePoint(cx, cy)
         return VirtualTextDisplay().also { d ->
             d.position = entityOrigin(depth, source = cursor, base = anchor)
