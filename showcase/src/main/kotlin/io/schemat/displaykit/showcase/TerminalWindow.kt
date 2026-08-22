@@ -122,8 +122,9 @@ object TerminalWindow {
         val worldWidth = (surface.widthPx * surface.pixelScale * TextMetrics.PIXEL_SIZE).toDouble()
         val worldHeight = (surface.heightPx * surface.pixelScale * TextMetrics.PIXEL_SIZE).toDouble()
         val distance = maxOf(worldWidth * VIEW_DISTANCE_WIDTH_FACTOR, MIN_VIEW_DISTANCE_BLOCKS)
-        val center = Vec3d(eye.x + look.x * distance, eye.y, eye.z + look.z * distance)
-        surface.position = SurfacePlacement.centeredOrigin(center, yawDegrees, worldWidth, worldHeight)
+        surface.position = SurfacePlacement.inFrontOf(
+            eye, look, distance, yawDegrees, worldWidth, worldHeight
+        )
         surface.backdrop = DkColor(190, 18, 19, 22)
         surface.backingBlock = BlockStateRef.BLACK_CONCRETE
 

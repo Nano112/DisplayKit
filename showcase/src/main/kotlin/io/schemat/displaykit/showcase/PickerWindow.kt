@@ -308,17 +308,14 @@ object PickerWindow {
         // distance with the window's own width instead, so it clears the
         // player regardless of how big the frame ends up.
         val distance = maxOf(worldWidth * VIEW_DISTANCE_WIDTH_FACTOR, MIN_VIEW_DISTANCE_BLOCKS)
-        // Roughly eye height: aim for the window's CENTRE at eye level, not
-        // its top edge.
-        val center = Vec3d(eye.x + look.x * distance, eye.y, eye.z + look.z * distance)
-
-        // Surface.position is the canvas TOP-LEFT corner, so pointing it
-        // straight at `center` would hang the window down-and-right of where
-        // the player is looking. SurfacePlacement shifts the origin back by
-        // half the window's world size -- along the surface's own rotated
-        // right vector for width, since yawDegrees above turns it to face
-        // the player -- so the CENTRE lands on the look ray instead.
-        surface.position = SurfacePlacement.centeredOrigin(center, yawDegrees, worldWidth, worldHeight)
+        // Centre the window on the look RAY, pitch included. Surface.position
+        // is the canvas top-left corner, so SurfacePlacement also shifts the
+        // origin back by half the window's world size -- along the surface's
+        // own rotated right vector for width, since yawDegrees above turns it
+        // to face the player.
+        surface.position = SurfacePlacement.inFrontOf(
+            eye, look, distance, yawDegrees, worldWidth, worldHeight
+        )
         // Alpha 100-149 and 200-249 are DkColor shader sentinels (glass /
         // corner-radius) -- 190 sits outside both. Dark neutral graphite so
         // the vanilla chrome (frame, tabs, slots) stays legible against it.

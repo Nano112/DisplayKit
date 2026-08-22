@@ -48,4 +48,45 @@ object SurfacePlacement {
             center.z - right.z * halfWidth
         )
     }
+
+    /**
+     * The [Surface.position] that centres a surface [distance] blocks along a
+     * viewer's look ray -- i.e. squarely under their crosshair.
+     *
+     * Walks the FULL look vector, [Vec3d.y] included. Both windows previously
+     * built this inline as
+     * `Vec3d(eye.x + look.x * d, eye.y, eye.z + look.z * d)`, dropping the
+     * vertical component, which pinned every panel to eye height however far
+     * up or down the viewer was looking. Open a window while looking even
+     * slightly downward and it appeared above the crosshair, so you had to
+     * look up to hover it -- which is most of why the on-surface cursor felt
+     * broken before it actually was.
+     *
+     * Dropping `look.y` also shortened the panel's apparent distance as the
+     * pitch steepened, because `look.x`/`look.z` shrink toward zero: at a
+     * steep angle the window flew into the viewer's face. Using the whole
+     * vector keeps [distance] the true distance at every pitch.
+     *
+     * The surface itself stays vertical -- [Surface.yawDegrees] rotates about
+     * Y only -- so a panel placed above or below eye level does not tilt. That
+     * is deliberate: a UI that pitches with the viewer is far harder to read
+     * than one that stays upright.
+     */
+    fun inFrontOf(
+        eye: Vec3d,
+        look: Vec3d,
+        distance: Double,
+        yawDegrees: Float,
+        worldWidth: Double,
+        worldHeight: Double
+    ): Vec3d = centeredOrigin(
+        center = Vec3d(
+            eye.x + look.x * distance,
+            eye.y + look.y * distance,
+            eye.z + look.z * distance
+        ),
+        yawDegrees = yawDegrees,
+        worldWidth = worldWidth,
+        worldHeight = worldHeight
+    )
 }
