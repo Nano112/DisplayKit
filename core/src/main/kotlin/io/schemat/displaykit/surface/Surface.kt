@@ -12,6 +12,7 @@ import io.schemat.displaykit.render.TextComponent
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.VirtualBlockDisplay
+import io.schemat.displaykit.render.VirtualEntity
 import io.schemat.displaykit.render.VirtualTextDisplay
 import io.schemat.displaykit.sprite.SpriteCanvas
 import io.schemat.displaykit.sprite.SpriteDiagnostics
@@ -62,6 +63,22 @@ interface SurfacePainter {
         tint: DkColor? = null
     ): Pair<Int, Int>
     fun label(text: String, x: Int, y: Int, color: DkColor? = null)
+
+    /**
+     * Draw a real block filling [rect], standing [thickness] blocks proud of
+     * the panel.
+     *
+     * The one painter call that is NOT a flat plane. A block display is
+     * world-lit, carries a real material and has genuine depth, so this is
+     * for things a sprite genuinely cannot be -- a bezel with real edges, a
+     * lever, a physical-looking readout -- not for coloured rectangles, which
+     * [fill] does far more cheaply.
+     *
+     * Only realised under [RenderMode.ENTITIES]; a composited surface is a
+     * flat canvas by definition and skips it.
+     */
+    fun blockPanel(block: BlockStateRef, rect: Rect, thickness: Float = 0.0625f)
+
     fun slot(x: Int, y: Int, item: ItemRef? = null)
     fun region(id: String, rect: Rect, onClick: () -> Unit)
 
@@ -464,7 +481,7 @@ class Surface(
      * block at. If these differ between layers, each layer centres on a
      * different width and they slide apart horizontally.
      */
-    internal fun describeLayersForDebug(spawned: List<VirtualTextDisplay>): String {
+    internal fun describeLayersForDebug(spawned: List<VirtualEntity>): String {
         val mode = effectiveRenderMode()
         val sb = StringBuilder()
         sb.append("[DisplayKit] surface ${widthPx}x${heightPx} mode=$mode yaw=${"%.1f".format(yawDegrees)} ")
@@ -474,7 +491,7 @@ class Surface(
             sb.append("[DisplayKit]   block=${blockWidthPx()}x${blockHeightPx()}\n")
             for ((i, layer) in canvas.layers().withIndex()) {
                 val rows = canvas.layerRowWidths(layer)
-                val e = spawned.getOrNull(i)
+                val e = spawned.getOrNull(i) as? VirtualTextDisplay
                 sb.append(
                     "[DisplayKit]   layer=$layer ordinal=$i maxRow=${rows.maxOrNull()} " +
                         "rows=${rows.size} items=${canvas.layerItemCount(layer)} " +
@@ -486,7 +503,14 @@ class Surface(
             // layers to describe, just the resulting entity count, which is
             // the whole point of measuring this mode against COMPOSITED's.
             for ((i, e) in spawned.withIndex()) {
-                sb.append("[DisplayKit]   entity=$i pos=${e.position} lineWidth=${e.lineWidth}\n")
+                // Media are mixed on this path now, so name the kind: an
+                // entity count alone no longer says what was emitted.
+                val kind = when (e) {
+                    is VirtualTextDisplay -> "text lineWidth=${e.lineWidth}"
+                    is VirtualBlockDisplay -> "block state=${e.blockState}"
+                    else -> e::class.simpleName
+                }
+                sb.append("[DisplayKit]   entity=$i pos=${e.position} $kind\n")
             }
         }
         return sb.toString().trimEnd()
@@ -657,7 +681,7 @@ class Surface(
      * [SpriteCanvas.emittedRowCount] are canvas-level, not per-layer), so they
      * all resolve the same [entityOrigin] and stack exactly.
      */
-    fun toEntities(): List<VirtualTextDisplay> = when (effectiveRenderMode()) {
+    fun toEntities(): List<VirtualEntity> = when (effectiveRenderMode()) {
         RenderMode.COMPOSITED -> toEntitiesComposited()
         RenderMode.ENTITIES, RenderMode.AUTO -> toEntitiesFlat()
     }
@@ -698,7 +722,7 @@ class Surface(
      * [toEntitiesComposited] already does per whole layer regardless of how
      * many glyphs live on it.
      */
-    private fun toEntitiesFlat(): List<VirtualTextDisplay> {
+    private fun toEntitiesFlat(): List<VirtualEntity> {
         val ordered = elements.sortedBy { it.depthKey }
         // Delegated to the one authority that orders every medium, rather
         // than ranking keys here. Identical output today -- every element on
@@ -707,7 +731,7 @@ class Surface(
         // arithmetic a block display's real volume will go through, so the
         // two cannot drift into disagreeing about what is in front of what.
         val depths = DepthAllocator.allocate(
-            ordered.map { DepthLayer(it.depthKey) },
+            ordered.map { DepthLayer(it.depthKey, it.thickness) },
             separation = LAYER_Z_STEP
         )
         return ordered.map { el ->
@@ -715,6 +739,7 @@ class Surface(
             when (el) {
                 is EntityElement.SpriteEl -> spriteEntity(el, depth)
                 is EntityElement.LabelEl -> labelEntity(el, depth)
+                is EntityElement.BlockEl -> blockEntity(el, depth)
             }
         }
     }
@@ -778,6 +803,44 @@ class Surface(
             )
             val text = TextComponent.of(el.text)
             d.text = if (el.color != null) text.withColor(el.color) else text
+        }
+    }
+
+    /**
+     * One [RenderMode.ENTITIES] block element: a real block occupying real
+     * volume inside the panel.
+     *
+     * Unlike the sprite and label paths this is NOT a flat quad, which is the
+     * entire point -- a block display is world-lit, carries a real material
+     * and has genuine depth. [DepthAllocator] has already reserved
+     * [EntityElement.BlockEl.thickness] of space for it, so [depth] is the
+     * BACK face and the block grows forward from there into space nothing
+     * else was given.
+     *
+     * The block is scaled to the element's pixel rect on the panel's two
+     * in-plane axes and to its real thickness on the third, so it lines up
+     * with the sprites and text around it while still being a solid object.
+     */
+    private fun blockEntity(el: EntityElement.BlockEl, depth: Float): VirtualBlockDisplay {
+        val base = planePoint(el.rect.x, el.rect.y)
+        val unit = pixelScale
+        return VirtualBlockDisplay().also { d ->
+            d.blockState = el.block
+            d.position = base
+            d.billboard = orientation
+            // World-lit would be the honest choice for a real block, but a
+            // panel's elements must read consistently against sprite glyphs
+            // beside them, which are always full-bright. A per-element
+            // override is the open question recorded in the compositor design.
+            d.brightness = Brightness.FULL
+            d.transformation = Mat4f(
+                Matrix4f()
+                    .rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat())
+                    // Canvas +Y runs downward, so the block hangs down from
+                    // its top-left corner, matching planePoint's convention.
+                    .translate(0f, -(unit * el.rect.h), depth)
+                    .scale(unit * el.rect.w, unit * el.rect.h, el.thickness)
+            )
         }
     }
 
@@ -1015,6 +1078,17 @@ class Surface(
             canvas.text(text, x, y, color)
         }
 
+        override fun blockPanel(block: BlockStateRef, rect: Rect, thickness: Float) {
+            // A composited surface is one flat canvas; a solid block has
+            // nowhere to stand in it. Skipped rather than approximated, so a
+            // caller who asked for real volume never silently gets a flat
+            // rectangle pretending to be one -- use fill() for that.
+            if (mode != RenderMode.ENTITIES) return
+            elements += EntityElement.BlockEl(
+                block, rect, thickness, depth(KIND_CHROME).toDouble()
+            )
+        }
+
         override fun slot(x: Int, y: Int, item: ItemRef?) {
             val e = resolveSprite(SLOT_SPRITE, "a slot") ?: return
             if (mode == RenderMode.ENTITIES) {
@@ -1165,6 +1239,15 @@ class Surface(
  *   otherwise share one integer kind.
  */
 private sealed class EntityElement(val depthKey: Double) {
+    /**
+     * Depth this element physically occupies, in blocks.
+     *
+     * Zero for anything flat. Only a medium with real volume overrides it,
+     * and getting it wrong puts the next layer forward INSIDE this one --
+     * see [io.schemat.displaykit.composite.DepthAllocator].
+     */
+    open val thickness: Float get() = 0f
+
     class SpriteEl(
         val entry: SpriteEntry,
         val rect: Rect,
@@ -1179,6 +1262,29 @@ private sealed class EntityElement(val depthKey: Double) {
         val color: DkColor?,
         depthKey: Double
     ) : EntityElement(depthKey)
+
+    /**
+     * A real block, occupying real volume inside the panel.
+     *
+     * The first element type that is not a flat plane, and the reason
+     * [thickness] exists at all. A block display is lit by the world, carries
+     * a real material and has genuine depth -- things a sprite cannot do --
+     * so it is a capability rather than a fallback, and it composes with
+     * sprites and text in one surface rather than replacing them.
+     */
+    class BlockEl(
+        val block: BlockStateRef,
+        val rect: Rect,
+        override val thickness: Float,
+        depthKey: Double
+    ) : EntityElement(depthKey) {
+        init {
+            require(thickness > 0f) {
+                "a block element must have real depth, got $thickness -- " +
+                    "use a sprite fill for a flat rectangle"
+            }
+        }
+    }
 }
 
 /**

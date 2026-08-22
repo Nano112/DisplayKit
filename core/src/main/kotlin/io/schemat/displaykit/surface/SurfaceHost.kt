@@ -20,7 +20,7 @@ class SurfaceHost(
     private val owner: PlayerRef,
     val surface: Surface
 ) {
-    private var layers: List<VirtualTextDisplay> = emptyList()
+    private var layers: List<VirtualEntity> = emptyList()
     private var backing: VirtualBlockDisplay? = null
     private var pointer: VirtualTextDisplay? = null
     private val viewers get() = setOf(owner.uuid)
@@ -61,8 +61,21 @@ class SurfaceHost(
             open()
             return
         }
+        // A layer's MEDIUM can change between repaints too -- a block element
+        // appearing or disappearing shifts what sits at each index -- and an
+        // entity cannot morph from a text display into a block display. Same
+        // remedy as a changed count: respawn rather than leave a stale entity
+        // of the wrong kind on screen.
+        if (layers.zip(fresh).any { (e, f) -> e::class != f::class }) {
+            close()
+            open()
+            return
+        }
         for ((e, f) in layers.zip(fresh)) {
-            e.text = f.text
+            when {
+                e is VirtualTextDisplay && f is VirtualTextDisplay -> e.text = f.text
+                e is VirtualBlockDisplay && f is VirtualBlockDisplay -> e.blockState = f.blockState
+            }
             e.transformation = f.transformation
             // Not surface.position: a text display is placed by its block
             // centre, so the entity origin is offset from the canvas top-left

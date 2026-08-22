@@ -1,5 +1,6 @@
 package io.schemat.displaykit.surface
 
+import io.schemat.displaykit.render.VirtualTextDisplay
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.DkColor
@@ -285,7 +286,7 @@ class TextDisplayLayoutTruthTest {
             fill(DkColor.WHITE, Rect(0, 0, s.widthPx, 40))
             label("x", 0, 0, DkColor.WHITE)
         }
-        val es = s.toEntities()
+        val es = s.toEntities().filterIsInstance<VirtualTextDisplay>()
         assertTrue(es.size >= 2)
         assertEquals(es.first().lineWidth, es.last().lineWidth, "shared block width")
     }
@@ -317,7 +318,7 @@ class TextDisplayLayoutTruthTest {
             fill(DkColor.WHITE, Rect(0, 0, 40, 40))
             label("on top", 4, 4, DkColor.WHITE)
         }
-        val es = s.toEntities()
+        val es = s.toEntities().filterIsInstance<VirtualTextDisplay>()
         assertTrue(es.size >= 2)
         assertEquals(s.backdrop, es.first().backgroundColor, "bottom layer keeps the backdrop")
         for (e in es.drop(1)) {
@@ -335,7 +336,7 @@ class TextDisplayLayoutTruthTest {
             fill(DkColor.WHITE, Rect(0, 0, 40, 40))
             label("UNIQUEMARKER", 4, 4, DkColor.WHITE)
         }
-        val es = s.toEntities()
+        val es = s.toEntities().filterIsInstance<VirtualTextDisplay>()
         val carrying = es.count { it.text.plain().contains("UNIQUEMARKER") }
         assertEquals(1, carrying, "the label must appear in exactly one layer, not all of them")
     }

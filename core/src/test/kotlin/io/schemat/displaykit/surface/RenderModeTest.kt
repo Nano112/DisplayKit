@@ -1,5 +1,6 @@
 package io.schemat.displaykit.surface
 
+import io.schemat.displaykit.render.VirtualTextDisplay
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.NineSlice
@@ -362,7 +363,7 @@ class RenderModeTest {
         val tint = io.schemat.displaykit.render.DkColor(255, 12, 34, 56)
         val s = surface().apply { renderMode = RenderMode.ENTITIES }
         s.paint { icon(icon8, 0, 0, tint) }
-        val text = s.toEntities().single().text
+        val text = (s.toEntities().single() as VirtualTextDisplay).text
         assertEquals(tint, text.color, "the sprite's TextComponent must carry the tint, not just the sprite id")
         assertEquals("items", text.sprite?.atlas)
     }
@@ -382,7 +383,7 @@ class RenderModeTest {
         )
         val s = surface().apply { renderMode = RenderMode.ENTITIES }
         s.paint { icon(entry, 0, 0) }
-        val sprite = s.toEntities().single().text.sprite
+        val sprite = (s.toEntities().single() as VirtualTextDisplay).text.sprite
         assertEquals("gui", sprite?.atlas)
         assertEquals("widget/button", sprite?.name)
     }
