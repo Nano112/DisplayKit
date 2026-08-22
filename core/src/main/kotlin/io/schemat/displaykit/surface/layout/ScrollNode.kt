@@ -78,8 +78,17 @@ open class ScrollNode(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.Scrol
      */
     fun scrollTo(px: Int): Boolean {
         val step = stepPx.coerceAtLeast(1)
-        val snapped = ((px + step / 2) / step) * step
-        val target = snapped.coerceIn(0, maxScroll())
+        val max = maxScroll()
+        // Both ENDS must be reachable even when they are not on a step
+        // boundary. Snapping first and clamping second cannot get there:
+        // asking for maxScroll 701 with a step of 10 snaps to 700 and the
+        // clamp has nothing to lift, so the last row of a terminal stays
+        // permanently just out of view. Every scroll UI pins its extremes.
+        val target = when {
+            px >= max -> max
+            px <= 0 -> 0
+            else -> (((px + step / 2) / step) * step).coerceIn(0, max)
+        }
         if (target == scrollPx) return false
         scrollPx = target
         place(layoutResult?.offset ?: PxOffset.Zero)

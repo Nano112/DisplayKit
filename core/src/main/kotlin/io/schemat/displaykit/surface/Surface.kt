@@ -103,11 +103,23 @@ interface SurfacePainter {
  */
 class Surface(
     val widthPx: Int,
-    val heightPx: Int,
+    requestedHeightPx: Int,
     var position: Vec3d,
     var targetWidthBlocks: Float,
     val orientation: Billboard = Billboard.FIXED
 ) {
+    /**
+     * Canvas height, rounded up so the client's measured text block is
+     * exactly this tall.
+     *
+     * A block measures `rows * FONT_LINE_HEIGHT_PX - 1`, so an arbitrary
+     * height is rounded up by the renderer anyway -- a 264px surface measures
+     * 269 -- and everything sized from the block then sits a few pixels
+     * proud of the sprite plane. Rounding here makes block == canvas an
+     * invariant instead of a coincidence. See TextMetrics.exactBlockHeight.
+     */
+    val heightPx: Int = TextMetrics.exactBlockHeight(requestedHeightPx)
+
     companion object {
         /** The single depth step for anything that must sit in front of the plane. */
         const val OVERLAY_Z_STEP = 0.005f
@@ -203,7 +215,12 @@ class Surface(
 
     init {
         require(widthPx > 0) { "Surface widthPx must be positive (got $widthPx)." }
-        require(heightPx > 0) { "Surface heightPx must be positive (got $heightPx)." }
+        // The REQUESTED height, not the rounded one: exactBlockHeight floors
+        // at one row, so validating the rounded value would silently accept
+        // zero and negatives.
+        require(requestedHeightPx > 0) {
+            "Surface heightPx must be positive (got $requestedHeightPx)."
+        }
         require(targetWidthBlocks > 0) {
             "Surface targetWidthBlocks must be positive (got $targetWidthBlocks)."
         }

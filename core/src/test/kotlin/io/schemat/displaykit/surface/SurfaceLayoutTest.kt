@@ -20,7 +20,12 @@ class SurfaceLayoutTest {
         }
         val root = assertNotNull(s.root)
         assertEquals(346, root.rect().w)
-        assertEquals(264, root.rect().h)
+        // Surface rounds its height so the client's measured text block is
+        // exactly the canvas (rows * 10 - 1); 264 becomes 269. The root must
+        // measure to the ROUNDED bounds, which is what everything else --
+        // picking, the backing slab -- is built against.
+        assertEquals(269, s.heightPx)
+        assertEquals(269, root.rect().h)
     }
 
     @Test

@@ -44,6 +44,28 @@ object TextMetrics {
     const val FONT_LINE_HEIGHT_PX = 10
 
     /**
+     * The smallest canvas height at or above [minHeight] whose rendered text
+     * block is EXACTLY that tall.
+     *
+     * The client measures a text block as `rows * FONT_LINE_HEIGHT_PX - 1`, so
+     * an arbitrary canvas height is nearly always rounded up: a 264px surface
+     * emits 27 rows and measures 269. That 5px is a real gap between the
+     * sprite plane and anything sized from the block -- the backing slab most
+     * visibly, which then hangs below the frame.
+     *
+     * Rounding a surface's height to a value the block can represent exactly
+     * removes the mismatch at the source rather than patching either side of
+     * it, and makes "the block equals the canvas" an invariant every surface
+     * can rely on -- including the two backing-slab strategies, which then
+     * agree instead of having to be chosen between.
+     */
+    fun exactBlockHeight(minHeight: Int): Int {
+        if (minHeight <= 0) return FONT_LINE_HEIGHT_PX - 1
+        val rows = (minHeight + 1 + FONT_LINE_HEIGHT_PX - 1) / FONT_LINE_HEIGHT_PX
+        return rows * FONT_LINE_HEIGHT_PX - 1
+    }
+
+    /**
      * The vertical bearing baked into every bitmap glyph by the client, in
      * text pixels.
      *
