@@ -75,7 +75,17 @@ object PickerWindow {
     private const val BODY_GAP = 10
     private const val TAB_W = 130
     private const val TAB_H = 24
-    private const val TITLE_H = 16
+    /**
+     * Three text rows tall, so a 10px label centres EXACTLY on the middle one.
+     *
+     * Text can only sit on a row (see TextMetrics.rowAlignedY), so centring a
+     * 10px line in a 16px bar was impossible: it wants y+3, and the grid only
+     * offers y+0 or y+10. The label therefore either drifted against the strip
+     * behind it or hugged its top edge. An ODD multiple of the pitch is the
+     * one height where centred and row-aligned are the same place --
+     * 10 above, 10 of text, 10 below.
+     */
+    private const val TITLE_H = 3 * TextMetrics.FONT_LINE_HEIGHT_PX
 
     // Snapping the frame to an exact nine-slice tiling grew it to 346x264,
     // and a fixed column count leaves the grid too narrow or lets it
