@@ -46,6 +46,16 @@ class SurfaceHostTest {
             private set
         val destroyedIds = mutableListOf<Int>()
 
+        /**
+         * Where each teleport put an entity.
+         *
+         * This used to be a no-op stubbed "unused by SurfaceHost", and that
+         * assumption is exactly what let the cursor ship broken: position is
+         * not metadata, so assigning it and sending only a metadata packet
+         * left the client drawing the cursor wherever it spawned.
+         */
+        val teleportedTo = mutableListOf<Vec3d>()
+
         override fun spawnEntity(entity: VirtualEntity, viewerUUIDs: Collection<UUID>) {
             spawnCount++
         }
@@ -58,8 +68,9 @@ class SurfaceHostTest {
             destroyedIds += entityIds
         }
 
-        // Unused by SurfaceHost -- not what this double is for.
-        override fun teleportEntity(entity: VirtualEntity, viewerUUIDs: Collection<UUID>) {}
+        override fun teleportEntity(entity: VirtualEntity, viewerUUIDs: Collection<UUID>) {
+            teleportedTo += entity.position
+        }
         override fun updateMetadataBatch(entities: Collection<VirtualEntity>, viewerUUIDs: Collection<UUID>) {}
         override fun updateTransformBatch(entities: Collection<VirtualEntity>, viewerUUIDs: Collection<UUID>) {}
         override fun spawnCarrierEntity(entityId: Int, position: Vec3d, viewerUUIDs: Collection<UUID>) {}
@@ -139,6 +150,66 @@ class SurfaceHostTest {
         // for one tick after leaving.
         host.tick()
         assertEquals(3, moves.size, "the grab is fed on every off-surface tick, not just the transition")
+
+        SurfaceFocus.clear(player.uuid)
+    }
+
+    @Test
+    fun theCursorIsTELEPORTEDAsTheRayMovesNotJustReMetadatad() {
+        // Reported in-world as a cursor that "only tracks on entering but
+        // doesn't follow". The spawn packet carries a position, so the very
+        // first frame looked right; every update after it assigned
+        // entity.position and sent a METADATA packet, which does not move an
+        // entity. The client kept drawing the cursor where it spawned.
+        val s = surface()
+        s.layout { root -> root.addChild(WidgetNode("body", PxSize(10, 10))) }
+        val sender = RecordingPacketSender()
+        val player = FakePlayer()
+        val host = SurfaceHost(platform(sender), player, s)
+        host.open()
+
+        host.tick()
+        val afterFirst = sender.teleportedTo.size
+
+        // Re-aim so the ray lands on a different canvas pixel.
+        player.look = Vec3d(0.10, -0.10, 1.0)
+        host.tick()
+
+        assertTrue(
+            sender.teleportedTo.size > afterFirst,
+            "moving the ray must teleport the cursor; metadata alone leaves it " +
+                "frozen where it spawned"
+        )
+        val moved = sender.teleportedTo.takeLast(2)
+        if (moved.size == 2) {
+            assertTrue(
+                moved[0] != moved[1] || sender.teleportedTo.size == afterFirst + 1,
+                "consecutive teleports must actually differ in position"
+            )
+        }
+
+        SurfaceFocus.clear(player.uuid)
+    }
+
+    @Test
+    fun aStationaryCursorDoesNotTeleportEveryTick() {
+        // The tick loop runs per viewer at 20Hz; an unconditional teleport
+        // would be a packet a tick for a cursor that has not moved.
+        val s = surface()
+        s.layout { root -> root.addChild(WidgetNode("body", PxSize(10, 10))) }
+        val sender = RecordingPacketSender()
+        val player = FakePlayer()
+        val host = SurfaceHost(platform(sender), player, s)
+        host.open()
+
+        host.tick()
+        val settled = sender.teleportedTo.size
+        repeat(5) { host.tick() }
+
+        assertEquals(
+            settled, sender.teleportedTo.size,
+            "a cursor that has not moved must not be teleported again"
+        )
 
         SurfaceFocus.clear(player.uuid)
     }

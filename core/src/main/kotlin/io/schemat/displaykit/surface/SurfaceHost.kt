@@ -228,6 +228,7 @@ class SurfaceHost(
             platform.packetSender.spawnEntity(fresh, viewers)
             platform.packetSender.updateMetadata(fresh, viewers)
         } else {
+            val moved = existing.position != fresh.position
             existing.position = fresh.position
             existing.text = fresh.text
             // yawDegrees is mutable and repaint() refreshes the layers'
@@ -236,6 +237,16 @@ class SurfaceHost(
             existing.transformation = fresh.transformation
             existing.lineWidth = fresh.lineWidth
             platform.packetSender.updateMetadata(existing, viewers)
+            // Position is NOT metadata. Assigning it and sending only a
+            // metadata packet leaves the client rendering the cursor wherever
+            // it was spawned, which is why it appeared correctly the moment
+            // the ray entered the surface and then never followed the
+            // crosshair again. Moving a display entity takes a teleport, as
+            // the interaction design specified and this did not do.
+            //
+            // Guarded on an actual change so a still cursor costs nothing:
+            // this runs every tick, per viewer.
+            if (moved) platform.packetSender.teleportEntity(existing, viewers)
         }
     }
 
