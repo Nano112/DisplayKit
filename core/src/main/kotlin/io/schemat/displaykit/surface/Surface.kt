@@ -760,7 +760,25 @@ class Surface(
         val pos = elementOrigin(
             base = base,
             blockWidthPx = ATLAS_SPRITE_GLYPH_PX.toInt(),
-            blockHeightPx = TextMetrics.FONT_LINE_HEIGHT_PX - 1,
+            // The FULL line pitch, with no -1.
+            //
+            // The -1 here is the client's own `lines * pitch - 1` convention
+            // for a block of TEXT, and it does not apply to an atlas sprite:
+            // this glyph is a square 8x8 object, not a line with descender
+            // space. Being one glyph pixel out is then multiplied by the
+            // element's own scale (sy = pixelScale * rect.h / 8), so the error
+            // grew with the sprite -- 1px on an 8px icon, 4px on a 32px one,
+            // every sprite in every ENTITIES-mode surface sitting h/8 canvas
+            // pixels high.
+            //
+            // Measured, not reasoned. `/dk calib <i> [nopack]` draws one
+            // sprite twice against the backing slab, which is built from the
+            // canvas bounds and touches no glyph metrics -- the only
+            // reference independent of both paths being compared. The
+            // measurement is linear in this constant at h/8 canvas pixels per
+            // glyph pixel, which is what identified 10 rather than 9 or 8.
+            // See CalibrationWindow.
+            blockHeightPx = TextMetrics.FONT_LINE_HEIGHT_PX,
             scaleX = sx,
             scaleY = sy,
             depth = depth

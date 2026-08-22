@@ -151,7 +151,15 @@ class RenderModeTest {
             // element, so ordinal 0) to recover the anchor it was built from.
             val unit = TextMetrics.PIXEL_SIZE * s.pixelScale.toDouble()
             val localX = unit * (1.0 - 8 / 2.0)
-            val localY = unit * (TextMetrics.FONT_LINE_HEIGHT_PX - 1).toDouble()
+            // Mirrors Surface.spriteEntity's blockHeightPx. Note what this
+            // test can and cannot prove: it inverts elementOrigin using the
+            // same constant elementOrigin was given, so it is self-consistent
+            // BY CONSTRUCTION and stayed green for as long as every sprite in
+            // ENTITIES mode rendered h/8 canvas pixels too high. What it does
+            // prove is that rendering and picking share one mapping -- worth
+            // having, but it is not an absolute check. That comes from
+            // measurement against the backing slab; see CalibrationWindow.
+            val localY = unit * TextMetrics.FONT_LINE_HEIGHT_PX.toDouble()
             val theta = Math.toRadians(yaw.toDouble())
             val cos = cos(theta)
             val sin = sin(theta)

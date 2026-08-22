@@ -8,6 +8,7 @@ import io.schemat.displaykit.sprite.SpriteIndex
 import io.schemat.displaykit.surface.RenderMode
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
+import com.mojang.brigadier.arguments.IntegerArgumentType
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
@@ -91,6 +92,37 @@ object ShowcaseMod : ModInitializer {
                             }
                     )
                     .then(
+                        // Measurement target, not a demo. Renders the same
+                        // sprite pattern in either mode so the two captures
+                        // can be diffed -- see CalibrationWindow's KDoc for
+                        // why there is no hand-built reference mark.
+                        Commands.literal("calib")
+                            .then(
+                                Commands.argument("index", IntegerArgumentType.integer(0, 32))
+                                    .executes { ctx ->
+                                        openCalibration(
+                                            ctx.source, RenderMode.COMPOSITED,
+                                            IntegerArgumentType.getInteger(ctx, "index")
+                                        )
+                                    }
+                                    .then(
+                                        Commands.literal("nopack").executes { ctx ->
+                                            openCalibration(
+                                                ctx.source, RenderMode.ENTITIES,
+                                                IntegerArgumentType.getInteger(ctx, "index")
+                                            )
+                                        }
+                                    )
+                            )
+                    )
+                    .then(
+                        Commands.literal("closecalib")
+                            .executes { ctx ->
+                                ctx.source.player?.let { CalibrationWindow.closeFor(it.uuid) }
+                                1
+                            }
+                    )
+                    .then(
                         Commands.literal("terminal")
                             .executes { ctx -> openTerminal(ctx.source) }
                     )
@@ -114,6 +146,15 @@ object ShowcaseMod : ModInitializer {
             return 0
         }
         return openWindow(p, "picker") { PickerWindow.open(p, renderMode) }
+    }
+
+    private fun openCalibration(source: CommandSourceStack, renderMode: RenderMode, index: Int): Int {
+        val p = source.player
+        if (p == null) {
+            source.sendFailure(Component.literal("Calibration requires a player"))
+            return 0
+        }
+        return openWindow(p, "calibration") { CalibrationWindow.open(p, renderMode, index) }
     }
 
     /**
