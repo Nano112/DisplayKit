@@ -256,16 +256,33 @@ class Surface(
      * local +Z (see [yawFacing]). Putting the slab at +Z parks it between the
      * viewer and the glyphs, which hides the entire UI behind a blank
      * panel.
+     *
+     * Sized and anchored differently per [RenderMode] -- see
+     * [backingEntityFromTextBlock] ([COMPOSITED]) and
+     * [backingEntityFromCanvasBounds] ([ENTITIES]).
      */
     fun toBackingEntity(): VirtualBlockDisplay? {
         val block = backingBlock ?: return null
         val unit = TextMetrics.PIXEL_SIZE * pixelScale
-        // Size from the TEXT BLOCK, not the canvas. The two are not the same:
-        // the block width is the widest emitted row (the nine-slice frame's
-        // right edge overshoots the canvas by a pixel) and the block height is
-        // rounded up to whole rows (264px of canvas becomes 27 rows = 269px).
-        // A slab built from widthPx/heightPx therefore never quite lines up,
-        // and the mismatch is visible as a dark margin around the UI.
+        return if (effectiveRenderMode() == RenderMode.ENTITIES) {
+            backingEntityFromCanvasBounds(block, unit)
+        } else {
+            backingEntityFromTextBlock(block, unit)
+        }
+    }
+
+    /**
+     * [RenderMode.COMPOSITED]'s backing slab: sized and anchored from the
+     * composited TEXT BLOCK, not the canvas.
+     *
+     * The two are not the same: the block width is the widest emitted row
+     * (the nine-slice frame's right edge overshoots the canvas by a pixel)
+     * and the block height is rounded up to whole rows (264px of canvas
+     * becomes 27 rows = 269px). A slab built from widthPx/heightPx therefore
+     * never quite lines up, and the mismatch is visible as a dark margin
+     * around the UI.
+     */
+    private fun backingEntityFromTextBlock(block: BlockStateRef, unit: Float): VirtualBlockDisplay {
         val blockW = canvas.blockWidthPx()
         val blockH = blockHeightPx()
         return VirtualBlockDisplay().also { d ->
@@ -287,6 +304,37 @@ class Surface(
             )
         }
     }
+
+    /**
+     * [RenderMode.ENTITIES]'s backing slab: sized and anchored from the
+     * CANVAS BOUNDS directly, not any measured text block.
+     *
+     * Under [RenderMode.ENTITIES] nothing is ever painted into [canvas] --
+     * [toEntitiesFlat] emits one entity per painted element instead -- so
+     * [canvas.blockWidthPx]/[blockHeightPx] are meaningless
+     * ([SpriteCanvas.emittedRowCount] is 0, and [blockHeightPx] computes
+     * `0 * 10 - 1 = -1`), and [entityOrigin] early-returns [position]
+     * unmodified because [SpriteCanvas.itemCount] is 0. Building the slab
+     * from [widthPx]/[heightPx] and anchoring it at [position] -- which is
+     * already defined as the canvas top-left -- sidesteps both: there is no
+     * text-block centring to undo, because there is no text block.
+     */
+    private fun backingEntityFromCanvasBounds(block: BlockStateRef, unit: Float): VirtualBlockDisplay =
+        VirtualBlockDisplay().also { d ->
+            d.blockState = block
+            d.position = position
+            d.billboard = orientation
+            d.brightness = Brightness.FULL
+            d.transformation = Mat4f(
+                Matrix4f()
+                    .rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat())
+                    // No horizontal centring (unlike the text-block variant):
+                    // position is already the left edge, and canvas +Y runs
+                    // downward, so the slab hangs down-and-right from it.
+                    .translate(0f, -(unit * heightPx), -(LAYER_Z_STEP + backingThicknessBlocks))
+                    .scale(unit * widthPx, unit * heightPx, backingThicknessBlocks)
+            )
+        }
 
     /**
      * Y-axis rotation applied to the whole surface, in degrees, composed with
@@ -1012,6 +1060,14 @@ class Surface(
      * copies (the same trick as the corners, repeated along each edge) and
      * that is deliberately NOT implemented here.
      *
+     * When [tint] is null -- the common case, since [COMPOSITED] callers like
+     * `PickerWindow` correctly leave colour to [NineSlicePainter] reading the
+     * frame texture itself -- the fill would otherwise render as
+     * [FILL_SPRITE]'s own raw white. Falling back to [SpriteEntry.averageColor]
+     * instead makes the substitute read as the same material as the corners
+     * it sits between, rather than a blank white panel. The CORNERS are real
+     * art and are never tinted with it -- only the fill substitutes are.
+     *
      * Falls back to a single tinted whole-sprite stretch -- no corners
      * recovered at all -- when the sprite carries no [SpriteEntry.nineSlice]
      * metadata, or when [rect] is smaller than the sprite's own native size
@@ -1046,18 +1102,25 @@ class Surface(
         // function's own KDoc.
         val fillKey = baseKey + 0.5
         val fill = resolveSprite(FILL_SPRITE, "a frame background") ?: return
+        // A caller-supplied tint always wins; otherwise fall back to the real
+        // frame's own average colour so the flat fill reads as the same
+        // material as the corners rather than FILL_SPRITE's raw white.
+        val fillTint = tint ?: run {
+            val c = entry.averageColor
+            DkColor(255, (c shr 16) and 0xFF, (c shr 8) and 0xFF, c and 0xFF)
+        }
         val innerW = rect.w - l - r
         val innerH = rect.h - t - b
         if (innerW > 0 && innerH > 0) {
-            elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y + t, innerW, innerH), tint, fillKey)
+            elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y + t, innerW, innerH), fillTint, fillKey)
         }
-        if (innerW > 0 && t > 0) elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y, innerW, t), tint, fillKey)
+        if (innerW > 0 && t > 0) elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y, innerW, t), fillTint, fillKey)
         if (innerW > 0 && b > 0) {
-            elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.bottom - b, innerW, b), tint, fillKey)
+            elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.bottom - b, innerW, b), fillTint, fillKey)
         }
-        if (innerH > 0 && l > 0) elements += EntityElement.SpriteEl(fill, Rect(rect.x, rect.y + t, l, innerH), tint, fillKey)
+        if (innerH > 0 && l > 0) elements += EntityElement.SpriteEl(fill, Rect(rect.x, rect.y + t, l, innerH), fillTint, fillKey)
         if (innerH > 0 && r > 0) {
-            elements += EntityElement.SpriteEl(fill, Rect(rect.right - r, rect.y + t, r, innerH), tint, fillKey)
+            elements += EntityElement.SpriteEl(fill, Rect(rect.right - r, rect.y + t, r, innerH), fillTint, fillKey)
         }
     }
 }

@@ -33,6 +33,15 @@ data class NineSlice(
  *   frequently strictly less (real vanilla items measured 16 -> 14). Defaults
  *   to [width] for hand-built entries that carry no pixel data; the generated
  *   index always records the measured value. See [glyphAdvance].
+ * @param averageColor Packed `0xRRGGBB` mean colour of this sprite's pixels
+ *   (alpha ignored), used by [io.schemat.displaykit.surface.Surface] as the
+ *   tint for the flat fills that stand in for a nine-slice crop under
+ *   [io.schemat.displaykit.surface.RenderMode.ENTITIES]. For a sprite WITH
+ *   [nineSlice] metadata this is measured from the CENTRE region only (inside
+ *   the borders) — that is the part a flat fill actually replaces. Defaults
+ *   to white for hand-built entries that carry no pixel data; the generated
+ *   index always records the measured value, or white for animated sprites
+ *   (measuring a strip would average across frames).
  */
 data class SpriteEntry(
     val id: SpriteId,
@@ -42,7 +51,8 @@ data class SpriteEntry(
     val animated: Boolean = false,
     val greyscale: Boolean = false,
     val nineSlice: NineSlice? = null,
-    val trimmedWidth: Int = width
+    val trimmedWidth: Int = width,
+    val averageColor: Int = 0xFFFFFF
 ) {
     /** Eligible to be emitted as a by-reference bitmap font glyph. */
     val glyphEligible: Boolean get() = !animated

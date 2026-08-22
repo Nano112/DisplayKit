@@ -66,6 +66,9 @@ class SpriteIndex private constructor(
                 // was understood; falling back to the declared width restores
                 // the old (wrong, but non-crashing) behaviour for that case.
                 trimmedWidth = obj.get("trimmedWidth")?.asInt ?: obj.get("width").asInt,
+                // Absent only in an index generated before average-colour
+                // tinting existed; white matches SpriteEntry's own default.
+                averageColor = obj.get("averageColor")?.asInt ?: 0xFFFFFF,
                 nineSlice = sliceObj?.let {
                     NineSlice(
                         left = it.get("left").asInt,

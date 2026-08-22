@@ -196,6 +196,51 @@ class TextDisplayLayoutTruthTest {
         }
     }
 
+    @Test
+    fun theBackingSlabAlignsWithTheCanvasBoundsInEntitiesMode() {
+        // Under RenderMode.ENTITIES nothing is ever painted into the shared
+        // canvas -- each element becomes its own entity -- so the canvas's
+        // emittedRowCount() stays 0, blockHeightPx() computes 0*10-1 = -1,
+        // and entityOrigin() early-returns `position` unmodified because the
+        // canvas's itemCount() is 0. The old text-block-derived slab sizing
+        // produced a degenerate, detached panel from that. The backing must
+        // instead track widthPx/heightPx and anchor at `position` (the
+        // canvas top-left) directly.
+        for (yaw in listOf(0f, 90f, 137f, 180f, 271f)) {
+            val s = surface(346, 264)
+            s.yawDegrees = yaw
+            s.renderMode = RenderMode.ENTITIES
+            s.backingBlock = BlockStateRef.BLACK_CONCRETE
+            s.paint { label("align", 0, 0, DkColor.WHITE) }
+
+            assertEquals(0, s.canvasItemCount(), "ENTITIES mode must not paint into the shared canvas")
+
+            val back = s.toBackingEntity()!!
+            val m = back.transformation.joml
+            val corners = listOf(
+                Triple(0, 0, 0f to 1f),
+                Triple(s.widthPx, 0, 1f to 1f),
+                Triple(0, s.heightPx, 0f to 0f),
+                Triple(s.widthPx, s.heightPx, 1f to 0f)
+            )
+            for ((px, py, sc) in corners) {
+                val expected = s.planePointForTest(px, py)
+                val v = m.transformPosition(org.joml.Vector3f(sc.first, sc.second, 0f))
+                val gap = Math.sqrt(
+                    Math.pow(expected.x - (back.position.x + v.x()), 2.0) +
+                        Math.pow(expected.y - (back.position.y + v.y()), 2.0) +
+                        Math.pow(expected.z - (back.position.z + v.z()), 2.0)
+                )
+                // The only separation allowed is the deliberate depth step.
+                val expectedGap = (Surface.LAYER_Z_STEP + s.backingThicknessBlocks).toDouble()
+                assertTrue(
+                    Math.abs(gap - expectedGap) < 1e-4,
+                    "yaw $yaw corner ($px,$py): slab is $gap from the canvas bound, expected $expectedGap"
+                )
+            }
+        }
+    }
+
     // --- Fact 6: overlapping glyphs need real depth between them ---
 
     @Test

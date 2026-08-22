@@ -115,6 +115,13 @@ object SpriteIndexGenerator {
                                 "trimmedWidth",
                                 if (isAnimated) width else actualGlyphWidth(image)
                             )
+                            // An animated strip's average would blend every
+                            // frame together, so it stays white -- the same
+                            // sentinel SpriteEntry defaults to.
+                            addProperty(
+                                "averageColor",
+                                if (isAnimated) 0xFFFFFF else averageColor(image, slice)
+                            )
                             slice?.let { add("nineSlice", it) }
                         }
                         sprites.add(obj)
@@ -167,6 +174,59 @@ object SpriteIndexGenerator {
             }
         }
         return true
+    }
+
+    /** Alpha at or below this is treated as transparent halo, not real pixel colour. */
+    private const val ALPHA_THRESHOLD = 16
+
+    /**
+     * Mean RGB of this sprite's own pixels, packed `0xRRGGBB`, for
+     * [SpriteEntry.averageColor].
+     *
+     * [RenderMode.ENTITIES] substitutes a flat fill for the part of a
+     * nine-slice frame it cannot crop -- see `Surface.recordFrame` -- and that
+     * substitute is exactly the CENTRE region of the source texture, inside
+     * its declared borders. So when [border] is present only that region is
+     * sampled; a sprite with no nine-slice metadata (a plain icon, a solid
+     * fill) samples its whole image instead, since nothing about it is ever
+     * replaced by a flat fill.
+     *
+     * Pixels at or below [ALPHA_THRESHOLD] alpha are skipped -- a
+     * near-transparent anti-aliased edge would otherwise pull the mean toward
+     * black regardless of the sprite's real colour. Falls back to white (the
+     * same sentinel [SpriteEntry.averageColor] defaults to) when nothing
+     * qualifies, e.g. a fully transparent centre.
+     */
+    internal fun averageColor(image: java.awt.image.BufferedImage, border: JsonObject?): Int {
+        val width = image.width
+        val height = image.height
+        val left = (border?.get("left")?.asInt ?: 0).coerceIn(0, width)
+        val top = (border?.get("top")?.asInt ?: 0).coerceIn(0, height)
+        val right = (border?.get("right")?.asInt ?: 0).coerceIn(0, width)
+        val bottom = (border?.get("bottom")?.asInt ?: 0).coerceIn(0, height)
+        val x0 = left
+        val x1 = maxOf(x0, width - right)
+        val y0 = top
+        val y1 = maxOf(y0, height - bottom)
+
+        var rSum = 0L
+        var gSum = 0L
+        var bSum = 0L
+        var count = 0L
+        for (y in y0 until y1) {
+            for (x in x0 until x1) {
+                val argb = image.getRGB(x, y)
+                if (((argb ushr 24) and 0xFF) <= ALPHA_THRESHOLD) continue
+                rSum += (argb shr 16) and 0xFF
+                gSum += (argb shr 8) and 0xFF
+                bSum += argb and 0xFF
+                count++
+            }
+        }
+        if (count == 0L) return 0xFFFFFF
+        return (((rSum / count).toInt()) shl 16) or
+            (((gSum / count).toInt()) shl 8) or
+            ((bSum / count).toInt())
     }
 
     /**
