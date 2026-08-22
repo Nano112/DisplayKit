@@ -160,6 +160,12 @@ object TerminalWindow {
         val s = open.remove(uuid) ?: return
         InteractionRouter.unregisterSurface(uuid, s.host)
         s.host.close()
+        // Only once nobody has this window open: the warm-up budget is keyed
+        // by window kind, not by player, so resetting it while another
+        // viewer's terminal is still live would hand that viewer a fresh
+        // budget mid-session and hide a real leak. A reopened window does
+        // legitimately warm up again, hence forgetting at all.
+        if (open.isEmpty()) PackSync.forget("terminal")
     }
 
     /**

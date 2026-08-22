@@ -367,6 +367,9 @@ object PickerWindow {
         val s = open.remove(uuid) ?: return
         InteractionRouter.unregisterSurface(uuid, s.host)
         s.host.close()
+        // See TerminalWindow.closeFor: the budget is per window kind, so it
+        // resets only once no viewer has this window open.
+        if (open.isEmpty()) PackSync.forget("picker")
     }
 
     private fun spritesFor(session: Session): List<SpriteEntry> =

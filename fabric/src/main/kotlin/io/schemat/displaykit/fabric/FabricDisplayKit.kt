@@ -4,6 +4,7 @@ import io.schemat.displaykit.DisplayKit
 import io.schemat.displaykit.animation.AnimationTicker
 import io.schemat.displaykit.fabric.glass.FabricGlassTrigger
 import io.schemat.displaykit.fabric.input.FabricTextInput
+import io.schemat.displaykit.fabric.input.HotbarScrollCapture
 import io.schemat.displaykit.fabric.interaction.FabricInteractionHandler
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration
 import io.schemat.displaykit.fabric.packet.FabricPacketSender
@@ -15,6 +16,7 @@ import io.schemat.displaykit.platform.TaskHandle
 import io.schemat.displaykit.render.GlassTrigger
 import io.schemat.displaykit.sprite.SpriteDiagnostics
 import io.schemat.displaykit.sprite.SpriteIndex
+import io.schemat.displaykit.surface.SurfaceFocus
 import io.schemat.displaykit.ui.InteractionRouter
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -162,9 +164,25 @@ class FabricDisplayKit : ModInitializer {
             InteractionRouter.cleanupPlayer(handler.player.uuid)
             // Clean up glass triggers for disconnecting player
             GlassTrigger.releaseAll(handler.player.uuid)
+            // The connection is already going away, so there is nobody to
+            // send a corrective held-slot packet to -- drop the remembered
+            // slot rather than trying to restore it. The focus-cleared
+            // listener below covers the still-connected case.
+            HotbarScrollCapture.forget(handler.player.uuid)
             if (enableResourcePack) {
                 FabricPackIntegration.onPlayerLeave(handler.player.uuid)
             }
+        }
+
+        // Losing surface focus ends any scroll capture that focus was arming.
+        // Registered once, here, rather than by each window: the same
+        // per-window duplication is what left this unwired in the first
+        // place. A still-connected player gets their real hotbar slot back;
+        // one whose player object has gone just has the memory dropped.
+        SurfaceFocus.onFocusCleared { playerId ->
+            val player = this.server?.playerList?.getPlayer(playerId)
+            if (player != null) HotbarScrollCapture.release(player)
+            else HotbarScrollCapture.forget(playerId)
         }
     }
 

@@ -3,6 +3,7 @@ package io.schemat.displaykit.surface
 import io.schemat.displaykit.surface.layout.SurfaceNode
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.logging.Logger
 
 /**
  * Per-viewer pointer, hover and grab state.
@@ -16,6 +17,8 @@ import java.util.concurrent.ConcurrentHashMap
  * which is why [Entry]'s fields are volatile.
  */
 object SurfaceFocus {
+
+    private val logger = Logger.getLogger("DisplayKit/SurfaceFocus")
 
     data class State(
         val hoveredId: String? = null,
@@ -91,8 +94,51 @@ object SurfaceFocus {
     }
 
     /** Drop all state — surface closed, or the player disconnected. */
+    /**
+     * Notified whenever a viewer's focus is dropped, so platform-side state
+     * keyed on the same viewer can be torn down with it.
+     *
+     * Focus is the authoritative "this viewer is interacting with a surface"
+     * signal, and things hang off it that core cannot reach: the Fabric
+     * hotbar-scroll capture remembers the player's real selected slot for the
+     * whole time the pointer sits inside a scrollable. Without this hook that
+     * memory outlived the interaction -- a viewer who disconnected while
+     * hovering a scrollable left an entry keyed by their UUID forever, and on
+     * reconnect their first scroll was measured against a slot from the
+     * previous session.
+     *
+     * Registering here rather than in each window is deliberate: the same
+     * per-window duplication produced three separate defects in this
+     * subsystem. One registration covers every surface that will ever exist.
+     */
+    fun interface FocusClearedListener {
+        fun onFocusCleared(player: UUID)
+    }
+
+    private val clearedListeners = java.util.concurrent.CopyOnWriteArrayList<FocusClearedListener>()
+
+    /** Register [listener]; it is called on every [clear]. Idempotent per instance. */
+    fun onFocusCleared(listener: FocusClearedListener) {
+        if (listener !in clearedListeners) clearedListeners += listener
+    }
+
+    /** Drop [listener]. Test seam, and for a platform tearing itself down. */
+    fun removeFocusClearedListener(listener: FocusClearedListener) {
+        clearedListeners.remove(listener)
+    }
+
     fun clear(player: UUID) {
         entries.remove(player)
+        // After removal, so a listener that inspects focus sees it already
+        // gone rather than a half-torn-down state. A throwing listener must
+        // not strand the others or abort the caller's teardown.
+        for (l in clearedListeners) {
+            try {
+                l.onFocusCleared(player)
+            } catch (t: Throwable) {
+                logger.warning("focus-cleared listener failed for $player: $t")
+            }
+        }
     }
 
     /**
