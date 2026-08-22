@@ -108,7 +108,15 @@ object CalibrationWindow {
     /** Canvas Y the two copies' TOP edges are asked to sit at. */
     fun expectedTops(): Pair<Int, Int> = FIRST_Y to (FIRST_Y + ROW_PITCH)
 
-    private const val VIEW_DISTANCE = 3.0
+    /**
+     * Far enough that the whole panel, edges included, fits in frame.
+     *
+     * At 3 blocks the target overflowed the viewport, so its top and bottom
+     * edges were off-screen and any measurement AGAINST those edges silently
+     * measured the viewport instead. A measurement instrument has to be
+     * entirely visible.
+     */
+    private const val VIEW_DISTANCE = 8.0
 
     private val open = ConcurrentHashMap<UUID, SurfaceHost>()
 
