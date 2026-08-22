@@ -5,9 +5,6 @@ import io.schemat.displaykit.fabric.input.TerminalChatCapture
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration
 import io.schemat.displaykit.fabric.player.FabricPlayerRef
 import io.schemat.displaykit.math.Vec3d
-import io.schemat.displaykit.pack.SpacingFontProvider
-import io.schemat.displaykit.pack.SpriteFontProvider
-import io.schemat.displaykit.pack.SpriteSliceProvider
 import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextMetrics
@@ -108,9 +105,9 @@ object TerminalWindow {
         closeFor(player.uuid)
         installHooksOnce()
 
-        FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
-        FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
-        FabricPackIntegration.registerAssetProvider(SpriteSliceProvider)
+        // Asset-provider registration now happens inside repaintAndSync's
+        // withPackSync call below, once per content change rather than only
+        // here -- see PickerWindow.open() for the identical move.
 
         val ref = FabricPlayerRef(player)
         val eye = ref.eyePosition()
@@ -175,32 +172,41 @@ object TerminalWindow {
     }
 
     /**
-     * Rebuild [TerminalWidget]'s tree from scratch and push it — the ONLY
-     * path that may run after [TerminalModel] itself changed (an appended
-     * line, a `clear`), for the same reason `PickerWindow.repaintAndSync`
-     * exists: [TerminalWidget.build] constructs a brand-new pane every time,
-     * so calling it on a purely-scroll change would undo the very scroll
-     * that triggered it. [TerminalWidget.afterLayout] runs right after,
-     * while the placement this build just produced is still current, so its
+     * Rebuild [TerminalWidget]'s tree from scratch, push it, and resend the
+     * pack if that repaint allocated new glyph variants — the ONLY path that
+     * may run after [TerminalModel] itself changed (an appended line, a
+     * `clear`), for the same reason `PickerWindow.repaintAndSync` exists:
+     * [TerminalWidget.build] constructs a brand-new pane every time, so
+     * calling it on a purely-scroll change would undo the very scroll that
+     * triggered it. [TerminalWidget.afterLayout] runs right after, while the
+     * placement this build just produced is still current, so its
      * stick-to-bottom check sees real geometry.
+     *
+     * The [withPackSync] wrapper is the fix for exactly the bug that made the
+     * terminal ship illegible: without it, the server-start pack (built
+     * before any provider had registered a single glyph or slice) is all the
+     * client ever has, so every spacing advance and chrome slice this window
+     * draws renders as a missing-glyph box. See [withPackSync]'s KDoc.
      */
     private fun repaintAndSync(session: Session) {
-        val frame = frameEntry
-        session.host.surface.layout { root ->
-            if (frame != null) {
-                root.addChild(WidgetNode("frame", PxSize(W, H)) { p, r -> p.frame(frame, r) })
+        withPackSync {
+            val frame = frameEntry
+            session.host.surface.layout { root ->
+                if (frame != null) {
+                    root.addChild(WidgetNode("frame", PxSize(W, H)) { p, r -> p.frame(frame, r) })
+                }
+                session.widget.build(
+                    root = root,
+                    title = "Terminal",
+                    promptHint = "type a command...",
+                    onClose = { closeFor(session.player.uuid) },
+                    onScrollChanged = { repaintTree(session) }
+                )
             }
-            session.widget.build(
-                root = root,
-                title = "Terminal",
-                promptHint = "type a command...",
-                onClose = { closeFor(session.player.uuid) },
-                onScrollChanged = { repaintTree(session) }
-            )
+            session.widget.afterLayout()
+            session.host.surface.paintTree()
+            session.host.repaint()
         }
-        session.widget.afterLayout()
-        session.host.surface.paintTree()
-        session.host.repaint()
     }
 
     /**

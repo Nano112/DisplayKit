@@ -4,8 +4,6 @@ import io.schemat.displaykit.DisplayKit
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration
 import io.schemat.displaykit.fabric.player.FabricPlayerRef
 import io.schemat.displaykit.math.Vec3d
-import io.schemat.displaykit.pack.SpacingFontProvider
-import io.schemat.displaykit.pack.SpriteFontProvider
 import io.schemat.displaykit.pack.SpriteSliceProvider
 import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.DkColor
@@ -168,17 +166,21 @@ object PickerWindow {
     }
 
     /**
-     * Repaint, then resend the pack if painting allocated new glyph variants.
+     * Resend the pack if [glyphsBefore]/[slicesBefore] no longer match what is
+     * on record -- i.e. something painted since they were snapshotted
+     * allocated a new variant.
      *
      * A sprite's vertical placement is baked into its font ascent, so the same
      * sprite at a new Y is a new codepoint. Anything the client's pack does not
-     * have renders as tofu -- which is what scrolling, dragging the thumb, and
-     * (before it was pre-warmed) moving the cursor all used to produce.
+     * have renders as tofu -- which is what scrolling and dragging the thumb
+     * used to produce.
      *
      * Rebuilding unconditionally would be just as wrong the other way: it makes
-     * EVERY connected client re-download the pack on EVERY change. So both
-     * callers watch both allocators across their repaint and rebuild only on
-     * growth.
+     * EVERY connected client re-download the pack on EVERY change. So this only
+     * rebuilds on growth. Kept as its own function for [repaintTree], which
+     * (being scroll-only) never registers asset providers and so cannot use
+     * [withPackSync]; [repaintAndSync] below gets the identical check for free
+     * from that shared helper.
      */
     private fun syncPackIfGlyphsGrew(glyphsBefore: Int, slicesBefore: Int) {
         val grew = SpriteGlyphs.requested().size > glyphsBefore ||
@@ -199,22 +201,27 @@ object PickerWindow {
      *
      * [repaint] itself pre-warms the grid and the scrollbar thumb's variants
      * before painting the current page, and [prewarmCursor] does the same for
-     * the on-surface pointer -- so this call's growth check almost always
+     * the on-surface pointer -- so [withPackSync]'s growth check almost always
      * finds nothing new, and this is the ONE resend that ships them all.
+     *
+     * `/dk picker nopack` (`session.entitiesMode`) bypasses [withPackSync]
+     * entirely rather than merely skipping its own growth: RenderMode.ENTITIES
+     * never allocates a glyph or slice codepoint, so there is nothing to
+     * register or resend, and registering the providers anyway would make
+     * THIS session's nopack window force every OTHER connected player to
+     * download a pack it never uses -- see [Session.entitiesMode].
      */
     private fun repaintAndSync(session: Session) {
-        val glyphsBefore = SpriteGlyphs.requested().size
-        val slicesBefore = SpriteSliceProvider.variantCount()
-
-        repaint(session)
-        // Both are pack-only bookkeeping (SpriteGlyphs/SliceGlyphSource
-        // codepoint allocation) that RenderMode.ENTITIES never touches --
-        // running them for a nopack session would grow tables nobody
-        // downloads and cost nothing but wasted table entries.
-        if (!session.entitiesMode) prewarmCursor()
-        session.host.repaint()
-
-        syncPackIfGlyphsGrew(glyphsBefore, slicesBefore)
+        if (session.entitiesMode) {
+            repaint(session)
+            session.host.repaint()
+            return
+        }
+        withPackSync {
+            repaint(session)
+            prewarmCursor()
+            session.host.repaint()
+        }
     }
 
     /**
@@ -235,6 +242,13 @@ object PickerWindow {
      * session's pre-warm did not cover if the geometry it was computed from
      * (track height, max scroll) ever changes underneath it. This growth
      * check is what makes that safe rather than merely usually-fine.
+     *
+     * Deliberately does NOT go through [withPackSync]: that helper always
+     * registers the asset providers, and a scroll/drag notch on a `nopack`
+     * session must not be what first registers them (see [repaintAndSync]'s
+     * KDoc) -- so this keeps its own narrow [syncPackIfGlyphsGrew] check,
+     * which is a no-op read for a nopack session since nothing it does can
+     * ever grow either table.
      */
     private fun repaintTree(session: Session) {
         val glyphsBefore = SpriteGlyphs.requested().size
@@ -263,12 +277,10 @@ object PickerWindow {
         installDisconnectHook()
 
         val entitiesMode = renderMode == RenderMode.ENTITIES
-        if (!entitiesMode) {
-            // The chrome needs slices, glyphs and spacing; register and push once.
-            FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
-            FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
-            FabricPackIntegration.registerAssetProvider(SpriteSliceProvider)
-        }
+        // The chrome needs slices, glyphs and spacing; registration itself now
+        // happens inside repaintAndSync's withPackSync call below, once per
+        // content change rather than only here -- see that function's KDoc
+        // for why entitiesMode still bypasses it entirely.
 
         val ref = FabricPlayerRef(player)
         val eye = ref.eyePosition()

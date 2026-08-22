@@ -1,11 +1,8 @@
 package io.schemat.displaykit.showcase
 
 import io.schemat.displaykit.DisplayKit
-import io.schemat.displaykit.fabric.pack.FabricPackIntegration
 import io.schemat.displaykit.math.Mat4f
 import io.schemat.displaykit.math.Vec3d
-import io.schemat.displaykit.pack.SpacingFontProvider
-import io.schemat.displaykit.pack.SpriteFontProvider
 import io.schemat.displaykit.render.Billboard
 import io.schemat.displaykit.render.Brightness
 import io.schemat.displaykit.render.DkColor
@@ -68,13 +65,11 @@ object CanvasDemos {
             DkColor.fromRGB(45, 212, 191),
             DkColor.fromRGB(250, 204, 21)
         )
-        lines.forEachIndexed { row, line ->
-            canvas.text(line, x = 0, y = row * 10, tint = lineTints[row % lineTints.size])
+        withPackSync {
+            lines.forEachIndexed { row, line ->
+                canvas.text(line, x = 0, y = row * 10, tint = lineTints[row % lineTints.size])
+            }
         }
-
-        FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
-        FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
-        FabricPackIntegration.rebuildAndResendToAll()
 
         val display = VirtualTextDisplay().apply {
             position = Vec3d(player.x, player.y + 2.0, player.z + 4.0)
@@ -110,20 +105,18 @@ object CanvasDemos {
             DkColor.fromRGB(0, 200, 255),
             DkColor.fromRGB(250, 204, 21)
         )
-        for (cz in 0 until 25) {
-            for (cx in 0 until 25) {
-                canvas.draw(
-                    cell,
-                    x = cx * cell.width,
-                    y = cz * cell.height,
-                    tint = palette[(cx + cz) % palette.size]
-                )
+        withPackSync {
+            for (cz in 0 until 25) {
+                for (cx in 0 until 25) {
+                    canvas.draw(
+                        cell,
+                        x = cx * cell.width,
+                        y = cz * cell.height,
+                        tint = palette[(cx + cz) % palette.size]
+                    )
+                }
             }
         }
-
-        FabricPackIntegration.registerAssetProvider(SpriteFontProvider)
-        FabricPackIntegration.registerAssetProvider(SpacingFontProvider)
-        FabricPackIntegration.rebuildAndResendToAll()
 
         val display = VirtualTextDisplay().apply {
             position = Vec3d(player.x, player.y + 2.0, player.z + 6.0)

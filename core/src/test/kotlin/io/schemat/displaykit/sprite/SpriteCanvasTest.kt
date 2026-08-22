@@ -289,4 +289,32 @@ class SpriteCanvasTest {
         c.text(longLine, x = 0, y = 9) // row 1 under FONT_LINE_HEIGHT_PX = 9
         assertEquals(TextMetrics.textWidthPx(longLine), c.maxRowAdvance())
     }
+
+    // --- Growth-detection: the check io.schemat.displaykit.showcase.withPackSync
+    // (fabric/showcase module, not exercisable from core) runs around every
+    // repaint -- snapshot SpriteGlyphs.requested().size before painting, resend
+    // the pack only if it grew. That helper's other half, SpriteSliceProvider's
+    // variant count, lives in the pack module, which core must never depend on
+    // (see AGENTS/CLAUDE constraints), so only the SpriteGlyphs half is
+    // exercised here. ---
+
+    @Test
+    fun paintingANewSpriteGrowsTheRequestedSetButRepaintingTheSameContentDoesNot() {
+        val c = SpriteCanvas(64, 64)
+        val e = entry("badge")
+
+        val beforeFirstPaint = SpriteGlyphs.requested().size
+        c.draw(e, x = 0, y = 0)
+        assertTrue(
+            SpriteGlyphs.requested().size > beforeFirstPaint,
+            "a new sprite must allocate a new glyph variant"
+        )
+
+        val beforeSecondPaint = SpriteGlyphs.requested().size
+        c.draw(e, x = 16, y = 0) // same sprite, same y -> same (id, ascent) key
+        assertEquals(
+            beforeSecondPaint, SpriteGlyphs.requested().size,
+            "repainting the same content again must not grow the requested set"
+        )
+    }
 }
