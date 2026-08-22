@@ -25,6 +25,18 @@ dependencies {
     include(project(":libs:displaykit:core"))
     include(project(":libs:displaykit:pack"))
     include(libs.joml)
+
+    // This module had no test source set at all, which is why its defects
+    // reached the client instead of a build: the surface ticker's grab/hover
+    // path and the pack-sync ritual both shipped broken and were caught by
+    // eye, in-world. Anything here that does NOT need a live Minecraft server
+    // -- accounting, wrap arithmetic, packet field math -- is testable, and
+    // should be tested.
+    testImplementation(kotlin("test"))
+}
+
+tasks.named<Test>("test") {
+    useJUnitPlatform()
 }
 
 loom {

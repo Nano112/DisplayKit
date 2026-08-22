@@ -1,6 +1,7 @@
 package io.schemat.displaykit.showcase
 
 import io.schemat.displaykit.DisplayKit
+import io.schemat.displaykit.fabric.pack.PackSync
 import io.schemat.displaykit.math.Mat4f
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.Billboard
@@ -65,7 +66,7 @@ object CanvasDemos {
             DkColor.fromRGB(45, 212, 191),
             DkColor.fromRGB(250, 204, 21)
         )
-        withPackSync {
+        PackSync.withPackSync("canvas-demo") {
             lines.forEachIndexed { row, line ->
                 canvas.text(line, x = 0, y = row * 10, tint = lineTints[row % lineTints.size])
             }
@@ -105,7 +106,7 @@ object CanvasDemos {
             DkColor.fromRGB(0, 200, 255),
             DkColor.fromRGB(250, 204, 21)
         )
-        withPackSync {
+        PackSync.withPackSync("canvas-demo") {
             for (cz in 0 until 25) {
                 for (cx in 0 until 25) {
                     canvas.draw(

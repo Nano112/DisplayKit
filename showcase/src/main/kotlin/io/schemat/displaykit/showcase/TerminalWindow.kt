@@ -3,6 +3,7 @@ package io.schemat.displaykit.showcase
 import io.schemat.displaykit.DisplayKit
 import io.schemat.displaykit.fabric.input.TerminalChatCapture
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration
+import io.schemat.displaykit.fabric.pack.PackSync
 import io.schemat.displaykit.fabric.player.FabricPlayerRef
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.BlockStateRef
@@ -182,14 +183,14 @@ object TerminalWindow {
      * placement this build just produced is still current, so its
      * stick-to-bottom check sees real geometry.
      *
-     * The [withPackSync] wrapper is the fix for exactly the bug that made the
+     * The [PackSync.withPackSync] wrapper is the fix for exactly the bug that made the
      * terminal ship illegible: without it, the server-start pack (built
      * before any provider had registered a single glyph or slice) is all the
      * client ever has, so every spacing advance and chrome slice this window
-     * draws renders as a missing-glyph box. See [withPackSync]'s KDoc.
+     * draws renders as a missing-glyph box. See [PackSync.withPackSync]'s KDoc.
      */
     private fun repaintAndSync(session: Session) {
-        withPackSync {
+        PackSync.withPackSync("terminal") {
             val frame = frameEntry
             session.host.surface.layout { root ->
                 if (frame != null) {

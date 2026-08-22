@@ -2,6 +2,7 @@ package io.schemat.displaykit.showcase
 
 import io.schemat.displaykit.DisplayKit
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration
+import io.schemat.displaykit.fabric.pack.PackSync
 import io.schemat.displaykit.fabric.player.FabricPlayerRef
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.pack.SpriteSliceProvider
@@ -180,7 +181,7 @@ object PickerWindow {
      * EVERY connected client re-download the pack on EVERY change. So this only
      * rebuilds on growth. Kept as its own function for [repaintTree], which
      * (being scroll-only) never registers asset providers and so cannot use
-     * [withPackSync]; [repaintAndSync] below gets the identical check for free
+     * [PackSync.withPackSync]; [repaintAndSync] below gets the identical check for free
      * from that shared helper.
      */
     private fun syncPackIfGlyphsGrew(glyphsBefore: Int, slicesBefore: Int) {
@@ -202,10 +203,10 @@ object PickerWindow {
      *
      * [repaint] itself pre-warms the grid and the scrollbar thumb's variants
      * before painting the current page, and [prewarmCursor] does the same for
-     * the on-surface pointer -- so [withPackSync]'s growth check almost always
+     * the on-surface pointer -- so [PackSync.withPackSync]'s growth check almost always
      * finds nothing new, and this is the ONE resend that ships them all.
      *
-     * `/dk picker nopack` (`session.entitiesMode`) bypasses [withPackSync]
+     * `/dk picker nopack` (`session.entitiesMode`) bypasses [PackSync.withPackSync]
      * entirely rather than merely skipping its own growth: RenderMode.ENTITIES
      * never allocates a glyph or slice codepoint, so there is nothing to
      * register or resend, and registering the providers anyway would make
@@ -218,7 +219,7 @@ object PickerWindow {
             session.host.repaint()
             return
         }
-        withPackSync {
+        PackSync.withPackSync("picker") {
             repaint(session)
             prewarmCursor()
             session.host.repaint()
@@ -244,7 +245,7 @@ object PickerWindow {
      * (track height, max scroll) ever changes underneath it. This growth
      * check is what makes that safe rather than merely usually-fine.
      *
-     * Deliberately does NOT go through [withPackSync]: that helper always
+     * Deliberately does NOT go through [PackSync.withPackSync]: that helper always
      * registers the asset providers, and a scroll/drag notch on a `nopack`
      * session must not be what first registers them (see [repaintAndSync]'s
      * KDoc) -- so this keeps its own narrow [syncPackIfGlyphsGrew] check,
