@@ -62,6 +62,27 @@ object TextMetrics {
      * FIRST, so the snap is a no-op and the drawn position is the requested
      * one.
      */
+    /**
+     * The smallest chrome height at or above [minHeight] that a line of text
+     * can sit EXACTLY centred in.
+     *
+     * Callers should not have to know the grid rule. Text can only sit on a
+     * row, so centring a 10px line in a 16px bar is impossible -- it wants
+     * y+3 and the grid offers y+0 or y+10 -- and the label ends up hugging an
+     * edge. An ODD number of rows is the one shape where centred and
+     * row-aligned are the same place: one row above, one of text, one below.
+     *
+     * Ask for the height you want and use what comes back:
+     * `val TITLE_H = TextMetrics.centringHeight(24)` gives 30.
+     */
+    fun centringHeight(minHeight: Int): Int {
+        val pitch = FONT_LINE_HEIGHT_PX
+        var rows = (minHeight + pitch - 1) / pitch
+        if (rows < 1) rows = 1
+        if (rows % 2 == 0) rows++          // odd rows centre exactly
+        return rows * pitch
+    }
+
     fun rowAlignedY(y: Int): Int {
         val pitch = FONT_LINE_HEIGHT_PX
         val rounded = Math.floorDiv(y + pitch / 2, pitch) * pitch

@@ -84,7 +84,7 @@ object PickerWindow {
      * `gui/widget/tab` is 130x24 natively but nine-sliced, so it stretches to
      * 30 without distortion.
      */
-    private const val TAB_H = 3 * TextMetrics.FONT_LINE_HEIGHT_PX
+    private val TAB_H = TextMetrics.centringHeight(24)
     /**
      * Three text rows tall, so a 10px label centres EXACTLY on the middle one.
      *
@@ -95,7 +95,7 @@ object PickerWindow {
      * one height where centred and row-aligned are the same place --
      * 10 above, 10 of text, 10 below.
      */
-    private const val TITLE_H = 3 * TextMetrics.FONT_LINE_HEIGHT_PX
+    private val TITLE_H = TextMetrics.centringHeight(24)
 
     // Snapping the frame to an exact nine-slice tiling grew it to 346x264,
     // and a fixed column count leaves the grid too narrow or lets it

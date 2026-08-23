@@ -60,7 +60,7 @@ object TerminalWindow {
      * one height where centred and row-aligned are the same place --
      * 10 above, 10 of text, 10 below.
      */
-    private const val TITLE_H = 3 * TextMetrics.FONT_LINE_HEIGHT_PX
+    private val TITLE_H = TextMetrics.centringHeight(24)
     private const val ROW_H = TextMetrics.FONT_LINE_HEIGHT_PX
     private const val SCROLL_W = 6
 
