@@ -37,8 +37,19 @@ object PackSync {
 
     private val logger = LoggerFactory.getLogger("DisplayKit/PackSync")
 
-    /** Growth events tolerated per window before it is treated as a leak. */
-    private const val SETTLE_AFTER = 4
+    /**
+     * Growth events tolerated per window before it is treated as a leak.
+     *
+     * ONE: a window warms everything it can ever draw before its first push,
+     * so the build at open is expected and anything after it is a bug.
+     *
+     * This was 4, picked as a guess at "some warm-up is fine", and it meant
+     * the guard stayed silent through exactly the leaks worth catching --
+     * clicking a picker tab rebuilt the pack three times without a word in
+     * the log. A diagnostic that tolerates the common case is not a
+     * diagnostic.
+     */
+    private const val SETTLE_AFTER = 1
 
     private val budget = GrowthBudget(SETTLE_AFTER)
 
