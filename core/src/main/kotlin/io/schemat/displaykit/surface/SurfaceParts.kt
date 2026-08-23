@@ -172,8 +172,17 @@ fun SurfacePainter.tab(
     // A hollow sprite needs a ground of its own; see TAB_GROUND. Driven by
     // the measured averageColor rather than by naming the two selected
     // sprites, so any other hollow chrome gets the same treatment.
-    if (sprite.averageColor == null) fill(TAB_GROUND, rect)
-    frame(sprite, rect)
+    // Ground and frame must NOT share an elevation. depth() is
+    // `elevation * KINDS_PER_ELEVATION + kind`, so two sprites drawn at the
+    // same elevation and the same kind get the same depth key, land coplanar
+    // and z-fight. Painting a ground under a frame at one elevation is
+    // exactly that, and it showed as shimmer across every selected tab.
+    if (sprite.averageColor == null) {
+        fill(TAB_GROUND, rect)
+        elevate { frame(sprite, rect) }
+    } else {
+        frame(sprite, rect)
+    }
     val textWidth = TextMetrics.textWidthPx(text)
     label(text, rect.x + (rect.w - textWidth) / 2, TextMetrics.rowAlignedY(rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2))
     region(id, rect, onClick)
