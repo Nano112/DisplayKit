@@ -74,7 +74,16 @@ object PickerWindow {
     private const val PADDING = 10
     private const val BODY_GAP = 10
     private const val TAB_W = 130
-    private const val TAB_H = 24
+    /**
+     * Three text rows, like the title bar, so a tab's label centres exactly.
+     *
+     * Text can only sit on a row. At 24 the centring wanted y+7 and the grid
+     * gave y+10, dropping the label to the tab's bottom edge; an odd multiple
+     * of the pitch is the one height where centred and row-aligned coincide.
+     * `gui/widget/tab` is 130x24 natively but nine-sliced, so it stretches to
+     * 30 without distortion.
+     */
+    private const val TAB_H = 3 * TextMetrics.FONT_LINE_HEIGHT_PX
     /**
      * Three text rows tall, so a 10px label centres EXACTLY on the middle one.
      *
@@ -443,7 +452,13 @@ object PickerWindow {
             body.flexGrow = 1
 
             // Tab strip.
-            val tabs = FlexNode("tabs", FlexDirection.COLUMN, gap = 2)
+            // Gap on the row grid: a tab's own height is a whole number of
+            // text rows, so a gap that is not keeps every tab after the first
+            // off-grid and its label snaps somewhere different from the one
+            // above it.
+            val tabs = FlexNode(
+                "tabs", FlexDirection.COLUMN, gap = TextMetrics.FONT_LINE_HEIGHT_PX
+            )
             tabs.width = TAB_W
             for (atlas in ATLASES) {
                 val selected = atlas == session.atlas
@@ -585,7 +600,19 @@ object PickerWindow {
         // pack build -- meaningless (and wasted) work under RenderMode.ENTITIES,
         // which never emits a glyph codepoint at all; see Session.entitiesMode.
         if (!session.entitiesMode) {
-            prewarmGrid(all, firstCell)
+            // EVERY atlas, not just the one on screen.
+            //
+            // Warming only the visible atlas meant switching tabs allocated a
+            // fresh batch of codepoints, which grew the pack, which made every
+            // connected client download it again -- a second and third full
+            // resource-pack load for what is, to the player, one window.
+            // Every sprite the picker can ever show is known the moment it
+            // opens, so warm the lot once and the pack is built exactly once.
+            //
+            // Cheap in the ways that matter: these are BY-REFERENCE glyphs, so
+            // each costs a font-table entry pointing at a texture the client
+            // already has, not an image in the zip.
+            prewarmAllAtlases(firstCell)
             prewarmScrollThumb(bar, pane)
         }
         session.host.surface.paintTree()
@@ -612,6 +639,28 @@ object PickerWindow {
      * scrolling from something that grows the glyph table into something that
      * never does.
      */
+    /**
+     * Warm the grid glyphs for every atlas the picker can show.
+     *
+     * A tab switch must not be able to grow the pack: growth means a rebuild,
+     * and a rebuild means every connected client re-downloads. One warm-up at
+     * open covers all of them.
+     *
+     * One variant per sprite, not one per row: the grid's rows are [STEP]
+     * apart and [STEP] is a whole number of text rows, so every cell shares
+     * the same ascent phase however far the grid is scrolled.
+     */
+    private fun prewarmAllAtlases(reference: WidgetNode?) {
+        if (reference == null) return
+        val byAtlas = SpriteIndex.bundled.all().filter { it.glyphEligible }
+        for (entry in byAtlas) {
+            if (entry.id.atlas !in ATLASES) continue
+            val h = entry.fitHeight(SLOT - 2, SLOT - 2)
+            val ascent = GlyphPlacement.resolve(reference.rect().y + 1, h)?.ascent ?: continue
+            SpriteGlyphs.request(entry, ascent, h)
+        }
+    }
+
     private fun prewarmGrid(all: List<SpriteEntry>, reference: WidgetNode?) {
         val y = reference?.rect()?.let { it.y + 1 } ?: return
         for (entry in all) {
