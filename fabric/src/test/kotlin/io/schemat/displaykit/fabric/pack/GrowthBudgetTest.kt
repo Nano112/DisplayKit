@@ -102,4 +102,37 @@ class GrowthBudgetTest {
 
         assertEquals(4000, b.eventsFor("picker"), "a lost update means the diagnostic under-counts")
     }
+
+    @Test
+    fun `growth after a window declares itself settled is a leak however few events`() {
+        val budget = GrowthBudget(settleAfter = 1)
+
+        // Reopening a window against an already-warm pack grows NOTHING at
+        // open, so the first growth event of its life can arrive from a
+        // click. Counting events alone called that warm-up and stayed
+        // silent -- which is exactly how clicking a picker tab rebuilt the
+        // pack in-game without a word in the log.
+        budget.settle("picker")
+        budget.record("picker")
+
+        assertTrue(budget.isLeaking("picker"))
+    }
+
+    @Test
+    fun `growth before settling is still warm-up`() {
+        val budget = GrowthBudget(settleAfter = 1)
+        budget.record("picker")
+        assertFalse(budget.isLeaking("picker"))
+    }
+
+    @Test
+    fun `forget clears the settled mark too, so a reopened window warms again`() {
+        val budget = GrowthBudget(settleAfter = 1)
+        budget.settle("picker")
+        budget.forget("picker")
+
+        budget.record("picker")
+
+        assertFalse(budget.isLeaking("picker"))
+    }
 }

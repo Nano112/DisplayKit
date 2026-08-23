@@ -13,6 +13,7 @@ import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
+import io.schemat.displaykit.sprite.SpriteGlyphs
 import org.slf4j.LoggerFactory
 
 /**
@@ -85,6 +86,75 @@ object ShowcaseMod : ModInitializer {
                             )
                     )
                     .then(
+                        // Log a stack every time a named sprite mints a glyph
+                        // variant. `glyphstats` says WHICH sprite is drawn at
+                        // more geometries than it was warmed at; this says
+                        // WHERE from, which is the part no counter can give.
+                        Commands.literal("glyphtrace")
+                            .then(
+                                Commands.argument("id", StringArgumentType.greedyString())
+                                    .executes { ctx ->
+                                        val id = StringArgumentType.getString(ctx, "id")
+                                        SpriteGlyphs.traceId = if (id == "off") null else id
+                                        ctx.source.sendSuccess(
+                                            { Component.literal("glyph trace: ${SpriteGlyphs.traceId ?: "off"}") },
+                                            false
+                                        )
+                                        1
+                                    }
+                            )
+                    )
+                    .then(
+                        // How many glyph variants each sprite is carrying.
+                        //
+                        // A leak warning names the ONE variant a paint just
+                        // minted, which does not say whether warm-up is
+                        // working. A sprite with one variant is warmed
+                        // correctly; a sprite with five has been warmed at
+                        // five different geometries, and the pack is carrying
+                        // four copies of it for nothing.
+                        Commands.literal("glyphstats").executes { ctx ->
+                            val all = SpriteGlyphs.requested()
+                            val byId = all.groupBy { it.entry.id }
+                            val worst = byId.entries.sortedByDescending { it.value.size }.take(3)
+                            val hist = byId.values.groupingBy { it.size }.eachCount().toSortedMap()
+                            logger.info(
+                                "glyphstats: {} variants across {} sprites; " +
+                                    "variants-per-sprite histogram {}; worst {}",
+                                all.size,
+                                byId.size,
+                                hist,
+                                worst.map { "${it.key} x${it.value.size} " +
+                                    it.value.map { v -> "a=${v.ascent}/h=${v.renderHeight}" } }
+                            )
+                            ctx.source.sendSuccess(
+                                { Component.literal("${all.size} variants / ${byId.size} sprites, see log") },
+                                false
+                            )
+                            1
+                        }
+                    )
+                    .then(
+                        // Aim the player at a picker tab, server-side.
+                        //
+                        // Automated clicking could not be driven from the
+                        // client: locating the panel by pixel heuristics
+                        // picked up night-time terrain, and a guessed look
+                        // angle missed -- which reads as "nothing happened"
+                        // and is indistinguishable from a pass. The server
+                        // knows exactly where the tab is.
+                        Commands.literal("aimtab")
+                            .then(
+                                Commands.argument("atlas", StringArgumentType.word())
+                                    .executes { ctx ->
+                                        aimAtTab(
+                                            ctx.source,
+                                            StringArgumentType.getString(ctx, "atlas")
+                                        )
+                                    }
+                            )
+                    )
+                    .then(
                         Commands.literal("closepicker")
                             .executes { ctx ->
                                 ctx.source.player?.let { PickerWindow.closeFor(it.uuid) }
@@ -146,6 +216,32 @@ object ShowcaseMod : ModInitializer {
             return 0
         }
         return openWindow(p, "picker") { PickerWindow.open(p, renderMode) }
+    }
+
+
+    /** Point the player at a picker tab so an automated click can land on it. */
+    private fun aimAtTab(source: CommandSourceStack, atlas: String): Int {
+        val p = source.player ?: run {
+            source.sendFailure(Component.literal("aimtab requires a player"))
+            return 0
+        }
+        val r = PickerWindow.aimAt(p.uuid, "tab-$atlas") ?: run {
+            source.sendFailure(
+                Component.literal("no region 'tab-$atlas' -- is the picker open?")
+            )
+            return 0
+        }
+        // Logged, not just chatted: an automated check reads the server log,
+        // and "aimed but landed on nothing" is the failure worth seeing.
+        logger.info(
+            "aimtab {} -> yaw {} pitch {}, ray lands on {}",
+            atlas, r.yaw, r.pitch, r.landedOn ?: "NOTHING"
+        )
+        source.sendSuccess(
+            { Component.literal("aimed at tab-$atlas, ray lands on ${r.landedOn ?: "NOTHING"}") },
+            false
+        )
+        return if (r.landedOn == "tab-$atlas") 1 else 0
     }
 
     private fun openCalibration(source: CommandSourceStack, renderMode: RenderMode, index: Int): Int {

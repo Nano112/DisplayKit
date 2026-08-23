@@ -85,6 +85,7 @@ object PackSync {
             // shows only as the client re-downloading the pack, which reads
             // as lag rather than as a defect. Both defects of this shape so
             // far were a scrollbar thumb whose geometry varied continuously.
+            val newGlyphs = glyphsAfter.drop(glyphsBefore.size)
             logger.warn(
                 "'{}' has grown the resource pack {} times (warm-up allows {}). " +
                     "Every growth costs every client a pack download. " +
@@ -95,16 +96,48 @@ object PackSync {
                 label,
                 events,
                 SETTLE_AFTER,
-                glyphsAfter.size - glyphsBefore.size,
-                glyphsAfter.drop(glyphsBefore.size).take(4),
+                newGlyphs.size,
+                newGlyphs.take(4).map { describe(it) },
                 slicesAfter.size - slicesBefore.size,
                 slicesAfter.drop(slicesBefore.size).take(4)
             )
+            // Naming the new variant is not enough to act on: a sprite that
+            // was pre-warmed at one geometry and drawn at another looks
+            // identical in the log to one that was never warmed at all. The
+            // variants the SAME sprite already had are what identify the axis
+            // that moved -- and if there are none, the warm-up simply missed
+            // it. That distinction was the whole difficulty in tracking the
+            // picker's tab-click rebuild down.
+            for (g in newGlyphs.take(4)) {
+                val siblings = glyphsBefore.filter { it.entry.id == g.entry.id }
+                logger.warn(
+                    "  {} was drawn at {} -- already warmed at {}",
+                    g.entry.id,
+                    describe(g),
+                    if (siblings.isEmpty()) "NOTHING (never warmed)"
+                    else siblings.map { describe(it) }
+                )
+            }
         }
 
         FabricPackIntegration.rebuildAndResendToAll()
         return true
     }
+
+    /**
+     * Declare [label] fully warmed. Any growth after this is reported as a leak.
+     *
+     * A window calls this once its open sequence has pre-warmed everything it
+     * can ever draw. Without it the guard has only an event count to go on,
+     * and a window reopened against an already-warm pack spends no events
+     * warming -- so its first real leak looks like warm-up and passes in
+     * silence.
+     */
+    fun settled(label: String) = budget.settle(label)
+
+    /** A glyph variant's identity: the axes a repaint can vary. */
+    private fun describe(g: SpriteGlyphs.GlyphVariant) =
+        "ascent=${g.ascent} h=${g.renderHeight}"
 
     /** Forget [label]'s warm-up budget, e.g. when its window closes. */
     fun forget(label: String) = budget.forget(label)

@@ -1,5 +1,6 @@
 package io.schemat.displaykit.sprite
 
+import io.schemat.displaykit.render.TextMetrics
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -138,6 +139,40 @@ class SpriteGlyphsTest {
         assertTrue(
             SpriteGlyphs.SLICE_BASE_CODEPOINT <= SpriteGlyphs.MAX_CODEPOINT,
             "the slice range must itself fit inside Supplementary PUA-A"
+        )
+    }
+
+    @Test
+    fun `warming all phases covers every y a sprite can be drawn at`() {
+        val e = entry("filler")
+        SpriteGlyphs.warmAllPhases(e)
+        val warmed = SpriteGlyphs.requested().size
+
+        // A fill tiles at whatever y its rect lands on, and ascent is baked
+        // per y -- so an unwarmed fill mints a glyph the first time a panel
+        // sits on a new phase. That is exactly how clicking a picker tab
+        // rebuilt the resource pack, costing every connected client a
+        // re-download. After warming, no y may allocate anything new.
+        for (y in 0..200) {
+            GlyphPlacement.resolve(y, e.height)?.let {
+                SpriteGlyphs.request(e, it.ascent, e.height)
+            }
+        }
+
+        assertEquals(warmed, SpriteGlyphs.requested().size)
+    }
+
+    @Test
+    fun `warming all phases is bounded, not one variant per pixel`() {
+        val e = entry("filler")
+        SpriteGlyphs.warmAllPhases(e)
+
+        // Ascent depends only on y modulo the line pitch, so the whole space
+        // is a handful of variants. If this ever grows with the canvas, the
+        // warm has become the leak it exists to prevent.
+        assertTrue(
+            SpriteGlyphs.requested().size <= 2 * TextMetrics.FONT_LINE_HEIGHT_PX,
+            "warmAllPhases allocated ${SpriteGlyphs.requested().size} variants"
         )
     }
 }

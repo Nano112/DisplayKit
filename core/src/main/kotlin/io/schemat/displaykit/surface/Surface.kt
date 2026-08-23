@@ -18,6 +18,7 @@ import io.schemat.displaykit.sprite.SpriteCanvas
 import io.schemat.displaykit.sprite.SpriteDiagnostics
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteFit
+import io.schemat.displaykit.sprite.SpriteGlyphs
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
 import io.schemat.displaykit.surface.layout.BoxNode
@@ -646,6 +647,19 @@ class Surface(
     internal fun planePointForTest(px: Int, py: Int, depth: Float = 0f): Vec3d = planePoint(px, py, depth)
 
     /**
+     * World point of a canvas pixel, for aiming a viewer at part of this
+     * surface.
+     *
+     * Automated in-world clicking cannot be driven from screenshots: locating
+     * a panel by "find the dark region" picks up night-time terrain, and
+     * guessing a look angle misses. The server already knows where every
+     * pixel of a surface is, so a test can ask for the exact world point and
+     * aim at it. Same maths the renderer and the raycast use, so it cannot
+     * disagree with either.
+     */
+    fun worldPointOf(px: Int, py: Int): Vec3d = planePoint(px, py)
+
+    /**
      * [entityOrigin]'s formula, generalised to an independent scale per axis.
      *
      * [entityOrigin] folds the client's block-centring translate and its own
@@ -1073,6 +1087,15 @@ class Surface(
             }
             canvas.currentLayer = depth(KIND_CHROME)
             val e = resolveSprite(FILL_SPRITE, "a colour fill") ?: return
+            // A fill lands wherever its rect does, and a glyph's ascent is
+            // baked per y phase -- so a panel that moves two pixels mints a
+            // new variant, rebuilds the pack, and costs every connected
+            // client a re-download. There are only ever a fixed handful of
+            // phases, so warm them all here rather than asking every caller
+            // to predict the y values its layout will produce. Idempotent
+            // and a few map lookups; clicking a picker tab used to cost a
+            // full pack rebuild for want of this.
+            SpriteGlyphs.warmAllPhases(e)
             require(e.width > 0 && e.height > 0) {
                 "Fill sprite $FILL_SPRITE has non-positive dimensions " +
                     "(${e.width}x${e.height})."

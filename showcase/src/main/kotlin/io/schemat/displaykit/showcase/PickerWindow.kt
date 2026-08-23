@@ -24,6 +24,7 @@ import io.schemat.displaykit.surface.Surface
 import io.schemat.displaykit.surface.SurfaceEvent
 import io.schemat.displaykit.surface.SurfaceFocus
 import io.schemat.displaykit.surface.SurfaceHost
+import io.schemat.displaykit.surface.SurfacePicking
 import io.schemat.displaykit.surface.SurfacePlacement
 import io.schemat.displaykit.surface.layout.CrossAxis
 import io.schemat.displaykit.surface.layout.FlexDirection
@@ -54,6 +55,9 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object PickerWindow {
 
+    private val logger =
+        org.slf4j.LoggerFactory.getLogger("DisplayKit/PickerWindow")
+
     // Design targets for the frame -- NOT the final pixel size. The frame
     // sprite (gui/tooltip/background, 100x100, 9px border, 82x82 centre
     // tile) can only grow in whole centre-tile steps without its final tile
@@ -75,15 +79,6 @@ object PickerWindow {
     private const val PADDING = 10
     private const val BODY_GAP = 10
     private const val TAB_W = 130
-    /**
-     * Three text rows, like the title bar, so a tab's label centres exactly.
-     *
-     * Text can only sit on a row. At 24 the centring wanted y+7 and the grid
-     * gave y+10, dropping the label to the tab's bottom edge; an odd multiple
-     * of the pitch is the one height where centred and row-aligned coincide.
-     * `gui/widget/tab` is 130x24 natively but nine-sliced, so it stretches to
-     * 30 without distortion.
-     */
     /**
      * The tab sprite's own height, because it is the only one that tiles.
      *
@@ -387,6 +382,11 @@ object PickerWindow {
                 if (open[player.uuid] !== session) return@whenPackApplied
                 host.open()
                 InteractionRouter.registerSurface(player.uuid, host)
+                // Warm-up is over: the window has pre-warmed every sprite,
+                // tab state and cell it can ever draw, so any growth from
+                // here is a leak and should say so in the log rather than
+                // being absorbed as more warm-up.
+                PackSync.settled("picker")
             }
         }
 
@@ -394,6 +394,46 @@ object PickerWindow {
         player.sendSystemMessage(
             Component.literal("Picker open$modeNote. Click a slot to copy its id; the cross closes it.")
         )
+    }
+
+    /** Where an aim ended up: the angles used, and what the picker's own ray hit. */
+    data class AimResult(val yaw: Float, val pitch: Float, val landedOn: String?)
+
+    /**
+     * Turn [uuid]'s player to face the centre of an interactive region.
+     *
+     * Automated clicking could not be driven from the client. Locating the
+     * panel on screen by pixel heuristics picked up night-time terrain, and a
+     * guessed look angle missed -- and a click that misses fires no handler,
+     * which reads as "the window is fine" and is indistinguishable from a
+     * pass. That false green cost more time than any real bug here.
+     *
+     * So the server aims. The target comes from the SAME hit rect a real
+     * click resolves against, and the result is verified by re-running the
+     * SAME picking used by [SurfaceHost.handleClick] -- so a successful aim
+     * cannot disagree with the click it exists to enable, and a disagreement
+     * between [Surface.worldPointOf] and [SurfacePicking] shows up here as a
+     * mismatched `landedOn` rather than as a silent miss.
+     */
+    fun aimAt(uuid: UUID, regionId: String): AimResult? {
+        val session = open[uuid] ?: return null
+        val surface = session.host.surface
+        val hit = surface.hitRects().firstOrNull { it.id == regionId } ?: return null
+        val target = surface.worldPointOf(hit.rect.x + hit.rect.w / 2, hit.rect.y + hit.rect.h / 2)
+
+        val ref = FabricPlayerRef(session.player)
+        val eye = ref.eyePosition()
+        val dx = target.x - eye.x
+        val dy = target.y - eye.y
+        val dz = target.z - eye.z
+        val yaw = Math.toDegrees(Math.atan2(-dx, dz)).toFloat()
+        val pitch = (-Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)))).toFloat()
+        val p = session.player
+        p.connection.teleport(p.x, p.y, p.z, yaw, pitch)
+
+        val px = SurfacePicking.localPixel(surface, ref.eyePosition(), ref.lookDirection())
+        val landed = px?.let { (x, y) -> surface.hitRects().lastOrNull { it.rect.contains(x, y) }?.id }
+        return AimResult(yaw, pitch, landed)
     }
 
     fun closeFor(uuid: UUID) {
@@ -488,6 +528,12 @@ object PickerWindow {
                     when (e) {
                         is SurfaceEvent.Click -> {
                             session.atlas = atlas
+                            // Logged so an automated check can prove the click
+                            // LANDED before it reports what the click cost. A
+                            // sweep that misses every tab otherwise reports a
+                            // perfect zero rebuilds, which is the false-green
+                            // that has wasted the most time on this window.
+                            logger.info("picker tab clicked: {}", atlas)
                             repaintAndSync(session)
                             EventResult.CONSUMED
                         }

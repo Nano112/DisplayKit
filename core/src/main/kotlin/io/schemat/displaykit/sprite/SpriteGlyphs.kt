@@ -1,5 +1,9 @@
 package io.schemat.displaykit.sprite
 
+import io.schemat.displaykit.render.TextMetrics
+import java.util.logging.Level
+import java.util.logging.Logger
+
 /**
  * Codepoint allocation for by-reference sprite glyphs.
  *
@@ -108,9 +112,31 @@ object SpriteGlyphs {
                     "(SLICE_BASE_CODEPOINT). At most ${SLICE_BASE_CODEPOINT - BASE_CODEPOINT} " +
                     "whole-sprite glyph variants are supported."
             }
+            if (entry.id.toString() == traceId) {
+                // Deliberately an exception used as a stack sample, not thrown:
+                // "which paint minted this variant" is the one question a leak
+                // warning cannot answer, and it is exactly the question that
+                // matters -- a sprite drawn at four ascents is being drawn from
+                // somewhere other than where it was warmed, and only the call
+                // stack says where.
+                Logger.getLogger("displaykit/sprite").log(
+                    Level.WARNING,
+                    "GLYPH TRACE ${entry.id} new variant ascent=$ascent h=$renderHeight",
+                    Throwable("glyph variant allocation site")
+                )
+            }
             GlyphVariant(entry, ascent, next++, renderHeight)
         }.codepoint
     }
+
+    /**
+     * Sprite id to log an allocation stack for, or null. Set via `/dk glyphtrace`.
+     *
+     * A sprite that mints more variants than it was warmed with is being drawn
+     * from a second place, and no counter says which. This does.
+     */
+    @Volatile
+    var traceId: String? = null
 
     /** The codepoint as a string — a surrogate pair, since these are > U+FFFF. */
     @JvmOverloads
@@ -129,6 +155,45 @@ object SpriteGlyphs {
     ) {
         codepointFor(entry, ascent, renderHeight)
     }
+
+    /**
+     * Allocate every variant [entry] can need when drawn at an ARBITRARY y.
+     *
+     * A glyph's ascent is baked per variant and depends only on the target y
+     * modulo the line pitch, so a sprite drawn at unconstrained y needs a
+     * small, FIXED set of variants -- not one per pixel. Warming that set up
+     * front turns "this panel happens to sit two pixels lower today" from a
+     * pack rebuild (and a re-download for every connected client) into a
+     * lookup.
+     *
+     * This is what [io.schemat.displaykit.surface.SurfacePainter.fill] needs:
+     * a fill tiles its sprite wherever its rect falls, and no caller can
+     * reasonably be asked to predict those y values. Clicking a tab in the
+     * sprite picker rebuilt the pack for exactly this reason -- the new tab
+     * strip put a fill one phase off the phases already warmed.
+     *
+     * Two spans, because [GlyphPlacement.resolve] clamps at row 0: a short
+     * glyph near the top of the canvas resolves to ascents the general case
+     * never produces, and warming only the general case would miss them.
+     */
+    @JvmOverloads
+    fun warmAllPhases(entry: SpriteEntry, renderHeight: Int = entry.height) {
+        val pitch = TextMetrics.FONT_LINE_HEIGHT_PX
+        val spans = listOf(0 until pitch, CLAMP_FREE_Y until CLAMP_FREE_Y + pitch)
+        for (span in spans) {
+            for (y in span) {
+                GlyphPlacement.resolve(y, renderHeight)?.let {
+                    request(entry, it.ascent, renderHeight)
+                }
+            }
+        }
+    }
+
+    /**
+     * A y far enough down the canvas that [GlyphPlacement.resolve] never
+     * clamps to row 0, so the phases warmed from here are the general ones.
+     */
+    private const val CLAMP_FREE_Y = 100
 
     /** Every whole-sprite variant allocated so far, in allocation order. */
     fun requested(): List<GlyphVariant> = variants.values.toList()
