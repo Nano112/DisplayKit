@@ -84,7 +84,23 @@ object PickerWindow {
      * `gui/widget/tab` is 130x24 natively but nine-sliced, so it stretches to
      * 30 without distortion.
      */
-    private val TAB_H = TextMetrics.centringHeight(24)
+    /**
+     * The tab sprite's own height, because it is the only one that tiles.
+     *
+     * `widget/tab` is 130x24 with a 22px centre tile, so the only heights it
+     * fills exactly are 24 and 46. At 30 -- picked so the label would centre
+     * on the text grid -- the interior is 28: one tile does not reach and two
+     * land at y=2 and y=8, overlapping by 16. Two copies of a patterned tile
+     * offset from each other moire, which is the diagonal hatching that
+     * appeared across every unselected tab.
+     *
+     * The sprite tiles in 22s and text rows are 10s, so NO height both tiles
+     * cleanly and centres a label -- 24 puts the label slightly low. That
+     * conflict cannot be fixed with this sprite, and is the argument for
+     * generating our own button art whose tile step we choose to match the
+     * row grid. NineSliceTilingTest pins both halves of it.
+     */
+    private const val TAB_H = 24
     /**
      * Three text rows tall, so a 10px label centres EXACTLY on the middle one.
      *

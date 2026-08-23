@@ -47,6 +47,33 @@ object NineSliceLayout {
      * Prefer sizing frames through this rather than picking numbers by hand:
      * see the overlap warning on [regionsFor].
      */
+    /**
+     * True if [entry] tiles [width] x [height] with no tile drawn twice.
+     *
+     * The centre and edge crops are fixed images, so a target that is not
+     * `border + k * tile` cannot be filled exactly. The tiler covers the
+     * shortfall by placing its LAST tile flush against the far edge, which
+     * overlaps the previous one -- and two copies of a patterned tile offset
+     * from each other read as diagonal hatching or dashes, not as a seam.
+     *
+     * That is what a 30px-tall `widget/tab` did: its centre tile is 22, the
+     * interior 28, so tiles landed at y=2 and y=8 and moired across the
+     * middle of every unselected tab.
+     *
+     * Chrome should be sized through [exactSizeFor]; this is for asserting
+     * that it was.
+     */
+    fun tilesEvenly(entry: SpriteEntry, width: Int, height: Int): Boolean {
+        val s = entry.nineSlice ?: return true
+        val cw = entry.width - s.left - s.right
+        val ch = entry.height - s.top - s.bottom
+        if (cw <= 0 || ch <= 0) return true
+        val innerW = width - s.left - s.right
+        val innerH = height - s.top - s.bottom
+        if (innerW < 0 || innerH < 0) return false
+        return innerW % cw == 0 && innerH % ch == 0
+    }
+
     fun exactSizeFor(entry: SpriteEntry, minWidth: Int, minHeight: Int): Pair<Int, Int> {
         val s = entry.nineSlice ?: return maxOf(minWidth, entry.width) to maxOf(minHeight, entry.height)
         val cw = entry.width - s.left - s.right
