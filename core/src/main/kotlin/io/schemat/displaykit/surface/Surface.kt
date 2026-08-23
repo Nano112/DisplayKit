@@ -409,6 +409,19 @@ class Surface(
      * [recordFrame]). Lets a test assert the corner-occlusion geometry
      * directly, without a client to actually render it.
      */
+    /**
+     * Test seam: each recorded sprite paired with the DEPTH KEY it was given.
+     *
+     * Counting distinct depth planes is not enough to prove two overlapping
+     * layers were separated: a hollow nine-slice emits fewer planes than a
+     * solid one (its substitute fills are skipped), which can exactly offset
+     * an added ground and leave the totals identical while the two are still
+     * coplanar. Pairing rect with depth lets a test name the two things it
+     * cares about and compare THEM.
+     */
+    internal fun paintedSpriteDepthsForTest(): List<Pair<Rect, Double>> =
+        elements.filterIsInstance<EntityElement.SpriteEl>().map { it.rect to it.depthKey }
+
     internal fun paintedSpriteRectsForTest(): List<Rect> =
         elements.filterIsInstance<EntityElement.SpriteEl>().map { it.rect }
 
