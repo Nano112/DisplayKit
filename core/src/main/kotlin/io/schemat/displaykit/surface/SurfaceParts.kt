@@ -16,6 +16,19 @@ private val BUTTON = SpriteId("gui", "widget/button")
 private val CROSS = SpriteId("gui", "widget/cross_button")
 private val TAB = SpriteId("gui", "widget/tab")
 private val TAB_SELECTED = SpriteId("gui", "widget/tab_selected")
+private val TAB_HIGHLIGHTED = SpriteId("gui", "widget/tab_highlighted")
+private val TAB_SELECTED_HIGHLIGHTED = SpriteId("gui", "widget/tab_selected_highlighted")
+
+/**
+ * Ground painted behind a hollow tab sprite.
+ *
+ * Vanilla's selected-tab sprites have an ENTIRELY transparent centre --
+ * on screen the tab merges into the container panel directly below it, so
+ * there is nothing to draw. A free-floating surface has no such panel, so
+ * the selected tab renders as a bare outline with the window showing
+ * through, which reads as broken rather than selected.
+ */
+private val TAB_GROUND = DkColor(255, 58, 60, 68)
 private val SCROLL_TRACK = SpriteId("gui", "widget/scroller_background")
 private val SCROLL_THUMB = SpriteId("gui", "widget/scroller")
 
@@ -137,9 +150,29 @@ fun SurfacePainter.scrollThumb(rect: Rect) = elevate(2) {
  *
  * Skipped entirely when its sprite does not resolve — see [button].
  */
-fun SurfacePainter.tab(id: String, rect: Rect, text: String, selected: Boolean, onClick: () -> Unit) = elevate {
-    val spriteId = if (selected) TAB_SELECTED else TAB
+fun SurfacePainter.tab(
+    id: String,
+    rect: Rect,
+    text: String,
+    selected: Boolean,
+    hovered: Boolean = false,
+    onClick: () -> Unit
+) = elevate {
+    // The full four-state model vanilla ships. Folding hover into selected --
+    // passing `hovered || selected` for one flag -- makes a hovered tab
+    // indistinguishable from the selected one, so the strip gives no feedback
+    // about which tab a click will actually take.
+    val spriteId = when {
+        selected && hovered -> TAB_SELECTED_HIGHLIGHTED
+        selected -> TAB_SELECTED
+        hovered -> TAB_HIGHLIGHTED
+        else -> TAB
+    }
     val sprite = resolveSprite(spriteId, "tab '$id'") ?: return@elevate
+    // A hollow sprite needs a ground of its own; see TAB_GROUND. Driven by
+    // the measured averageColor rather than by naming the two selected
+    // sprites, so any other hollow chrome gets the same treatment.
+    if (sprite.averageColor == null) fill(TAB_GROUND, rect)
     frame(sprite, rect)
     val textWidth = TextMetrics.textWidthPx(text)
     label(text, rect.x + (rect.w - textWidth) / 2, TextMetrics.rowAlignedY(rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2))

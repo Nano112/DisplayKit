@@ -420,6 +420,7 @@ object PickerWindow {
         lateinit var pane: ScrollNode
         lateinit var bar: WidgetNode
         var firstCell: WidgetNode? = null
+        val tabNodes = mutableListOf<WidgetNode>()
 
         session.host.surface.layout { root ->
             // The window's own nine-slice background, sized to the full
@@ -465,7 +466,7 @@ object PickerWindow {
                 val selected = atlas == session.atlas
                 val tab = WidgetNode("tab-$atlas", PxSize(TAB_W, TAB_H)) { p, r ->
                     val hovered = SurfaceFocus.state(player.uuid).hoveredId == "tab-$atlas"
-                    p.tab("tab-$atlas", r, atlas, hovered || selected) {}
+                    p.tab("tab-$atlas", r, atlas, selected = selected, hovered = hovered) {}
                 }
                 tab.onEvent = { e ->
                     when (e) {
@@ -487,6 +488,7 @@ object PickerWindow {
                         else -> EventResult.PASS
                     }
                 }
+                tabNodes += tab
                 tabs.addChild(tab)
             }
             body.addChild(tabs)
@@ -601,6 +603,7 @@ object PickerWindow {
         // pack build -- meaningless (and wasted) work under RenderMode.ENTITIES,
         // which never emits a glyph codepoint at all; see Session.entitiesMode.
         if (!session.entitiesMode) {
+            prewarmTabStates(tabNodes)
             // EVERY atlas, not just the one on screen.
             //
             // Warming only the visible atlas meant switching tabs allocated a
@@ -754,6 +757,31 @@ object PickerWindow {
      * changes, or if thumb geometry (track height, [ScrollNode.maxScroll])
      * changes between this call and a scroll/drag.
      */
+    /**
+     * Warm BOTH tab sprites at every tab's rect.
+     *
+     * `tab()` picks `widget/tab` or `widget/tab_selected` from its hovered /
+     * selected flag, so only one of the two is ever painted -- and the other
+     * is requested the moment the pointer first touches that tab. That
+     * allocates slice crops mid-interaction, grows the pack, and makes every
+     * client re-download: why hovering the tab strip still caused refreshes
+     * after the grid glyphs were fully warmed.
+     *
+     * A widget with a hover state has TWO appearances and both are part of
+     * its cost. Warming only the one currently on screen warms half of it.
+     */
+    private fun prewarmTabStates(tabs: List<WidgetNode>) {
+        val states = listOf(
+            "widget/tab", "widget/tab_highlighted",
+            "widget/tab_selected", "widget/tab_selected_highlighted"
+        ).mapNotNull { SpriteIndex.bundled.get(SpriteId("gui", it)) }
+        for (node in tabs) {
+            val r = node.rect()
+            if (r.w <= 0 || r.h <= 0) continue
+            for (sprite in states) NineSlicePainter.prewarm(sprite, r)
+        }
+    }
+
     private fun prewarmScrollThumb(bar: WidgetNode, pane: ScrollNode) {
         val sprite = SpriteIndex.bundled.get(SCROLL_THUMB_SPRITE) ?: return
         val r = bar.rect()
