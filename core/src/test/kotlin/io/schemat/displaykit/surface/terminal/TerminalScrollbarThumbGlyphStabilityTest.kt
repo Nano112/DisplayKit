@@ -48,7 +48,17 @@ class TerminalScrollbarThumbGlyphStabilityTest {
         override fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int): Int =
             handed.getOrPut(SliceAsk(srcX, srcY, ascent)) { next++ }
         override fun advanceFor(id: SpriteId, srcX: Int, srcY: Int): Int? = null
-        fun variantCount() = handed.size
+        /**
+         * Slice variants PLUS whole-sprite variants of the thumb.
+         *
+         * At its own native size a sprite is drawn as one whole glyph rather
+         * than cut into nine, so counting slices alone reads zero for a thumb
+         * drawn at 6x32 and the test passes vacuously. Scoped to the thumb
+         * sprite because a paint also warms unrelated sprites, and that
+         * background growth would look like the leak this test detects.
+         */
+        fun variantCount() = handed.size +
+            SpriteGlyphs.requested().count { it.entry.id.sprite == "widget/scroller" }
     }
 
     private lateinit var slices: FakeSliceSource

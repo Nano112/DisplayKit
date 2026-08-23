@@ -86,6 +86,13 @@ object ShowcaseMod : ModInitializer {
                             )
                     )
                     .then(
+                        Commands.literal("pickerboxes").executes { ctx ->
+                            val p = ctx.source.player ?: return@executes 0
+                            PickerWindow.describeBoxes(p.uuid).forEach { logger.info("box {}", it) }
+                            1
+                        }
+                    )
+                    .then(
                         // Log a stack every time a named sprite mints a glyph
                         // variant. `glyphstats` says WHICH sprite is drawn at
                         // more geometries than it was warmed at; this says
@@ -149,9 +156,25 @@ object ShowcaseMod : ModInitializer {
                                     .executes { ctx ->
                                         aimAtTab(
                                             ctx.source,
-                                            StringArgumentType.getString(ctx, "atlas")
+                                            StringArgumentType.getString(ctx, "atlas"),
+                                            null
                                         )
                                     }
+                                    .then(
+                                        // Stand square in front of it, for a
+                                        // head-on screenshot: at an angle a
+                                        // horizontal border is not a
+                                        // horizontal row of pixels and cannot
+                                        // be measured.
+                                        Commands.argument("distance", com.mojang.brigadier.arguments.DoubleArgumentType.doubleArg(0.5, 32.0))
+                                            .executes { ctx ->
+                                                aimAtTab(
+                                                    ctx.source,
+                                                    StringArgumentType.getString(ctx, "atlas"),
+                                                    com.mojang.brigadier.arguments.DoubleArgumentType.getDouble(ctx, "distance")
+                                                )
+                                            }
+                                    )
                             )
                     )
                     .then(
@@ -220,12 +243,15 @@ object ShowcaseMod : ModInitializer {
 
 
     /** Point the player at a picker tab so an automated click can land on it. */
-    private fun aimAtTab(source: CommandSourceStack, atlas: String): Int {
+    private fun aimAtTab(source: CommandSourceStack, atlas: String, faceFrom: Double?): Int {
         val p = source.player ?: run {
             source.sendFailure(Component.literal("aimtab requires a player"))
             return 0
         }
-        val r = PickerWindow.aimAt(p.uuid, "tab-$atlas") ?: run {
+        val r = (
+            if (faceFrom != null) PickerWindow.faceRegion(p.uuid, "tab-$atlas", faceFrom)
+            else PickerWindow.aimAt(p.uuid, "tab-$atlas")
+            ) ?: run {
             source.sendFailure(
                 Component.literal("no region 'tab-$atlas' -- is the picker open?")
             )

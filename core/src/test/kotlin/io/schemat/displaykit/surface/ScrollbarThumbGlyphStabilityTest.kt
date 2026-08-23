@@ -76,7 +76,23 @@ class ScrollbarThumbGlyphStabilityTest {
         override fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int): Int =
             handed.getOrPut(SliceAsk(srcX, srcY, ascent)) { next++ }
         override fun advanceFor(id: SpriteId, srcX: Int, srcY: Int): Int? = null
-        fun variantCount() = handed.size
+        /**
+         * Slice variants PLUS whole-sprite variants OF THE THUMB.
+         *
+         * Which allocator a frame uses is a function of its size: at its own
+         * native size a sprite is drawn as one whole glyph rather than cut
+         * into nine, because cutting and re-placing a sprite that needs no
+         * stretching can only introduce error. The thumb is 6x32 and is
+         * usually drawn at exactly 6x32, so counting slices alone made these
+         * tests read zero and pass vacuously.
+         *
+         * Scoped to the thumb sprite rather than counting the whole glyph
+         * table: a paint also warms unrelated sprites (every `fill` warms its
+         * filler at all row phases), and that background growth would look
+         * like the leak these tests exist to detect.
+         */
+        fun variantCount() = handed.size +
+            SpriteGlyphs.requested().count { it.entry.id.sprite == "widget/scroller" }
     }
 
     private lateinit var slices: FakeSliceSource

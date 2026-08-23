@@ -5,6 +5,7 @@ import io.schemat.displaykit.sprite.GlyphPlacement
 import io.schemat.displaykit.sprite.SpriteCanvas
 import io.schemat.displaykit.sprite.SpriteDiagnostics
 import io.schemat.displaykit.sprite.SpriteEntry
+import io.schemat.displaykit.sprite.SpriteGlyphs
 import io.schemat.displaykit.sprite.SpriteId
 
 /**
@@ -70,6 +71,17 @@ interface SliceGlyphSource {
 object NineSlicePainter {
 
     fun paint(canvas: SpriteCanvas, entry: SpriteEntry, rect: Rect, tint: DkColor? = null) {
+        // At its own native size there is nothing to stretch, so cutting the
+        // sprite into nine pieces and re-placing them can only introduce
+        // error -- and did. `gui/widget/tab` is 130x24 and the picker draws
+        // it into a 130x24 rect; measured head-on, its two borders came out
+        // 16 canvas pixels apart instead of 24, which is why every tab looked
+        // mangled. One whole glyph is also ONE variant instead of nine, and
+        // needs no nine-slice metadata at all.
+        if (rect.w == entry.width && rect.h == entry.height) {
+            canvas.draw(entry, rect.x, rect.y, tint)
+            return
+        }
         if (entry.nineSlice == null) {
             // Silently drawing nothing here produced a frame that vanished at
             // every size while `fill` threw for an undersized rect — the same
@@ -134,6 +146,15 @@ object NineSlicePainter {
      * the first time the frame is drawn there.
      */
     fun prewarm(entry: SpriteEntry, rect: Rect) {
+        // Must short-circuit exactly as [paint] does. Warming nine slices for
+        // a draw that emits one whole glyph leaves that glyph unwarmed, and
+        // an unwarmed glyph pushed to a client renders as a missing-glyph box.
+        if (rect.w == entry.width && rect.h == entry.height) {
+            GlyphPlacement.resolve(rect.y, entry.height)?.let {
+                SpriteGlyphs.request(entry, it.ascent, entry.height)
+            }
+            return
+        }
         if (entry.nineSlice == null) return
         val source = SliceGlyphSource.installed ?: return
         val regions = NineSliceLayout.regionsFor(entry, rect.w, rect.h)

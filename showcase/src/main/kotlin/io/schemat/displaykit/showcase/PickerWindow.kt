@@ -37,6 +37,7 @@ import io.schemat.displaykit.surface.scrollThumb
 import io.schemat.displaykit.surface.scrollThumbHeight
 import io.schemat.displaykit.surface.scrollTrack
 import io.schemat.displaykit.surface.tab
+import io.schemat.displaykit.surface.tabBox
 import io.schemat.displaykit.surface.titleBar
 import io.schemat.displaykit.ui.InteractionRouter
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
@@ -96,6 +97,12 @@ object PickerWindow {
      * row grid. NineSliceTilingTest pins both halves of it.
      */
     private const val TAB_H = 24
+
+    /**
+     * Gap between tabs, chosen so `TAB_H + TAB_GAP` is a whole number of text
+     * rows. See the tab strip's construction for why the pitch matters.
+     */
+    private const val TAB_GAP = TextMetrics.FONT_LINE_HEIGHT_PX * 3 - TAB_H
     /**
      * Three text rows tall, so a 10px label centres EXACTLY on the middle one.
      *
@@ -396,6 +403,27 @@ object PickerWindow {
         )
     }
 
+    /**
+     * Every interactive rect on the open picker, with the label row each one
+     * would centre a label on.
+     *
+     * Reading tab alignment off a screenshot does not work -- a crop shows
+     * that something is wrong without saying by how much, and every guess I
+     * made from one was wrong. These are the numbers the painter actually
+     * uses.
+     */
+    fun describeBoxes(uuid: UUID): List<String> {
+        val surface = open[uuid]?.host?.surface ?: return emptyList()
+        return surface.hitRects().map { h ->
+            val r = h.rect
+            val wanted = r.y + (r.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2
+            val row = TextMetrics.rowAlignedY(wanted)
+            "${h.id} rect=(${r.x},${r.y} ${r.w}x${r.h}) " +
+                "labelWants=$wanted labelGets=$row " +
+                "offsetInBox=${row - r.y} boxBottom=${r.bottom}"
+        }
+    }
+
     /** Where an aim ended up: the angles used, and what the picker's own ray hit. */
     data class AimResult(val yaw: Float, val pitch: Float, val landedOn: String?)
 
@@ -415,6 +443,49 @@ object PickerWindow {
      * between [Surface.worldPointOf] and [SurfacePicking] shows up here as a
      * mismatched `landedOn` rather than as a silent miss.
      */
+    /**
+     * Move the viewer square in front of [regionId], [distance] blocks out.
+     *
+     * Measuring chrome off a screenshot needs a HEAD-ON view: seen at an
+     * angle, a horizontal border is not a horizontal row of pixels, and a
+     * scan for "the rows that span the widget" finds nothing at all. Aiming
+     * alone cannot fix that -- it rotates the camera but leaves it off to one
+     * side. Standing on the region's own normal does.
+     *
+     * The normal comes from the surface's own plane mapping rather than from
+     * its stored orientation, so it cannot disagree with where the pixels
+     * actually are.
+     */
+    fun faceRegion(uuid: UUID, regionId: String, distance: Double): AimResult? {
+        val session = open[uuid] ?: return null
+        val surface = session.host.surface
+        val hit = surface.hitRects().firstOrNull { it.id == regionId } ?: return null
+        val c = surface.worldPointOf(hit.rect.x + hit.rect.w / 2, hit.rect.y + hit.rect.h / 2)
+        val px = surface.worldPointOf(hit.rect.x + hit.rect.w / 2 + 1, hit.rect.y + hit.rect.h / 2)
+        val py = surface.worldPointOf(hit.rect.x + hit.rect.w / 2, hit.rect.y + hit.rect.h / 2 + 1)
+        val ux = Vec3d(px.x - c.x, px.y - c.y, px.z - c.z)
+        val uy = Vec3d(py.x - c.x, py.y - c.y, py.z - c.z)
+        var nx = ux.y * uy.z - ux.z * uy.y
+        var ny = ux.z * uy.x - ux.x * uy.z
+        var nz = ux.x * uy.y - ux.y * uy.x
+        val len = Math.sqrt(nx * nx + ny * ny + nz * nz)
+        if (len < 1e-9) return null
+        nx /= len; ny /= len; nz /= len
+
+        val p = session.player
+        val eyeH = p.eyeHeight.toDouble()
+        // Either face of the plane will do; pick the one the viewer is on.
+        val toViewer = (p.x - c.x) * nx + (p.y + eyeH - c.y) * ny + (p.z - c.z) * nz
+        val sign = if (toViewer < 0) -1.0 else 1.0
+        p.connection.teleport(
+            c.x + nx * distance * sign,
+            c.y + ny * distance * sign - eyeH,
+            c.z + nz * distance * sign,
+            p.yRot, p.xRot
+        )
+        return aimAt(uuid, regionId)
+    }
+
     fun aimAt(uuid: UUID, regionId: String): AimResult? {
         val session = open[uuid] ?: return null
         val surface = session.host.surface
@@ -510,13 +581,16 @@ object PickerWindow {
             body.flexGrow = 1
 
             // Tab strip.
-            // Gap on the row grid: a tab's own height is a whole number of
-            // text rows, so a gap that is not keeps every tab after the first
-            // off-grid and its label snaps somewhere different from the one
-            // above it.
-            val tabs = FlexNode(
-                "tabs", FlexDirection.COLUMN, gap = TextMetrics.FONT_LINE_HEIGHT_PX
-            )
+            //
+            // The PITCH -- height plus gap -- must be a whole number of text
+            // rows. `tab()` centres its label by shifting its own box onto
+            // the label's row, so a tab is correct at any y; but if
+            // successive tabs sit on different phases they shift by different
+            // amounts and the even gaps the layout computed come out ragged.
+            // TAB_H is 24, so a 6px gap gives a pitch of 30 and every tab
+            // shifts identically. A gap of 10 gave a pitch of 34 and shifted
+            // them by -1, +5 and +1.
+            val tabs = FlexNode("tabs", FlexDirection.COLUMN, gap = TAB_GAP)
             tabs.width = TAB_W
             for (atlas in ATLASES) {
                 val selected = atlas == session.atlas
@@ -840,7 +914,11 @@ object PickerWindow {
         for (node in tabs) {
             val r = node.rect()
             if (r.w <= 0 || r.h <= 0) continue
-            for (sprite in states) NineSlicePainter.prewarm(sprite, r)
+            // Through tabBox, because a tab shifts itself onto the label's
+            // text row: warming the UNSHIFTED rect allocates the wrong
+            // ascents, and the paint then mints fresh slices after the pack
+            // was built, which the client renders as missing-glyph boxes.
+            for (sprite in states) NineSlicePainter.prewarm(sprite, tabBox(r))
         }
     }
 

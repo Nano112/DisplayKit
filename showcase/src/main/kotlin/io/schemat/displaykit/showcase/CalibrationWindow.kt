@@ -108,6 +108,16 @@ object CalibrationWindow {
      */
     const val LAYERS_INDEX = 99
 
+    /** How many rows of the fill/icon/label triple `/dk calib 99` draws. */
+    private const val LAYERS_ROWS = 5
+
+    /**
+     * Canvas pixels between triples. A whole number of text rows, so every
+     * triple asks for the same phase and any DIFFERENCE between them is drift
+     * rather than rounding.
+     */
+    private const val LAYERS_STEP = TextMetrics.FONT_LINE_HEIGHT_PX * 4
+
     val TARGETS: List<SpriteId> = listOf(
         SpriteId("particles", "critical_hit"),                  // 8x8
         SpriteId("gui", "container/cartography_table/locked"),  // 10x14
@@ -162,13 +172,25 @@ object CalibrationWindow {
         val paint = {
             surface.paint {
                 if (layersMode) {
-                    // All three at the SAME canvas y, in separate x-bands.
-                    val y = topA
-                    fill(MARK, Rect(16, y, 40, 16))
-                    SpriteIndex.bundled.get(SpriteId("gui", "hud/crosshair"))?.let {
-                        icon(it, 80, y, MARK)
+                    // All three media at the SAME canvas y, in separate
+                    // x-bands, repeated down the surface.
+                    //
+                    // One row could only say THAT text and sprites disagree,
+                    // not why. Repeating the triple every LAYERS_STEP rows
+                    // separates the two candidates: a constant gap is a fixed
+                    // anchor offset (text's row origin is not a sprite's top),
+                    // while a gap that grows by a pixel per row means the
+                    // modelled line pitch is wrong. Those need opposite
+                    // fixes, and guessing between them is what has made the
+                    // tab labels wrong three times running.
+                    for (i in 0 until LAYERS_ROWS) {
+                        val y = topA + i * LAYERS_STEP
+                        fill(MARK, Rect(16, y, 40, 16))
+                        SpriteIndex.bundled.get(SpriteId("gui", "hud/crosshair"))?.let {
+                            icon(it, 80, y, MARK)
+                        }
+                        label("MMMMMM", 120, y, MARK)
                     }
-                    label("MMMMMM", 120, y, MARK)
                 } else if (entry != null) {
                     // ONE sprite per capture, drawn TWICE. Rendering the whole
                     // set at once could not be measured reliably: a sprite

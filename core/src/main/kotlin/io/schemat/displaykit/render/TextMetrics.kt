@@ -83,6 +83,32 @@ object TextMetrics {
         return rows * pitch
     }
 
+    /**
+     * A box's y, shifted so [contentH] of text centres in it EXACTLY.
+     *
+     * Text can only sit on a row [FONT_LINE_HEIGHT_PX] apart; a box can sit
+     * anywhere. Centring a label inside a FIXED box therefore rounds, and the
+     * rounding differs per box: three identical 24px tabs measured in-game at
+     * y=44/78/112 put their labels 6, 12 and 8 pixels down, so one looked
+     * centred and one was pushed through its own bottom border. Any layout
+     * whose pitch is not a multiple of the row pitch has this, and no choice
+     * of box height fixes it -- the boxes land on different phases.
+     *
+     * Moving the box onto the label's row instead makes the slack above and
+     * below identical for every box, whatever y the layout hands it, and
+     * costs at most half a row of drift from the requested position. It also
+     * removes the reason to hunt for a box height that both tiles its sprite
+     * and centres its text: the height no longer has to do both jobs.
+     */
+    @JvmOverloads
+    fun rowCentredBoxY(boxY: Int, boxH: Int, contentH: Int = FONT_LINE_HEIGHT_PX): Int {
+        require(boxH >= contentH) {
+            "A $boxH px box cannot centre $contentH px of content."
+        }
+        val slack = (boxH - contentH) / 2
+        return rowAlignedY(boxY + slack) - slack
+    }
+
     fun rowAlignedY(y: Int): Int {
         val pitch = FONT_LINE_HEIGHT_PX
         val rounded = Math.floorDiv(y + pitch / 2, pitch) * pitch

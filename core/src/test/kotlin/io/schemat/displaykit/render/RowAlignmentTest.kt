@@ -93,4 +93,51 @@ class RowAlignmentTest {
             "a widget's label y must land on a row so the canvas cannot move it"
         )
     }
+
+    @Test
+    fun `a row-centred box gives identical slack above and below, at every y`() {
+        val boxH = 24
+        val contentH = TextMetrics.FONT_LINE_HEIGHT_PX
+
+        // Measured in-game before this existed: three identical 24px tabs at
+        // y=44/78/112 put their labels 6, 12 and 8 pixels down, because a
+        // 34px pitch lands each box on a different phase of the 10px text
+        // grid. One label sat centred; one was pushed through its own bottom
+        // border. Every y must now come out symmetric.
+        for (y in 0..200) {
+            val boxY = TextMetrics.rowCentredBoxY(y, boxH, contentH)
+            val labelY = TextMetrics.rowAlignedY(boxY + (boxH - contentH) / 2)
+            val above = labelY - boxY
+            val below = boxY + boxH - (labelY + contentH)
+            assertEquals(above, below, "asymmetric at y=$y: $above above, $below below")
+        }
+    }
+
+    @Test
+    fun `a row-centred box stays within half a row of where it was asked for`() {
+        // The box moves so the text does not have to. That is only acceptable
+        // because the move is small -- a layout must not find its chrome
+        // sliding a whole row away from the position it computed.
+        for (y in 0..200) {
+            val moved = TextMetrics.rowCentredBoxY(y, 24)
+            assertTrue(
+                Math.abs(moved - y) <= TextMetrics.FONT_LINE_HEIGHT_PX / 2,
+                "y=$y moved to $moved"
+            )
+        }
+    }
+
+    @Test
+    fun `boxes a whole number of rows apart all centre identically`() {
+        // The complement of the fix: once a strip's pitch is a multiple of
+        // the row pitch, every box shifts by the SAME amount, so the gaps the
+        // layout computed survive. A pitch of 34 shifted them by -1, +5 and
+        // +1 and visibly staggered the strip.
+        val boxH = 24
+        val shifts = (0..4).map { i ->
+            val y = 44 + i * 30
+            TextMetrics.rowCentredBoxY(y, boxH) - y
+        }
+        assertEquals(1, shifts.toSet().size, "uneven shifts: $shifts")
+    }
 }

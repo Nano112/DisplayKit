@@ -150,6 +150,25 @@ fun SurfacePainter.scrollThumb(rect: Rect) = elevate(2) {
  *
  * Skipped entirely when its sprite does not resolve — see [button].
  */
+/**
+ * The rect a [tab] actually DRAWS at, given the rect the layout gave it.
+ *
+ * A tab shifts itself onto the label's text row so the label centres exactly
+ * (see [tab]). Anything that needs to know where a tab will land -- above all
+ * a pre-warm, which must allocate the glyph variants for the geometry that
+ * will really be painted -- has to go through this rather than re-deriving
+ * it. Warming at the unshifted rect allocates variants at the wrong ascent,
+ * so the paint mints fresh ones after the pack was already built and the
+ * client renders missing-glyph boxes where the tab's border should be. That
+ * is not hypothetical: it is what shipping the shift without this function
+ * did, and it wiped out two of three tab frames.
+ *
+ * Same reasoning as [io.schemat.displaykit.sprite.SpriteFit], which exists
+ * because `iconFitted` and its pre-warm drifted apart the same way.
+ */
+fun tabBox(rect: Rect): Rect =
+    rect.copy(y = TextMetrics.rowCentredBoxY(rect.y, rect.h))
+
 fun SurfacePainter.tab(
     id: String,
     rect: Rect,
@@ -169,6 +188,19 @@ fun SurfacePainter.tab(
         else -> TAB
     }
     val sprite = resolveSprite(spriteId, "tab '$id'") ?: return@elevate
+
+    // Move the BOX onto the label's row, rather than the label into the box.
+    //
+    // Text can only sit on a row; a box can sit anywhere, so centring the
+    // label inside a fixed box rounds -- and rounds differently per tab.
+    // Measured in-game: three identical 24px tabs at y=44/78/112 put their
+    // labels 6, 12 and 8 pixels down, so one looked centred and one was
+    // pushed through its own bottom border. Deriving the box from the row
+    // makes every tab identical whatever y the layout hands it, and stops
+    // the tab's height having to both tile its sprite and centre its text.
+    val box = tabBox(rect)
+    val labelY = TextMetrics.rowAlignedY(box.y + (box.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
+
     // A hollow sprite needs a ground of its own; see TAB_GROUND. Driven by
     // the measured averageColor rather than by naming the two selected
     // sprites, so any other hollow chrome gets the same treatment.
@@ -178,12 +210,14 @@ fun SurfacePainter.tab(
     // and z-fight. Painting a ground under a frame at one elevation is
     // exactly that, and it showed as shimmer across every selected tab.
     if (sprite.averageColor == null) {
-        fill(TAB_GROUND, rect)
-        elevate { frame(sprite, rect) }
+        fill(TAB_GROUND, box)
+        elevate { frame(sprite, box) }
     } else {
-        frame(sprite, rect)
+        frame(sprite, box)
     }
     val textWidth = TextMetrics.textWidthPx(text)
-    label(text, rect.x + (rect.w - textWidth) / 2, TextMetrics.rowAlignedY(rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2))
-    region(id, rect, onClick)
+    label(text, box.x + (box.w - textWidth) / 2, labelY)
+    // The region follows the DRAWN box, not the requested rect: a click must
+    // land where the tab appears, and the two differ by up to half a row.
+    region(id, box, onClick)
 }

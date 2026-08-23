@@ -119,7 +119,12 @@ class SurfaceHost(
      * the `root != null` guard, same as [repaint] itself already assumes
      * nothing about how the canvas got its content.
      */
-    private fun repaintTreeAndPush() {
+    private fun repaintTreeAndPush() = SurfaceRepaintGuard.guarded {
+        // Guarded because a hover repaint can allocate glyph variants a
+        // pre-warm missed -- a hover-dependent widget swaps sprite states --
+        // and pushing a glyph the client's pack does not define draws a
+        // missing-glyph box with nothing logged anywhere. See
+        // SurfaceRepaintGuard.
         if (surface.root != null) surface.paintTree()
         repaint()
     }

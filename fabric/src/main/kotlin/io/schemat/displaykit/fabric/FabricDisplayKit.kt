@@ -16,7 +16,9 @@ import io.schemat.displaykit.platform.TaskHandle
 import io.schemat.displaykit.render.GlassTrigger
 import io.schemat.displaykit.sprite.SpriteDiagnostics
 import io.schemat.displaykit.sprite.SpriteIndex
+import io.schemat.displaykit.fabric.pack.PackSync
 import io.schemat.displaykit.surface.SurfaceFocus
+import io.schemat.displaykit.surface.SurfaceRepaintGuard
 import io.schemat.displaykit.ui.InteractionRouter
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -183,6 +185,16 @@ class FabricDisplayKit : ModInitializer {
             val player = this.server?.playerList?.getPlayer(playerId)
             if (player != null) HotbarScrollCapture.release(player)
             else HotbarScrollCapture.forget(playerId)
+        }
+
+        // Let a hover repaint resend the pack if it allocated new glyphs.
+        // Without this a hover-dependent widget whose pre-warm missed a state
+        // pushes codepoints the client has never seen, and they render as
+        // missing-glyph boxes -- silently, with nothing in either log. The
+        // leak warning that comes with the rebuild is the point as much as
+        // the rebuild is: it names the pre-warm that needs fixing.
+        SurfaceRepaintGuard.guard = { paint ->
+            PackSync.withPackSync("surface-hover", paint)
         }
     }
 
