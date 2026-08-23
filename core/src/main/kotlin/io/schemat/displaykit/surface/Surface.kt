@@ -17,6 +17,7 @@ import io.schemat.displaykit.render.VirtualTextDisplay
 import io.schemat.displaykit.sprite.SpriteCanvas
 import io.schemat.displaykit.sprite.SpriteDiagnostics
 import io.schemat.displaykit.sprite.SpriteEntry
+import io.schemat.displaykit.sprite.SpriteFit
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
 import io.schemat.displaykit.surface.layout.BoxNode
@@ -1082,12 +1083,14 @@ class Surface(
             boxH: Int,
             tint: DkColor?
         ): Pair<Int, Int> {
-            val h = entry.fitHeight(boxW, boxH)
-            val w = entry.scaledWidth(h)
-            // Centre in the box so a wide sprite and a tall one both sit in
+            // Centred in the box so a wide sprite and a tall one both sit in
             // the middle of their cell rather than hugging its corner.
-            val rx = x + (boxW - w) / 2
-            val ry = y + (boxH - h) / 2
+            // Shared with pre-warming via SpriteFit: a caller that warms this
+            // glyph must land on the identical y, or the ascent differs and
+            // the warm-up misses.
+            val h = SpriteFit.height(entry, boxW, boxH)
+            val w = entry.scaledWidth(h)
+            val (rx, ry) = SpriteFit.origin(entry, x, y, boxW, boxH)
             if (mode == RenderMode.ENTITIES) {
                 elements += EntityElement.SpriteEl(entry, Rect(rx, ry, w, h), tint, depth(KIND_ICON).toDouble())
                 return w to h

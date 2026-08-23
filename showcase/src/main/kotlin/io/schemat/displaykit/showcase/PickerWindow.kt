@@ -11,6 +11,7 @@ import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.GlyphPlacement
 import io.schemat.displaykit.sprite.SpriteEntry
+import io.schemat.displaykit.sprite.SpriteFit
 import io.schemat.displaykit.sprite.SpriteGlyphs
 import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.sprite.SpriteIndex
@@ -652,22 +653,36 @@ object PickerWindow {
      */
     private fun prewarmAllAtlases(reference: WidgetNode?) {
         if (reference == null) return
-        val byAtlas = SpriteIndex.bundled.all().filter { it.glyphEligible }
-        for (entry in byAtlas) {
-            if (entry.id.atlas !in ATLASES) continue
-            val h = entry.fitHeight(SLOT - 2, SLOT - 2)
-            val ascent = GlyphPlacement.resolve(reference.rect().y + 1, h)?.ascent ?: continue
-            SpriteGlyphs.request(entry, ascent, h)
+        val cell = reference.rect()
+        for (entry in SpriteIndex.bundled.all()) {
+            if (!entry.glyphEligible || entry.id.atlas !in ATLASES) continue
+            warmFittedCell(entry, cell.x + 1, cell.y + 1)
         }
     }
 
+    /**
+     * Warm the glyph a cell will draw, at the y it will actually draw it.
+     *
+     * Goes through [SpriteFit] because `iconFitted` CENTRES the sprite in its
+     * cell, so the drawn y depends on the sprite's own fitted height -- and a
+     * glyph's ascent is baked per y. Warming at the cell's top-left instead
+     * worked for square icons, which fill their box and centre to zero, and
+     * silently missed every wide one. That is the whole `gui` atlas: panels,
+     * each fitting to a different height, each centring to a different y,
+     * each therefore a variant the warm-up never requested -- so scrolling
+     * that tab allocated codepoints and re-downloaded the pack.
+     */
+    private fun warmFittedCell(entry: SpriteEntry, boxX: Int, boxY: Int) {
+        val box = SLOT - 2
+        val h = SpriteFit.height(entry, box, box)
+        val (_, ry) = SpriteFit.origin(entry, boxX, boxY, box, box)
+        val ascent = GlyphPlacement.resolve(ry, h)?.ascent ?: return
+        SpriteGlyphs.request(entry, ascent, h)
+    }
+
     private fun prewarmGrid(all: List<SpriteEntry>, reference: WidgetNode?) {
-        val y = reference?.rect()?.let { it.y + 1 } ?: return
-        for (entry in all) {
-            val h = entry.fitHeight(SLOT - 2, SLOT - 2)
-            val ascent = GlyphPlacement.resolve(y, h)?.ascent ?: continue
-            SpriteGlyphs.request(entry, ascent, h)
-        }
+        val cell = reference?.rect() ?: return
+        for (entry in all) warmFittedCell(entry, cell.x + 1, cell.y + 1)
     }
 
     /**
