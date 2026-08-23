@@ -10,6 +10,8 @@ import io.schemat.displaykit.sprite.SpriteIndex
 /**
  * A button assembled from a left cap, tiled middles and a right cap.
  *
+ * UNUSED and currently mis-sprited -- see the warning below.
+ *
  * ### Why not just nine-slice `widget/button`
  *
  * `gui/widget/button` is 200x20 with a 3px border, so its centre tile is
@@ -21,10 +23,20 @@ import io.schemat.displaykit.sprite.SpriteIndex
  * selected tab into the panel below it), so a free-floating one renders as
  * an empty outline.
  *
- * The advancement tabs solve both. Each is 28x32, solid, and comes in left /
- * middle / right with a `_selected` for every position -- so caps plus a
- * stretched middle give ANY width at or above two caps, in a state that
- * actually looks selected.
+ * ### WARNING: the sprite choice below is WRONG
+ *
+ * `advancements/tab_above_{left,middle,right}` are NOT segments of one bar.
+ * They are complete tabs for the left / middle / right POSITION in a row of
+ * tabs -- each is a self-contained 28x32 button with its own border on all
+ * four sides. Tiling them produces a row of separate small buttons, not one
+ * wide one, which is exactly what it looked like in-world.
+ *
+ * The composition below -- base, face, label, each on its own elevation, with
+ * every state warmable -- is sound and worth keeping. The sprites it composes
+ * are not. A correct wide button needs either `widget/button` (solid, has
+ * `_highlighted` and `_disabled`, but cannot render below 200px because its
+ * centre tile is 194 wide) or a purpose-made sprite. Do not wire this up as
+ * it stands.
  *
  * ### Layers
  *
