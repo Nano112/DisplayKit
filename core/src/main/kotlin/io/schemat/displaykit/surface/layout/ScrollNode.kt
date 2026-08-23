@@ -40,7 +40,25 @@ open class ScrollNode(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.Scrol
             y += cs.h
         }
         contentH = y
-        viewportH = inner.maxH
+        // Floor the viewport to a whole number of steps.
+        //
+        // Every scroll position must keep the content on the same vertical
+        // phase, because a glyph's ascent is baked per y: land a row half a
+        // text row off and every sprite in it becomes a new variant, which
+        // grows the resource pack and makes every client re-download.
+        //
+        // Notches already move by stepPx, so they preserve phase. The ENDS
+        // did not: maxScroll is `contentH - viewportH`, and an arbitrary
+        // viewport height leaves that off-grid, so scrolling all the way to
+        // the bottom shifted every row and reloaded the pack -- reported
+        // exactly that way, and introduced by pinning the extremes so the
+        // last row could be reached at all.
+        //
+        // Flooring costs at most stepPx-1 pixels of visible height and makes
+        // maxScroll a multiple of stepPx whenever the content is, which is
+        // the case for the uniform rows a scrolling list is built from.
+        val step = stepPx.coerceAtLeast(1)
+        viewportH = inner.maxH - (inner.maxH % step)
         return c.constrain(PxSize(inner.maxW + padding.horizontal, inner.maxH + padding.vertical))
     }
 

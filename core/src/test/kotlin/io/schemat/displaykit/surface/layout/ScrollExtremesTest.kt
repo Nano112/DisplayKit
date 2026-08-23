@@ -33,18 +33,50 @@ class ScrollExtremesTest {
     }
 
     @Test
-    fun theFarEndIsReachableWhenItIsNotOnAStepBoundary() {
-        val p = pane()
+    fun aUniformPanesMaxScrollLandsOnTheStepGrid() {
+        // The stronger guarantee, and the reason the bottom of a list stopped
+        // reloading the resource pack: the viewport is floored to a whole
+        // number of steps, so maxScroll is a multiple of the step and EVERY
+        // position -- ends included -- keeps the content on the same vertical
+        // phase. Off-phase rows take different glyph ascents, which is new
+        // variants, a bigger pack and a client re-download.
+        val p = pane(viewportH = 99)
         val max = p.maxScroll()
         assertTrue(max > 0, "the pane must overflow, or this test is vacuous")
-        assertTrue(
-            max % p.stepPx != 0,
-            "this rig must produce an unaligned maxScroll ($max, step ${p.stepPx}) " +
-                "or it cannot exercise the defect"
+        assertEquals(
+            0, max % p.stepPx,
+            "maxScroll $max must be a whole number of steps of ${p.stepPx}"
         )
+        p.scrollTo(max)
+        assertEquals(max, p.scrollPx, "the far end must still be reachable exactly")
+    }
+
+    @Test
+    fun anUnalignedFarEndIsStillReachable() {
+        // Flooring the viewport removes the unaligned case for uniform rows,
+        // but not in general -- a list of mixed-height rows can still end
+        // off-grid. The end-pinning in scrollTo has to keep working there,
+        // or the last row is unreachable again.
+        val p = ScrollNode("mixed")
+        p.stepPx = 10
+        for (i in 0 until 30) {
+            // Exactly ONE odd row, so the total cannot come back to a
+            // multiple of the step by accident -- my first attempt used
+            // every third row and summed straight back onto the grid.
+            val h = if (i == 0) 13 else 10
+            val row = WidgetNode("row-$i", PxSize(100, h)) { _, _ -> }
+            row.height = h
+            p.addChild(row)
+        }
+        p.measure(PxConstraints.exactly(100, 95))
+        p.place(PxOffset.Zero)
+
+        val max = p.maxScroll()
+        assertTrue(max > 0, "the mixed pane must overflow")
+        assertTrue(max % p.stepPx != 0, "this rig must be unaligned to be worth anything")
 
         p.scrollTo(max)
-        assertEquals(max, p.scrollPx, "the far end must be reachable exactly")
+        assertEquals(max, p.scrollPx, "the far end must be reachable even off-grid")
     }
 
     @Test
