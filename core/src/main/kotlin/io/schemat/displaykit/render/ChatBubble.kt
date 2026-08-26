@@ -47,7 +47,6 @@ object ChatBubble {
         return when (tailPosition) {
             TailPosition.BOTTOM_LEFT -> bubble + Spacing.neg(8) + TextComponent.icon(Icons.Builtin.BUBBLE_TAIL)
             TailPosition.NONE -> bubble
-            else -> bubble // TODO: Implement other tail positions
         }
     }
 
@@ -66,7 +65,6 @@ object ChatBubble {
         return when (tailPosition) {
             TailPosition.BOTTOM_LEFT -> bubble + Spacing.neg(8) + TextComponent.icon(Icons.Builtin.BUBBLE_TAIL)
             TailPosition.NONE -> bubble
-            else -> bubble
         }
     }
 
@@ -79,9 +77,6 @@ object ChatBubble {
 
     enum class TailPosition {
         BOTTOM_LEFT,
-        BOTTOM_RIGHT,
-        TOP_LEFT,
-        TOP_RIGHT,
         NONE
     }
 }

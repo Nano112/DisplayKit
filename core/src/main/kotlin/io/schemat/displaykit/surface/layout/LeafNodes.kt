@@ -48,12 +48,12 @@ class SpacerNode(id: String, weight: Int = 1) : BaseSurfaceNode(id) {
  * [render] receives the ABSOLUTE canvas rect, so widget code never computes
  * its own position — which is the point of the tree.
  */
-class WidgetNode(
+open class WidgetNode(
     id: String,
     var intrinsic: PxSize = PxSize.Zero,
     var render: (SurfacePainter, Rect) -> Unit = { _, _ -> }
-) : BaseSurfaceNode(id) {
+) : BaseSurfaceNode(id), SurfacePaintNode {
     override fun measureSelf(c: PxConstraints): PxSize = c.constrain(intrinsic)
 
-    fun paint(painter: SurfacePainter) = render(painter, rect())
+    override fun paint(painter: SurfacePainter) = render(painter, rect())
 }

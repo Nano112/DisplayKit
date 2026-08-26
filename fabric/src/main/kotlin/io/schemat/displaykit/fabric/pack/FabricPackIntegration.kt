@@ -1,12 +1,12 @@
 package io.schemat.displaykit.fabric.pack
 
-import io.schemat.displaykit.pack.DefaultAssets
 import io.schemat.displaykit.pack.GeistFontProvider
 import io.schemat.displaykit.pack.ItemModelAssetProvider
 import io.schemat.displaykit.pack.PackConfig
 import io.schemat.displaykit.pack.PackManager
 import io.schemat.displaykit.pack.SpriteAssetProvider
 import io.schemat.displaykit.sprite.SpriteDiagnostics
+import io.schemat.displaykit.fabric.thread.ServerThreadDispatcher
 import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.common.ClientboundResourcePackPushPacket
 import net.minecraft.server.MinecraftServer
@@ -14,6 +14,8 @@ import net.minecraft.server.level.ServerPlayer
 import org.slf4j.LoggerFactory
 import java.util.Optional
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.logging.Logger
 
 /**
@@ -28,6 +30,15 @@ object FabricPackIntegration {
     private val LOGGER = LoggerFactory.getLogger("DisplayKit-Pack")
     private var packManager: PackManager? = null
     private var server: MinecraftServer? = null
+    private val expectedPackIds = ConcurrentHashMap<UUID, UUID>()
+    private val packHashes = ConcurrentHashMap<UUID, ConcurrentHashMap<UUID, ByteArray>>()
+    // JOIN fires before Minecraft has necessarily inserted the player into
+    // PlayerList. Keep the actual connection so the first push never depends
+    // on that timing detail; DISCONNECT and shutdown remove the reference.
+    private val connectedPlayers = ConcurrentHashMap<UUID, ServerPlayer>()
+    private val packWaitGenerations = ConcurrentHashMap<UUID, Long>()
+    private val pendingResends = PackResendQueue()
+    private var presentationWaitTimeoutMillis = PackConfig().presentationWaitTimeoutMillis
 
     /**
      * Initialize the pack system.
@@ -37,13 +48,11 @@ object FabricPackIntegration {
         LOGGER.info("Initializing DisplayKit resource pack system...")
 
         server = minecraftServer
+        presentationWaitTimeoutMillis = config.presentationWaitTimeoutMillis
 
         val javaLogger = Logger.getLogger("DisplayKit-Pack")
         packManager = PackManager(config, javaLogger).apply {
             // Register asset providers
-            if (config.registerDefaultProviders) {
-                registerAssetProvider(DefaultAssets)
-            }
             if (config.registerGeistFont) {
                 registerAssetProvider(GeistFontProvider)
             }
@@ -76,6 +85,12 @@ object FabricPackIntegration {
         packManager?.shutdown()
         packManager = null
         server = null
+        expectedPackIds.clear()
+        packHashes.clear()
+        connectedPlayers.clear()
+        awaitingPack.clear()
+        packWaitGenerations.clear()
+        pendingResends.clear()
     }
 
     /**
@@ -84,23 +99,9 @@ object FabricPackIntegration {
     fun onPlayerJoin(player: ServerPlayer) {
         val pm = packManager ?: return
         if (!pm.isAutoSendOnJoin()) return
-
-        val sha1 = pm.getPackSha1() ?: return
-        val url = pm.getPackUrl()
-        val sha1Hex = sha1.joinToString("") { "%02x".format(it) }
-        val packId = UUID.nameUUIDFromBytes(sha1)
-
-        try {
-            val packet = ClientboundResourcePackPushPacket(
-                packId, url, sha1Hex, false,
-                Optional.of(Component.literal("DisplayKit UI Enhancement Pack"))
-            )
-            player.connection.send(packet)
+        connectedPlayers[player.uuid] = player
+        if (pm.sendToPlayer(player.uuid)) {
             LOGGER.info("Sent resource pack to ${player.name.string}")
-            pm.onPackStatus(player.uuid, PackManager.PackStatus.SENDING)
-        } catch (e: Exception) {
-            LOGGER.error("Failed to send resource pack to ${player.name.string}: ${e.message}", e)
-            pm.onPackStatus(player.uuid, PackManager.PackStatus.FAILED)
         }
     }
 
@@ -108,14 +109,21 @@ object FabricPackIntegration {
      * Called when a player leaves.
      */
     fun onPlayerLeave(playerId: UUID) {
+        expectedPackIds.remove(playerId)
+        packHashes.remove(playerId)
+        connectedPlayers.remove(playerId)
+        awaitingPack.remove(playerId)
+        packWaitGenerations.remove(playerId)
+        pendingResends.remove(playerId)
         packManager?.onPlayerLeave(playerId)
     }
 
     /**
      * Manually send the pack to a player.
      */
-    fun sendPack(player: ServerPlayer) {
-        packManager?.sendToPlayer(player.uuid)
+    fun sendPack(player: ServerPlayer): Boolean {
+        connectedPlayers[player.uuid] = player
+        return packManager?.sendToPlayer(player.uuid) == true
     }
 
     /**
@@ -126,7 +134,7 @@ object FabricPackIntegration {
     }
 
     /** Callbacks waiting for a player to finish applying the current pack. */
-    private val awaitingPack = java.util.concurrent.ConcurrentHashMap<UUID, MutableList<() -> Unit>>()
+    private val awaitingPack = ConcurrentHashMap<UUID, ConcurrentLinkedQueue<() -> Unit>>()
 
     /**
      * Rebuild the pack and resend to all online players.
@@ -135,7 +143,14 @@ object FabricPackIntegration {
         rebuildPack()
         val mcServer = server ?: return
         for (player in mcServer.playerList.players) {
-            sendPack(player)
+            if (pendingResends.request(player.uuid, packManager?.getPlayerStatus(player.uuid))) {
+                sendPack(player)
+            } else {
+                LOGGER.debug(
+                    "Coalescing rebuilt pack for {} behind the artifact already in flight",
+                    player.uuid
+                )
+            }
         }
     }
 
@@ -152,33 +167,46 @@ object FabricPackIntegration {
      */
     fun whenPackApplied(playerId: UUID, action: () -> Unit) {
         val pm = packManager
-        if (pm == null || pm.getPlayerStatus(playerId) != PackManager.PackStatus.SENDING) {
+        val mcServer = server
+        if (pm == null || mcServer == null || pm.getPlayerStatus(playerId) != PackManager.PackStatus.SENDING) {
             action()
             return
         }
-        awaitingPack.computeIfAbsent(playerId) { mutableListOf() }.add(action)
+        awaitingPack.computeIfAbsent(playerId) { ConcurrentLinkedQueue() }.add(action)
+        armPackWaitDeadline(playerId, mcServer)
+    }
+
+    /** Start (or renew) the response deadline for the current/latest push. */
+    private fun armPackWaitDeadline(playerId: UUID, mcServer: MinecraftServer) {
+        if (!awaitingPack.containsKey(playerId)) return
+        val waitGeneration = packWaitGenerations.compute(playerId) { _, current ->
+            (current ?: 0L) + 1L
+        }!!
 
         // A client that never answers must not leave the caller waiting
         // forever -- that turns a cosmetic race into a window that simply
         // never appears. Fire anyway after a grace period; a tofu surface is
         // recoverable, an invisible one is not.
-        val mcServer = server ?: return
-        val deadline = PACK_WAIT_TIMEOUT_MS
+        val deadline = presentationWaitTimeoutMillis
         Thread.ofVirtual().start {
             Thread.sleep(deadline)
+            // A newer waiter belongs to a newer/current transfer and owns its
+            // own full grace period. An older timer must not fail it early.
+            if (!packWaitGenerations.remove(playerId, waitGeneration)) return@start
             val stranded = awaitingPack.remove(playerId) ?: return@start
+            expectedPackIds.remove(playerId)
+            packHashes.remove(playerId)
+            pendingResends.remove(playerId)
+            packManager?.failInFlight(playerId)
             SpriteDiagnostics.warnOnce(
                 "pack-wait-timeout:$playerId",
                 "Client $playerId did not report applying the resource pack within " +
                     "${deadline}ms. Opening anyway -- sprite glyphs may render as " +
                     "missing-glyph boxes until the pack lands."
             )
-            mcServer.execute { stranded.forEach { it() } }
+            ServerThreadDispatcher.dispatch(mcServer) { stranded.forEach { it() } }
         }
     }
-
-    /** How long to wait for a client's pack answer before opening regardless. */
-    private const val PACK_WAIT_TIMEOUT_MS = 10_000L
 
     /**
      * The client's answer to a pack push, from `ResourcePackResponseMixin`.
@@ -187,26 +215,59 @@ object FabricPackIntegration {
      * progress reports — the pack is not in use yet — so waking on those would
      * reintroduce exactly the race this exists to close.
      */
-    fun onPackResponse(playerId: UUID, action: String) {
+    fun onPackResponse(playerId: UUID, packId: UUID, action: String) {
+        val hashes = packHashes[playerId]
+        val sha1 = hashes?.get(packId) ?: run {
+            LOGGER.debug("Ignoring resource-pack response {} for unknown pack {}", action, packId)
+            return
+        }
+        // Consent, download, and reload are distinct phases. Any progress
+        // proves the client is alive, so renew the full quiet-period deadline
+        // instead of failing a valid but slow resource reload.
+        if (action == "ACCEPTED" || action == "DOWNLOADED") {
+            server?.let { armPackWaitDeadline(playerId, it) }
+            return
+        }
         val status = when (action) {
             "SUCCESSFULLY_LOADED" -> PackManager.PackStatus.ACCEPTED
             "DECLINED" -> PackManager.PackStatus.DECLINED
             "FAILED_DOWNLOAD", "FAILED_RELOAD", "INVALID_URL", "DISCARDED" ->
                 PackManager.PackStatus.FAILED
-            else -> return   // ACCEPTED / DOWNLOADED: still in flight
+            else -> return
         }
-        packManager?.onPackStatus(playerId, status)
+        hashes.remove(packId)
+        if (hashes.isEmpty()) packHashes.remove(playerId, hashes)
+        val current = expectedPackIds.remove(playerId, packId)
+        val managerCurrent = packManager?.onPackStatus(playerId, sha1, status) ?: current
+        if (!current || !managerCurrent) {
+            LOGGER.debug(
+                "Released resource-pack response {} for stale pack {} without waking current waiters",
+                action, packId
+            )
+            return
+        }
+        // A pack rebuild requested while this artifact was awaiting consent
+        // is sent only now. Keep every presentation waiter asleep until that
+        // newest immutable artifact reaches a terminal state, and give it a
+        // fresh full deadline instead of inheriting the first push's clock.
+        if (pendingResends.take(playerId)) {
+            val player = connectedPlayers[playerId]
+                ?: server?.playerList?.getPlayer(playerId)
+            if (player != null && sendPack(player)) {
+                server?.let { armPackWaitDeadline(playerId, it) }
+                return
+            }
+        }
         // Release waiters even on failure: a surface that renders as tofu is
         // still better than one that never appears, and SpriteDiagnostics
         // already reports the degraded path.
+        packWaitGenerations.remove(playerId)
         val waiting = awaitingPack.remove(playerId) ?: return
-        val mcServer = server
-        if (mcServer == null) {
-            waiting.forEach { it() }
-        } else {
-            // Back onto the server thread: entity spawning is not thread-safe.
-            mcServer.execute { waiting.forEach { it() } }
-        }
+        val mcServer = server ?: return
+        // Back onto the server thread: entity spawning is not thread-safe.
+        // If shutdown won the race, the dispatcher deliberately drops these
+        // presentation callbacks because their owning scopes are already gone.
+        ServerThreadDispatcher.dispatch(mcServer) { waiting.forEach { it() } }
     }
 
     /**
@@ -222,19 +283,17 @@ object FabricPackIntegration {
     }
 
     private fun sendPackToPlayer(playerId: UUID, url: String, sha1: ByteArray) {
-        val mcServer = server ?: run {
-            LOGGER.warn("Cannot send pack to $playerId: server not available")
-            return
-        }
+        val mcServer = server ?: throw IllegalStateException("Minecraft server is not available")
 
-        val player = mcServer.playerList.getPlayer(playerId) ?: run {
-            LOGGER.warn("Cannot send pack to $playerId: player not found")
-            return
-        }
+        val player = connectedPlayers[playerId]
+            ?: mcServer.playerList.getPlayer(playerId)
+            ?: throw IllegalStateException("Player $playerId is not connected")
 
         try {
             val sha1Hex = sha1.joinToString("") { "%02x".format(it) }
             val packId = UUID.nameUUIDFromBytes(sha1)
+            expectedPackIds[playerId] = packId
+            packHashes.computeIfAbsent(playerId) { java.util.concurrent.ConcurrentHashMap() }[packId] = sha1.copyOf()
             val packet = ClientboundResourcePackPushPacket(
                 packId, url, sha1Hex, false,
                 Optional.of(Component.literal("DisplayKit UI Enhancement Pack"))
@@ -243,8 +302,10 @@ object FabricPackIntegration {
             LOGGER.debug("Sent resource pack to ${player.name.string}")
             packManager?.onPackStatus(playerId, PackManager.PackStatus.SENDING)
         } catch (e: Exception) {
-            LOGGER.error("Failed to send resource pack to ${player.name.string}: ${e.message}", e)
-            packManager?.onPackStatus(playerId, PackManager.PackStatus.FAILED)
+            val failedId = UUID.nameUUIDFromBytes(sha1)
+            expectedPackIds.remove(playerId, failedId)
+            packHashes[playerId]?.remove(failedId)
+            throw e
         }
     }
 
@@ -258,7 +319,10 @@ object FabricPackIntegration {
         } else {
             PackManager.PackStatus.DECLINED
         }
-        packManager?.onPackStatus(playerId, status)
+        val expected = expectedPackIds.remove(playerId)
+        val sha1 = expected?.let { packHashes[playerId]?.remove(it) }
+        if (sha1 == null) packManager?.onPackStatus(playerId, status)
+        else packManager?.onPackStatus(playerId, sha1, status)
         LOGGER.debug("Player $playerId pack status: $status")
     }
 }

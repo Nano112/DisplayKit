@@ -9,6 +9,22 @@ data class Rect(val x: Int, val y: Int, val w: Int, val h: Int) {
     val right: Int get() = x + w
     val bottom: Int get() = y + h
     fun contains(px: Int, py: Int): Boolean = px >= x && px < right && py >= y && py < bottom
+
+    fun centeredX(contentWidth: Int): Int = x + (w - contentWidth) / 2
+    fun centeredY(contentHeight: Int): Int = y + (h - contentHeight) / 2
+    fun centered(contentWidth: Int, contentHeight: Int): Rect = Rect(
+        centeredX(contentWidth), centeredY(contentHeight), contentWidth, contentHeight
+    )
+
+    /** The shared area of two rectangles, or null when they do not overlap. */
+    fun intersection(other: Rect): Rect? {
+        val left = maxOf(x, other.x)
+        val top = maxOf(y, other.y)
+        val right = minOf(right, other.right)
+        val bottom = minOf(bottom, other.bottom)
+        if (right <= left || bottom <= top) return null
+        return Rect(left, top, right - left, bottom - top)
+    }
 }
 
 /**

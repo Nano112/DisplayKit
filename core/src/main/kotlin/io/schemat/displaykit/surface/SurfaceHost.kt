@@ -4,14 +4,16 @@ import io.schemat.displaykit.platform.PlatformProvider
 import io.schemat.displaykit.platform.PlayerRef
 import io.schemat.displaykit.render.VirtualBlockDisplay
 import io.schemat.displaykit.render.VirtualEntity
+import io.schemat.displaykit.render.VirtualItemDisplay
 import io.schemat.displaykit.render.VirtualTextDisplay
 import io.schemat.displaykit.surface.layout.SurfaceNode
 
 /**
  * Owns a surface's entity lifecycle for one viewer.
  *
- * A repaint re-emits one text component and sends one metadata packet — no
- * entity churn — which is what makes hover affordable.
+ * Repaints reconcile the freshly composed entities against the live ones and
+ * send only changed metadata. Stable frames are packet-free, which keeps
+ * hover and pointer tracking from restarting display state.
  */
 private val DEBUG_LAYERS = System.getProperty("displaykit.debug.layers") == "true"
 
@@ -20,6 +22,13 @@ class SurfaceHost(
     private val owner: PlayerRef,
     val surface: Surface
 ) {
+    /**
+     * Session-owned lifecycle gate, invoked before pointer work each tick.
+     * Returning false means the session closed or is otherwise no longer
+     * eligible for interaction, so this host skips the remainder of the tick.
+     */
+    internal var lifecycleTick: (() -> Boolean)? = null
+
     private var layers: List<VirtualEntity> = emptyList()
     private var backing: VirtualBlockDisplay? = null
     private var pointer: VirtualTextDisplay? = null
@@ -39,56 +48,128 @@ class SurfaceHost(
         surface.toBackingEntity()?.let { b ->
             backing = b
             platform.packetSender.spawnEntity(b, viewers)
-            platform.packetSender.updateMetadata(b, viewers)
         }
         layers = surface.toEntities()
         if (DEBUG_LAYERS) println(surface.describeLayersForDebug(layers))
         for (e in layers) {
             platform.packetSender.spawnEntity(e, viewers)
-            platform.packetSender.updateMetadata(e, viewers)
         }
     }
 
-    /** Push the current canvas to the client. Cheap: one metadata packet. */
+    /** Push only canvas layers whose visual state actually changed. */
     fun repaint() {
         if (layers.isEmpty()) return
         val fresh = surface.toEntities()
-        // A repaint that changed the layer count needs new entities, not new
-        // metadata -- fall back to a full cycle rather than silently dropping
-        // or orphaning one.
-        if (fresh.size != layers.size) {
-            close()
-            open()
-            return
-        }
-        // A layer's MEDIUM can change between repaints too -- a block element
-        // appearing or disappearing shifts what sits at each index -- and an
-        // entity cannot morph from a text display into a block display. Same
-        // remedy as a changed count: respawn rather than leave a stale entity
-        // of the wrong kind on screen.
-        if (layers.zip(fresh).any { (e, f) -> e::class != f::class }) {
-            close()
-            open()
-            return
-        }
-        for ((e, f) in layers.zip(fresh)) {
-            when {
-                e is VirtualTextDisplay && f is VirtualTextDisplay -> e.text = f.text
-                e is VirtualBlockDisplay && f is VirtualBlockDisplay -> e.blockState = f.blockState
+        val unused = layers.toMutableSet()
+        val keyed = layers
+            .filter { it.reconcileKey != null }
+            .groupBy { it.reconcileKey }
+        val reconciled = ArrayList<VirtualEntity>(fresh.size)
+
+        for ((index, next) in fresh.withIndex()) {
+            val existing = next.reconcileKey?.let { key ->
+                keyed[key].orEmpty().firstOrNull { it in unused && it::class == next::class }
+            } ?: layers.getOrNull(index)?.takeIf {
+                // Compatibility for manually-painted surfaces which predate
+                // identity scopes. Index reconciliation remains safe only
+                // while the layer count and medium are stable.
+                fresh.size == layers.size && it in unused &&
+                    it.reconcileKey == null && it::class == next::class
             }
-            e.transformation = f.transformation
-            // Not surface.position: a text display is placed by its block
-            // centre, so the entity origin is offset from the canvas top-left
-            // (see Surface.entityOrigin).
-            e.position = f.position
-            platform.packetSender.updateMetadata(e, viewers)
+
+            if (existing == null) {
+                platform.packetSender.spawnEntity(next, viewers)
+                reconciled += next
+            } else {
+                unused -= existing
+                syncEntity(existing, next)
+                reconciled += existing
+            }
         }
+
+        if (unused.isNotEmpty()) {
+            platform.packetSender.destroyEntities(unused.map { it.entityId }, viewers)
+        }
+        layers = reconciled
         backing?.let { b ->
             surface.toBackingEntity()?.let { f ->
-                b.position = f.position
-                b.transformation = f.transformation
-                platform.packetSender.updateMetadata(b, viewers)
+                val transformed = b.transformation != f.transformation
+                if (b.position != f.position) b.position = f.position
+                if (transformed) b.transformation = f.transformation
+                if (transformed) platform.packetSender.updateMetadata(b, viewers)
             }
+        }
+    }
+
+    /** Copy one freshly composed primitive onto the live entity with its stable id. */
+    private fun syncEntity(existing: VirtualEntity, fresh: VirtualEntity) {
+        var metadataChanged = false
+
+        fun changed(value: Boolean, update: () -> Unit) {
+            if (value) {
+                update()
+                metadataChanged = true
+            }
+        }
+
+        changed(existing.transformation != fresh.transformation) { existing.transformation = fresh.transformation }
+        changed(existing.translation != fresh.translation) { existing.translation = fresh.translation }
+        changed(existing.scale != fresh.scale) { existing.scale = fresh.scale }
+        changed(existing.billboard != fresh.billboard) { existing.billboard = fresh.billboard }
+        changed(existing.brightness != fresh.brightness) { existing.brightness = fresh.brightness }
+        changed(existing.viewRange != fresh.viewRange) { existing.viewRange = fresh.viewRange }
+        changed(existing.glowColorOverride != fresh.glowColorOverride) {
+            existing.glowColorOverride = fresh.glowColorOverride
+        }
+        changed(existing.glowing != fresh.glowing) { existing.glowing = fresh.glowing }
+        changed(existing.interpolationDuration != fresh.interpolationDuration) {
+            existing.interpolationDuration = fresh.interpolationDuration
+        }
+        changed(existing.teleportDuration != fresh.teleportDuration) {
+            existing.teleportDuration = fresh.teleportDuration
+        }
+        changed(existing.startInterpolation != fresh.startInterpolation) {
+            existing.startInterpolation = fresh.startInterpolation
+        }
+
+        when {
+            existing is VirtualTextDisplay && fresh is VirtualTextDisplay -> {
+                changed(existing.text != fresh.text) { existing.text = fresh.text }
+                changed(existing.backgroundColor != fresh.backgroundColor) {
+                    existing.backgroundColor = fresh.backgroundColor
+                }
+                changed(existing.textAlignment != fresh.textAlignment) {
+                    existing.textAlignment = fresh.textAlignment
+                }
+                changed(existing.lineWidth != fresh.lineWidth) { existing.lineWidth = fresh.lineWidth }
+                changed(existing.isSeeThrough != fresh.isSeeThrough) {
+                    existing.isSeeThrough = fresh.isSeeThrough
+                }
+                changed(existing.textOpacity != fresh.textOpacity) { existing.textOpacity = fresh.textOpacity }
+                changed(existing.hasShadow != fresh.hasShadow) { existing.hasShadow = fresh.hasShadow }
+            }
+            existing is VirtualBlockDisplay && fresh is VirtualBlockDisplay -> {
+                changed(existing.blockState != fresh.blockState) { existing.blockState = fresh.blockState }
+            }
+            existing is VirtualItemDisplay && fresh is VirtualItemDisplay -> {
+                changed(existing.itemId != fresh.itemId) { existing.itemId = fresh.itemId }
+                changed(existing.customModelData != fresh.customModelData) {
+                    existing.customModelData = fresh.customModelData
+                }
+                changed(existing.itemColor != fresh.itemColor) { existing.itemColor = fresh.itemColor }
+                changed(existing.itemDisplayTransform != fresh.itemDisplayTransform) {
+                    existing.itemDisplayTransform = fresh.itemDisplayTransform
+                }
+            }
+        }
+
+        // Not surface.position: a text display is placed by its block centre,
+        // so the entity origin is offset from the canvas top-left.
+        val moved = existing.position != fresh.position
+        if (moved) existing.position = fresh.position
+        if (metadataChanged) platform.packetSender.updateMetadata(existing, viewers)
+        if (moved && existing.teleportDuration > 0) {
+            platform.packetSender.teleportEntity(existing, viewers)
         }
     }
 
@@ -138,6 +219,7 @@ class SurfaceHost(
      * would be ~140 metadata packets a second per viewer.
      */
     fun tick(): Boolean {
+        if (lifecycleTick?.invoke() == false) return false
         val point = SurfacePicking.localPixel(surface, owner.eyePosition(), owner.lookDirection())
         val player = owner.uuid
 
@@ -231,17 +313,22 @@ class SurfaceHost(
         if (existing == null) {
             pointer = fresh
             platform.packetSender.spawnEntity(fresh, viewers)
-            platform.packetSender.updateMetadata(fresh, viewers)
         } else {
             val moved = existing.position != fresh.position
-            existing.position = fresh.position
-            existing.text = fresh.text
+            val metadataChanged =
+                existing.text != fresh.text ||
+                    existing.transformation != fresh.transformation ||
+                    existing.lineWidth != fresh.lineWidth
+            if (moved) existing.position = fresh.position
+            if (existing.text != fresh.text) existing.text = fresh.text
             // yawDegrees is mutable and repaint() refreshes the layers'
             // transformation when it changes -- without also copying these,
             // a re-faced surface would leave the pointer rotated the old way.
-            existing.transformation = fresh.transformation
-            existing.lineWidth = fresh.lineWidth
-            platform.packetSender.updateMetadata(existing, viewers)
+            if (existing.transformation != fresh.transformation) {
+                existing.transformation = fresh.transformation
+            }
+            if (existing.lineWidth != fresh.lineWidth) existing.lineWidth = fresh.lineWidth
+            if (metadataChanged) platform.packetSender.updateMetadata(existing, viewers)
             // Position is NOT metadata. Assigning it and sending only a
             // metadata packet leaves the client rendering the cursor wherever
             // it was spawned, which is why it appeared correctly the moment
@@ -249,8 +336,8 @@ class SurfaceHost(
             // crosshair again. Moving a display entity takes a teleport, as
             // the interaction design specified and this did not do.
             //
-            // Guarded on an actual change so a still cursor costs nothing:
-            // this runs every tick, per viewer.
+            // Both metadata and movement are guarded on actual changes so a
+            // still cursor costs nothing: this runs every tick, per viewer.
             if (moved) platform.packetSender.teleportEntity(existing, viewers)
         }
     }

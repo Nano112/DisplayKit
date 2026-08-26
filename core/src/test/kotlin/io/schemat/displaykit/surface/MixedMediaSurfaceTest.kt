@@ -3,6 +3,7 @@ package io.schemat.displaykit.surface
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.DkColor
+import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.render.VirtualBlockDisplay
 import io.schemat.displaykit.render.VirtualTextDisplay
 import io.schemat.displaykit.sprite.SpriteEntry
@@ -83,10 +84,10 @@ class MixedMediaSurfaceTest {
     }
 
     @Test
-    fun aBlockElementIsSkippedOnACompositedSurface() {
-        // A composited surface is one flat canvas; there is nowhere for a
-        // solid to stand. It must be skipped, never silently flattened into a
-        // rectangle pretending to have volume.
+    fun aBlockElementKeepsItsVolumeOnACompositedSurface() {
+        // Compositing collapses flat artwork, not explicit 3D media. The
+        // block remains a block display and the canvas layer is allocated in
+        // front of its real thickness.
         SliceGlyphSource.installed = object : SliceGlyphSource {
             override fun request(id: SpriteId) {}
             override fun codepointFor(id: SpriteId, srcX: Int, srcY: Int, ascent: Int) = 0xF8000
@@ -98,10 +99,9 @@ class MixedMediaSurfaceTest {
             blockPanel(bezel, Rect(0, 0, 200, 120), thickness = 0.25f)
             label("hi", 4, 4)
         }
-        assertTrue(
-            s.toEntities().none { it is VirtualBlockDisplay },
-            "a composited surface must not emit block displays"
-        )
+        val entities = s.toEntities()
+        assertEquals(1, entities.filterIsInstance<VirtualBlockDisplay>().size)
+        assertEquals(1, entities.filterIsInstance<VirtualTextDisplay>().size)
     }
 
     @Test
@@ -159,6 +159,20 @@ class MixedMediaSurfaceTest {
         s.paint { blockPanel(BlockStateRef("minecraft:copper_grate"), Rect(0, 0, 40, 40), 0.1f) }
         val block = s.toEntities().filterIsInstance<VirtualBlockDisplay>().single()
         assertEquals(BlockStateRef("minecraft:copper_grate"), block.blockState)
+    }
+
+    @Test
+    fun aBlockPanelUsesCanvasPixelUnitsRatherThanGlyphUnits() {
+        val s = surface()
+        val rect = Rect(10, 20, 40, 30)
+        s.paint { blockPanel(bezel, rect, 0.1f) }
+        val block = s.toEntities().filterIsInstance<VirtualBlockDisplay>().single()
+        val matrix = block.transformation.toFloatArray()
+        val worldPerPixel = TextMetrics.PIXEL_SIZE * s.pixelScale
+
+        assertEquals(worldPerPixel * rect.w, matrix[0], 1e-5f, "block width")
+        assertEquals(worldPerPixel * rect.h, matrix[5], 1e-5f, "block height")
+        assertEquals(0.1f, matrix[10], 1e-5f, "block thickness")
     }
 
     @Test

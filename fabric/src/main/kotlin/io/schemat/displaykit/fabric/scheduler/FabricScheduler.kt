@@ -2,6 +2,7 @@ package io.schemat.displaykit.fabric.scheduler
 
 import io.schemat.displaykit.platform.Scheduler
 import io.schemat.displaykit.platform.TaskHandle
+import io.schemat.displaykit.fabric.thread.ServerThreadDispatcher
 import net.minecraft.server.MinecraftServer
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -17,11 +18,7 @@ class FabricScheduler(
     }
 
     override fun runOnMainThread(task: Runnable) {
-        if (server.isSameThread()) {
-            task.run()
-        } else {
-            server.execute(task)
-        }
+        ServerThreadDispatcher.dispatch(server, task)
     }
 
     override fun scheduleRepeating(delayTicks: Long, periodTicks: Long, task: Runnable): TaskHandle {

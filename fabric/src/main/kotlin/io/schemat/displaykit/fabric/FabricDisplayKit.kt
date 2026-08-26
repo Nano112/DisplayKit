@@ -2,7 +2,6 @@ package io.schemat.displaykit.fabric
 
 import io.schemat.displaykit.DisplayKit
 import io.schemat.displaykit.animation.AnimationTicker
-import io.schemat.displaykit.fabric.glass.FabricGlassTrigger
 import io.schemat.displaykit.fabric.input.FabricTextInput
 import io.schemat.displaykit.fabric.input.HotbarScrollCapture
 import io.schemat.displaykit.fabric.interaction.FabricInteractionHandler
@@ -11,9 +10,9 @@ import io.schemat.displaykit.fabric.packet.FabricPacketSender
 import io.schemat.displaykit.fabric.player.FabricPlayerRef
 import io.schemat.displaykit.fabric.scheduler.FabricScheduler
 import io.schemat.displaykit.fabric.state.BlockStateResolver
+import io.schemat.displaykit.fabric.thread.ServerThreadDispatcher
 import io.schemat.displaykit.pack.PackConfig
 import io.schemat.displaykit.platform.TaskHandle
-import io.schemat.displaykit.render.GlassTrigger
 import io.schemat.displaykit.sprite.SpriteDiagnostics
 import io.schemat.displaykit.sprite.SpriteIndex
 import io.schemat.displaykit.fabric.pack.PackSync
@@ -96,8 +95,15 @@ class FabricDisplayKit : ModInitializer {
 
             DisplayKit.init(platform)
 
+            // AUTO may choose COMPOSITED only when its generated glyphs can
+            // actually reach clients. Installing a slice source while the
+            // pack pipeline is disabled made AUTO silently emit tofu glyphs.
             io.schemat.displaykit.surface.SliceGlyphSource.installed =
-                io.schemat.displaykit.fabric.surface.FabricSliceGlyphSource
+                if (enableResourcePack) {
+                    io.schemat.displaykit.fabric.surface.FabricSliceGlyphSource
+                } else {
+                    null
+                }
 
             SpriteDiagnostics.checkVersion(
                 SpriteIndex.bundled,
@@ -111,11 +117,6 @@ class FabricDisplayKit : ModInitializer {
             // Initialize resource pack system
             if (enableResourcePack) {
                 FabricPackIntegration.initialize(server, packConfig)
-            }
-
-            // Initialize glass trigger system (for glassmorphism post-processing)
-            if (enableResourcePack) {
-                FabricGlassTrigger.initialize(server)
             }
 
             // Start animation ticker (runs every tick)
@@ -134,11 +135,6 @@ class FabricDisplayKit : ModInitializer {
             animationTickTask = null
             AnimationTicker.clear()
 
-            // Shutdown glass trigger system
-            if (enableResourcePack) {
-                FabricGlassTrigger.shutdown()
-            }
-
             // Shutdown resource pack system
             if (enableResourcePack) {
                 FabricPackIntegration.shutdown()
@@ -154,6 +150,16 @@ class FabricDisplayKit : ModInitializer {
             this.server = null
         }
 
+        // SERVER_STOPPING is guaranteed to run on Minecraft's owner thread,
+        // before connection teardown can start firing from Netty. Close all
+        // owner-thread state here; later DISCONNECT callbacks become small,
+        // idempotent per-player cleanup rather than the primary shutdown path.
+        ServerLifecycleEvents.SERVER_STOPPING.register {
+            textInput?.cancelAll()
+            InteractionRouter.closeAll()
+            HotbarScrollCapture.clear()
+        }
+
         // Send resource pack to players on join
         ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
             if (enableResourcePack) {
@@ -161,18 +167,22 @@ class FabricDisplayKit : ModInitializer {
             }
         }
 
-        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
-            textInput?.cancelInput(handler.player.uuid)
-            InteractionRouter.cleanupPlayer(handler.player.uuid)
-            // Clean up glass triggers for disconnecting player
-            GlassTrigger.releaseAll(handler.player.uuid)
-            // The connection is already going away, so there is nobody to
-            // send a corrective held-slot packet to -- drop the remembered
-            // slot rather than trying to restore it. The focus-cleared
-            // listener below covers the still-connected case.
-            HotbarScrollCapture.forget(handler.player.uuid)
-            if (enableResourcePack) {
-                FabricPackIntegration.onPlayerLeave(handler.player.uuid)
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, server ->
+            val playerId = handler.player.uuid
+            // Fabric may fire DISCONNECT from the Netty event loop on an
+            // abrupt socket close. Surface hosts and StateScope are explicitly
+            // server-thread-owned, so all teardown crosses that boundary here.
+            ServerThreadDispatcher.dispatch(server) {
+                textInput?.cancelInput(playerId)
+                InteractionRouter.cleanupPlayer(playerId)
+                // The connection is already going away, so there is nobody to
+                // send a corrective held-slot packet to -- drop the remembered
+                // slot rather than trying to restore it. The focus-cleared
+                // listener below covers the still-connected case.
+                HotbarScrollCapture.forget(playerId)
+                if (enableResourcePack) {
+                    FabricPackIntegration.onPlayerLeave(playerId)
+                }
             }
         }
 

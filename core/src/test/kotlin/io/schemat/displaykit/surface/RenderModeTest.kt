@@ -1,6 +1,7 @@
 package io.schemat.displaykit.surface
 
 import io.schemat.displaykit.render.VirtualTextDisplay
+import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.math.Vec3d
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.NineSlice
@@ -189,16 +190,15 @@ class RenderModeTest {
         }
     }
 
-    // --- depth stepping: by DISTINCT depthKey, not by element count ---
+    // --- depth stepping: by LOCAL overlap, not global kind or element count ---
 
     /**
      * Regression for a real in-world bug: [Surface.toEntitiesFlat] used to
      * step depth by each element's raw ordinal in the sorted list, so a
      * ~120-element page put ~1.2 blocks of physical depth between its first
      * and last element -- the window rendered as a wedge, not a flat panel.
-     * Depth only has to separate elements that can actually overlap, which
-     * is exactly what `depthKey` (KIND_CHROME/SLOT/ICON/TEXT) already
-     * encodes: 100 same-kind icons are 100 disjoint rects, not 100 depths.
+     * Depth only has to separate elements that actually overlap. Different
+     * kinds in disjoint pixel rects must remain on the same physical plane.
      */
     @Test
     fun depthSpreadIsBoundedByDistinctDepthKeysNotElementCount() {
@@ -219,13 +219,27 @@ class RenderModeTest {
         val depths = entities.map { it.position.z - s.position.z }
         val spread = depths.max() - depths.min()
 
-        val fourKeys = 3 * Surface.LAYER_Z_STEP // KIND_CHROME..KIND_TEXT: 4 distinct keys, 3 steps between them
         val perElement = 99 * Surface.LAYER_Z_STEP // the old, buggy behaviour this must NOT match
         assertTrue(
-            abs(spread - fourKeys) < 1e-6,
-            "depth spread $spread must equal (distinct key count - 1) * LAYER_Z_STEP = $fourKeys, " +
-                "not grow with element count ($perElement would be the old per-element bug)"
+            abs(spread) < 1e-6,
+            "disjoint elements must be coplanar (spread=$spread), not separated by kind " +
+                "or element count ($perElement would be the old per-element bug)"
         )
+    }
+
+    @Test
+    fun onlyActualOverlapsReceiveAMicroscopicDepthBias() {
+        val s = surface().apply { renderMode = RenderMode.ENTITIES }
+        s.paint {
+            fill(io.schemat.displaykit.render.DkColor.WHITE, Rect(0, 0, 20, 20))
+            icon(icon8, 4, 4)
+            label("X", 4, 4)
+        }
+
+        val depths = s.toEntities().map { it.position.z - s.position.z }
+        assertEquals(0.0, depths[0], 1e-6)
+        assertEquals(Surface.ENTITY_OVERLAY_Z_BIAS.toDouble(), depths[1], 1e-6)
+        assertEquals((Surface.ENTITY_OVERLAY_Z_BIAS * 2).toDouble(), depths[2], 1e-6)
     }
 
     // --- frame(): corner-occlusion geometry ---
@@ -240,6 +254,30 @@ class RenderModeTest {
         // they are meant to prove present. See SpriteEntry.averageColor.
         averageColor = 0x808080
     )
+
+    @Test
+    fun raisedButtonAssemblyDoesNotLiftAnOverlappingWideFrame() {
+        val s = surface().apply { renderMode = RenderMode.ENTITIES }
+        s.paint {
+            blockExtrusion(
+                BlockStateRef("minecraft:polished_deepslate"),
+                Rect(8, 8, 16, 16),
+                thickness = 0.1f
+            )
+            frame(ninesliceFrame, Rect(8, 8, 16, 16), depthOffset = 0.1001f)
+            frame(ninesliceFrame, Rect(0, 0, 60, 40))
+        }
+
+        val flatDepths = s.toEntities()
+            .filterIsInstance<VirtualTextDisplay>()
+            .map { it.position.z - s.position.z }
+
+        assertEquals(
+            1,
+            flatDepths.count { it > 0.05 },
+            "only the explicitly raised button face may leave the panel plane (depths=$flatDepths)"
+        )
+    }
 
     @Test
     fun frameAnchorsAllFourCornersAtNativeScaleOnTheRectsCorners() {
@@ -360,7 +398,7 @@ class RenderModeTest {
      * `FabricPlayerRef.createSpriteComponent` did not apply the component's
      * colour when building the `AtlasSprite` content -- see
      * `task-nopack-report.md`. `fabric` has no test source set (checked:
-     * `libs/displaykit/fabric` has no `src/test`), so the fabric-side fix
+     * the Fabric module had no test source set, so the platform-side fix
      * itself is unverified by any automated test; this pins CORE's
      * contribution to the bug's fix -- that [Surface.spriteEntity] actually
      * puts the tint ON the component it hands to the platform layer in the

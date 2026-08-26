@@ -3,11 +3,15 @@
   "id": "displaykit",
   "version": "${version}",
   "name": "DisplayKit",
-  "description": "A packet-based floating UI library for Minecraft",
+  "description": "Retained, server-driven Minecraft UI composition, lifecycle, input, HUD, and world-layer rendering",
   "authors": [
     "Schemat.io"
   ],
-  "contact": {},
+  "contact": {
+    "homepage": "https://github.com/Nano112/DisplayKit",
+    "sources": "https://github.com/Nano112/DisplayKit",
+    "issues": "https://github.com/Nano112/DisplayKit/issues"
+  },
   "license": "MIT",
   "icon": "assets/displaykit/icon.png",
   "environment": "server",

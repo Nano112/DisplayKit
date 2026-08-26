@@ -5,7 +5,11 @@
   "name": "DisplayKit Showcase",
   "description": "Live demonstrations and acceptance tests for DisplayKit primitives",
   "authors": ["Schemat.io"],
-  "contact": {},
+  "contact": {
+    "homepage": "https://github.com/Nano112/DisplayKit",
+    "sources": "https://github.com/Nano112/DisplayKit",
+    "issues": "https://github.com/Nano112/DisplayKit/issues"
+  },
   "license": "MIT",
   "environment": "server",
   "entrypoints": {

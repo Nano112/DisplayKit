@@ -184,12 +184,12 @@ class SurfaceTest {
     }
 
     @Test
-    fun fillRectSmallerThanTheTileThrows() {
+    fun fillRectSmallerThanTheTileFallsBackToOneStretchedEntity() {
         val s = surface()
-        val e = assertFailsWith<IllegalArgumentException> {
-            s.paint { fill(DkColor.WHITE, Rect(0, 0, 10, 20)) }
-        }
-        assertTrue(e.message!!.contains("16"))
+        val requested = Rect(0, 0, 10, 20)
+        s.paint { fill(DkColor.WHITE, requested) }
+        assertEquals(listOf(requested), s.paintedSpriteRectsForTest())
+        assertEquals(0, s.canvasItemCount())
     }
 
     // --- Layout fixes: rows must not wrap, and must not be centred independently ---

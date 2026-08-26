@@ -23,8 +23,8 @@ import java.net.URI
  */
 object Chat {
 
-    // ── Brand palette (matches the HARDWIRED sidebar cyan) ──────────────────
-    const val BRAND = 0x2FE0C0     // hardwired cyan/teal
+    // ── Neutral default palette; consumers may pass their own colors ────────
+    const val BRAND = 0x2FE0C0     // cyan/teal
     const val BRAND_DIM = 0x1C8C79
     const val ACCENT = 0xF5C542    // gold
     const val SUCCESS = 0x6FCF6F   // green
@@ -130,11 +130,11 @@ object Chat {
         return out
     }
 
-    /** Convenience: `[HW]` brand prefix + a message component, one line. */
+    /** Convenience: a neutral `[UI]` prefix plus a message component. */
     fun line(body: Component): MutableComponent =
         Component.empty()
             .append(text("[", MUTED))
-            .append(text("HW", BRAND))
+            .append(text("UI", BRAND))
             .append(text("] ", MUTED))
             .append(body)
 

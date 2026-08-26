@@ -6,15 +6,13 @@ import java.util.logging.Logger
 
 object InteractionRouter {
     private val logger = Logger.getLogger("displaykit/router")
-    private val activeUIs = ConcurrentHashMap<UUID, MutableList<FloatingUI>>()
     private val activeOverlays = ConcurrentHashMap<UUID, MutableList<WorldOverlay>>()
     private val activeSurfaces = ConcurrentHashMap<UUID, MutableList<io.schemat.displaykit.surface.SurfaceHost>>()
     private val debugPlayers = ConcurrentHashMap.newKeySet<UUID>()
-    private val lastClickTime = ConcurrentHashMap<String, Long>()
     private val lastConsumedLeftClick = ConcurrentHashMap<UUID, Long>()
 
     /**
-     * Players whose FloatingUIs should NOT receive clicks — set while a tool
+     * Players whose retained surfaces should NOT receive clicks — set while a tool
      * flow (Place/Move/Edit) is active so panels hovering over buildings
      * (e.g. the island terminal above the pavilion) can't swallow the clicks
      * meant for the world. Overlays still dispatch normally.
@@ -24,7 +22,6 @@ object InteractionRouter {
     fun setUiSuppressed(playerUUID: UUID, suppressed: Boolean) {
         if (suppressed) uiSuppressed.add(playerUUID) else uiSuppressed.remove(playerUUID)
     }
-    private const val CLICK_COOLDOWN_MS = 200L
     private const val CONSUMED_WINDOW_MS = 100L
 
     /** Optional callback for debug click info — set by server module. */
@@ -35,16 +32,6 @@ object InteractionRouter {
     }
 
     fun isDebug(playerUUID: UUID): Boolean = playerUUID in debugPlayers
-
-    fun registerUI(playerUUID: UUID, ui: FloatingUI) {
-        activeUIs.getOrPut(playerUUID) { mutableListOf() }.add(ui)
-    }
-
-    fun unregisterUI(playerUUID: UUID, ui: FloatingUI) {
-        val list = activeUIs[playerUUID] ?: return
-        list.remove(ui)
-        if (list.isEmpty()) activeUIs.remove(playerUUID)
-    }
 
     fun registerOverlay(playerUUID: UUID, overlay: WorldOverlay) {
         activeOverlays.getOrPut(playerUUID) { mutableListOf() }.add(overlay)
@@ -57,11 +44,7 @@ object InteractionRouter {
     }
 
     fun hasActiveUI(playerUUID: UUID): Boolean {
-        return activeUIs[playerUUID]?.isNotEmpty() == true
-    }
-
-    fun getUIs(playerUUID: UUID): List<FloatingUI> {
-        return activeUIs[playerUUID]?.toList() ?: emptyList()
+        return activeSurfaces[playerUUID]?.isNotEmpty() == true
     }
 
     fun getOverlaysForPlayer(playerUUID: UUID): List<WorldOverlay> {
@@ -89,7 +72,7 @@ object InteractionRouter {
 
     /** Returns true when a surface consumed the click. */
     fun handleSurfaceClick(playerUUID: UUID, isRightClick: Boolean = false): Boolean =
-        getSurfaces(playerUUID).any {
+        playerUUID !in uiSuppressed && getSurfaces(playerUUID).any {
             it.handleClick(
                 if (isRightClick) io.schemat.displaykit.surface.PointerButton.RIGHT
                 else io.schemat.displaykit.surface.PointerButton.LEFT
@@ -108,18 +91,13 @@ object InteractionRouter {
         }
     }
 
-    /** Check if the player is looking at any UI's bounding area. */
-    fun isPlayerLookingAtUI(playerUUID: UUID): Boolean {
-        val uis = activeUIs[playerUUID] ?: return false
-        return uis.any { !it.isDestroyed() && it.isPlayerLookingAt() }
-    }
-
     /**
      * Check if player is targeting any interactive surface (overlay or UI).
      * Used by mixins to gate block-breaking/entity actions without dispatching clicks.
      */
     fun isTargetingInteractive(playerUUID: UUID): Boolean {
-        return hasHoveredOverlay(playerUUID) || isPlayerLookingAtUI(playerUUID)
+        return hasHoveredOverlay(playerUUID) ||
+            (playerUUID !in uiSuppressed && io.schemat.displaykit.surface.SurfaceFocus.hovered(playerUUID) != null)
     }
 
     /**
@@ -127,7 +105,6 @@ object InteractionRouter {
      * Debounces, then raycasts all UIs and overlays, dispatching to the closest hit. Returns true if consumed.
      */
     fun onLeftClick(playerUUID: UUID): Boolean {
-        if (!tryClick(playerUUID, isRightClick = false)) return false
         val consumed = dispatchClick(playerUUID, isRightClick = false)
         if (consumed) {
             lastConsumedLeftClick[playerUUID] = System.currentTimeMillis()
@@ -149,26 +126,7 @@ object InteractionRouter {
      * Debounces, then raycasts all UIs and overlays, dispatching to the closest hit. Returns true if consumed.
      */
     fun onRightClick(playerUUID: UUID): Boolean {
-        if (!tryClick(playerUUID, isRightClick = true)) return false
         return dispatchClick(playerUUID, isRightClick = true)
-    }
-
-    /**
-     * Returns true if click is allowed (not debounced). Cooldowns are
-     * PER SIDE (a right-click must not eat the following left-click) and the
-     * timestamp is recorded ONLY when allowed — recording rejected attempts
-     * perpetually renewed the window, eating whole click bursts.
-     */
-    private fun tryClick(playerUUID: UUID, isRightClick: Boolean): Boolean {
-        val key = "$playerUUID:${if (isRightClick) "R" else "L"}"
-        val now = System.currentTimeMillis()
-        val last = lastClickTime[key] ?: 0L
-        val allowed = (now - last) >= CLICK_COOLDOWN_MS
-        if (allowed) lastClickTime[key] = now
-        if (!allowed && isDebug(playerUUID)) {
-            logger.info("[debug $playerUUID] click DEBOUNCED (${now - last}ms)")
-        }
-        return allowed
     }
 
     /** Raycast all UIs and overlays, dispatch to the closest hit along the ray. */
@@ -176,30 +134,9 @@ object InteractionRouter {
         val debug = isDebug(playerUUID)
         val side = if (isRightClick) "R" else "L"
 
-        // A surface is a foreground window, so it consumes the click before UI/overlay
-        // dispatch even gets a chance to raycast.
-        if (handleSurfaceClick(playerUUID, isRightClick)) {
-            if (debug) onDebugClick?.invoke(playerUUID, "$side:surface")
-            return true
-        }
-
         var closestDist = Double.MAX_VALUE
         var closestAction: (() -> Unit)? = null
         var closestLabel = ""
-
-        // Collect UI hits (skipped while a tool flow owns the clicks)
-        val uis = if (playerUUID in uiSuppressed) null else activeUIs[playerUUID]
-        if (uis != null) {
-            for (ui in uis.toList()) {
-                if (ui.isDestroyed()) continue
-                val dist = ui.hitDistance() ?: continue
-                if (dist < closestDist) {
-                    closestDist = dist
-                    closestAction = { ui.handleClick(isRightClick) }
-                    closestLabel = "$side:ui"
-                }
-            }
-        }
 
         // Collect overlay hits
         val overlays = activeOverlays[playerUUID]
@@ -215,20 +152,45 @@ object InteractionRouter {
             }
         }
 
-        if (closestAction != null) {
-            closestAction.invoke()
-            if (debug) onDebugClick?.invoke(playerUUID, closestLabel)
-            return true
+        val input = InteractionInput(
+            semantic = if (isRightClick) SemanticInteraction.SECONDARY_WORLD_ACTION
+                else SemanticInteraction.PRIMARY_WORLD_ACTION,
+            source = "fabric:packet",
+            physicalKey = "click:${if (isRightClick) "right" else "left"}",
+            sameSourceCooldownNanos = 200_000_000L,
+        )
+        val candidates = buildList {
+            if (playerUUID !in uiSuppressed && getSurfaces(playerUUID).isNotEmpty()) {
+                add(InteractionCandidate(InteractionLayer.SURFACE, "surface") {
+                    handleSurfaceClick(playerUUID, isRightClick)
+                })
+            }
+            closestAction?.let { action ->
+                add(InteractionCandidate(InteractionLayer.OVERLAY, "overlay") {
+                    action.invoke()
+                    true
+                })
+            }
         }
-
-        if (debug) onDebugClick?.invoke(playerUUID, "$side:miss")
-        return false
+        val decision = InteractionContexts.forPlayer(playerUUID).dispatch(input, candidates)
+        if (debug) {
+            val label = when (decision.outcome) {
+                InteractionOutcome.CONSUMED -> if (decision.consumedBy == "overlay") closestLabel else "$side:${decision.consumedBy}"
+                InteractionOutcome.DEDUPLICATED -> "$side:deduplicated"
+                InteractionOutcome.MISSED -> "$side:miss"
+            }
+            logger.info(
+                "[debug $playerUUID] $label on ${Thread.currentThread().name}; " +
+                    "attempted=${decision.attempted.joinToString()}"
+            )
+            onDebugClick?.invoke(playerUUID, label)
+        }
+        return decision.consumed
     }
 
     /** Clean up per-player state on disconnect. */
     fun cleanupPlayer(playerUUID: UUID) {
-        lastClickTime.remove("$playerUUID:L")
-        lastClickTime.remove("$playerUUID:R")
+        InteractionContexts.remove(playerUUID)
         uiSuppressed.remove(playerUUID)
         lastConsumedLeftClick.remove(playerUUID)
         debugPlayers.remove(playerUUID)
@@ -240,7 +202,6 @@ object InteractionRouter {
     }
 
     fun closeAll() {
-        activeUIs.values.flatten().toList().forEach { it.destroy() }
         activeOverlays.values.flatten().toList().forEach { it.destroy() }
         // Surfaces too, for the same reason cleanupPlayer closes them: a host
         // dropped without close() strands its entity client-side until the
@@ -252,15 +213,7 @@ object InteractionRouter {
         // per-host -- see unregisterSurface), so this loop has to do it for
         // every player being torn down here, same as cleanupPlayer does.
         players.forEach { io.schemat.displaykit.surface.SurfaceFocus.clear(it) }
+        InteractionContexts.clear()
     }
 
-    fun closeForPlayer(playerUUID: UUID) {
-        activeUIs[playerUUID]?.toList()?.forEach { it.destroy() }
-        // Note: overlays are NOT closed here — they have their own lifecycle
-    }
-
-    fun closeAllForPlayer(playerUUID: UUID) {
-        activeUIs[playerUUID]?.toList()?.forEach { it.destroy() }
-        activeOverlays[playerUUID]?.toList()?.forEach { it.destroy() }
-    }
 }

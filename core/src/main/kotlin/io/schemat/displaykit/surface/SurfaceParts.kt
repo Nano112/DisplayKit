@@ -1,5 +1,6 @@
 package io.schemat.displaykit.surface
 
+import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextMetrics
 import io.schemat.displaykit.sprite.SpriteId
@@ -14,21 +15,6 @@ import io.schemat.displaykit.sprite.SpriteId
 
 private val BUTTON = SpriteId("gui", "widget/button")
 private val CROSS = SpriteId("gui", "widget/cross_button")
-private val TAB = SpriteId("gui", "widget/tab")
-private val TAB_SELECTED = SpriteId("gui", "widget/tab_selected")
-private val TAB_HIGHLIGHTED = SpriteId("gui", "widget/tab_highlighted")
-private val TAB_SELECTED_HIGHLIGHTED = SpriteId("gui", "widget/tab_selected_highlighted")
-
-/**
- * Ground painted behind a hollow tab sprite.
- *
- * Vanilla's selected-tab sprites have an ENTIRELY transparent centre --
- * on screen the tab merges into the container panel directly below it, so
- * there is nothing to draw. A free-floating surface has no such panel, so
- * the selected tab renders as a bare outline with the window showing
- * through, which reads as broken rather than selected.
- */
-private val TAB_GROUND = DkColor(255, 58, 60, 68)
 private val SCROLL_TRACK = SpriteId("gui", "widget/scroller_background")
 private val SCROLL_THUMB = SpriteId("gui", "widget/scroller")
 
@@ -63,12 +49,29 @@ fun SurfacePainter.button(id: String, rect: Rect, text: String, onClick: () -> U
  */
 fun SurfacePainter.titleBar(rect: Rect, title: String, onClose: () -> Unit) = elevate {
     fill(DkColor(255, 32, 34, 40), rect)
-    label(title, rect.x + 4, TextMetrics.rowAlignedY(rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2))
+    val hitSize = minOf(20, rect.h)
+    val hitRect = Rect(
+        rect.right - hitSize - 4,
+        rect.centeredY(hitSize),
+        hitSize,
+        hitSize
+    )
+    val titleWidth = TextMetrics.textWidthPx(title)
+    val minTitleX = rect.x + 4
+    val maxTitleX = maxOf(minTitleX, hitRect.x - 4 - titleWidth)
+    val titleX = rect.centeredX(titleWidth)
+        .coerceIn(minTitleX, maxTitleX)
+    faceLabel(
+        title,
+        titleX,
+        TextMetrics.rowAlignedY(rect.y + (rect.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
+    )
     val cross = resolveSprite(CROSS, "a title bar's close button") ?: return@elevate
-    val cx = rect.right - cross.width - 2
-    val cy = rect.y + (rect.h - cross.height) / 2
-    icon(cross, cx, cy)
-    region("close", Rect(cx, cy, cross.width, cross.height), onClose)
+    val crossRect = hitRect.centered(cross.width, cross.height)
+    // Keep the complete native sprite on the same microscopic face coating
+    // as the title instead of advancing to the generic floating icon layer.
+    faceIcon(cross, crossRect.x, crossRect.y)
+    region("close", hitRect, onClose)
 }
 
 /**
@@ -87,7 +90,7 @@ fun SurfacePainter.scrollTrack(rect: Rect) = elevate {
  * Pulled out of [scrollThumb] as its own pure function so the snap itself can
  * be asserted directly, without going through a painter.
  */
-internal fun snapToLinePitch(y: Int): Int =
+fun snapToLinePitch(y: Int): Int =
     (y / TextMetrics.FONT_LINE_HEIGHT_PX) * TextMetrics.FONT_LINE_HEIGHT_PX
 
 /** The `gui/widget/scroller` sprite's own height; [frame] throws below it. */
@@ -143,14 +146,6 @@ fun SurfacePainter.scrollThumb(rect: Rect) = elevate(2) {
 }
 
 /**
- * A tab, either selected or unselected.
- *
- * Minimum size is 130x24 — both `gui/widget/tab` and `gui/widget/tab_selected`
- * share that size. [frame] will throw if [rect] is smaller.
- *
- * Skipped entirely when its sprite does not resolve — see [button].
- */
-/**
  * The rect a [tab] actually DRAWS at, given the rect the layout gave it.
  *
  * A tab shifts itself onto the label's text row so the label centres exactly
@@ -175,49 +170,16 @@ fun SurfacePainter.tab(
     text: String,
     selected: Boolean,
     hovered: Boolean = false,
+    base: BlockStateRef? = null,
+    baseThickness: Float = 0.0625f,
     onClick: () -> Unit
-) = elevate {
-    // The full four-state model vanilla ships. Folding hover into selected --
-    // passing `hovered || selected` for one flag -- makes a hovered tab
-    // indistinguishable from the selected one, so the strip gives no feedback
-    // about which tab a click will actually take.
-    val spriteId = when {
-        selected && hovered -> TAB_SELECTED_HIGHLIGHTED
-        selected -> TAB_SELECTED
-        hovered -> TAB_HIGHLIGHTED
-        else -> TAB
-    }
-    val sprite = resolveSprite(spriteId, "tab '$id'") ?: return@elevate
-
-    // Move the BOX onto the label's row, rather than the label into the box.
-    //
-    // Text can only sit on a row; a box can sit anywhere, so centring the
-    // label inside a fixed box rounds -- and rounds differently per tab.
-    // Measured in-game: three identical 24px tabs at y=44/78/112 put their
-    // labels 6, 12 and 8 pixels down, so one looked centred and one was
-    // pushed through its own bottom border. Deriving the box from the row
-    // makes every tab identical whatever y the layout hands it, and stops
-    // the tab's height having to both tile its sprite and centre its text.
+) {
     val box = tabBox(rect)
-    val labelY = TextMetrics.rowAlignedY(box.y + (box.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
-
-    // A hollow sprite needs a ground of its own; see TAB_GROUND. Driven by
-    // the measured averageColor rather than by naming the two selected
-    // sprites, so any other hollow chrome gets the same treatment.
-    // Ground and frame must NOT share an elevation. depth() is
-    // `elevation * KINDS_PER_ELEVATION + kind`, so two sprites drawn at the
-    // same elevation and the same kind get the same depth key, land coplanar
-    // and z-fight. Painting a ground under a frame at one elevation is
-    // exactly that, and it showed as shimmer across every selected tab.
-    if (sprite.averageColor == null) {
-        fill(TAB_GROUND, box)
-        elevate { frame(sprite, box) }
-    } else {
-        frame(sprite, box)
+    val state = when {
+        selected && hovered -> BlockButton.State.SELECTED_HOVERED
+        selected -> BlockButton.State.SELECTED
+        hovered -> BlockButton.State.HOVERED
+        else -> BlockButton.State.NORMAL
     }
-    val textWidth = TextMetrics.textWidthPx(text)
-    label(text, box.x + (box.w - textWidth) / 2, labelY)
-    // The region follows the DRAWN box, not the requested rect: a click must
-    // land where the tab appears, and the two differ by up to half a row.
-    region(id, box, onClick)
+    blockButton(id, box, text, state, base, baseThickness, onClick)
 }

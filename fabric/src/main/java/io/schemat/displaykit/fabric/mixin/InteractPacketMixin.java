@@ -31,6 +31,11 @@ public class InteractPacketMixin {
      */
     @Inject(method = "handleAnimate", at = @At("HEAD"))
     private void displaykit$onSwing(ServerboundSwingPacket packet, CallbackInfo ci) {
+        // HEAD runs first on Netty, before vanilla's
+        // ensureRunningOnSameThread call reschedules the packet. Do not touch
+        // retained UI state until the handler is invoked again on the server
+        // thread; StateScope deliberately rejects cross-thread mutation.
+        if (!player.level().getServer().isSameThread()) return;
         if (packet.getHand() != InteractionHand.MAIN_HAND) return;
         if (InteractionRouter.INSTANCE.onLeftClick(player.getUUID())) {
             // Resync the targeted block to prevent ghost blocks from client-side prediction.
@@ -56,6 +61,7 @@ public class InteractPacketMixin {
      */
     @Inject(method = "handleUseItemOn", at = @At("HEAD"), cancellable = true)
     private void displaykit$onUseItemOn(ServerboundUseItemOnPacket packet, CallbackInfo ci) {
+        if (!player.level().getServer().isSameThread()) return;
         if (packet.getHand() != InteractionHand.MAIN_HAND) return;
 
         if (InteractionRouter.INSTANCE.onRightClick(player.getUUID())) {
@@ -71,6 +77,7 @@ public class InteractPacketMixin {
      */
     @Inject(method = "handleUseItem", at = @At("HEAD"), cancellable = true)
     private void displaykit$onUseItem(ServerboundUseItemPacket packet, CallbackInfo ci) {
+        if (!player.level().getServer().isSameThread()) return;
         if (packet.getHand() != InteractionHand.MAIN_HAND) return;
 
         if (InteractionRouter.INSTANCE.onRightClick(player.getUUID())) {
@@ -84,6 +91,7 @@ public class InteractPacketMixin {
      */
     @Inject(method = "handleInteract", at = @At("HEAD"), cancellable = true)
     private void displaykit$onInteract(ServerboundInteractPacket packet, CallbackInfo ci) {
+        if (!player.level().getServer().isSameThread()) return;
         if (InteractionRouter.INSTANCE.isTargetingInteractive(player.getUUID())) {
             // Entity-aimed clicks arrive as INTERACT packets, not use/swing —
             // dispatch them so left-click (ATTACK) works on panels too. The

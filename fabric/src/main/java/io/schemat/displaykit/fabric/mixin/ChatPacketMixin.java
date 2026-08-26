@@ -23,7 +23,7 @@ public class ChatPacketMixin {
     @Inject(method = "handleChat", at = @At("HEAD"), cancellable = true)
     private void displaykit$onChat(ServerboundChatPacket packet, CallbackInfo ci) {
         FabricTextInput textInput = FabricDisplayKit.Companion.getInstance().getTextInput();
-        if (textInput != null && textInput.handleChatMessage(player.getUUID(), packet.message())) {
+        if (textInput != null && textInput.handleChatMessage(player, packet.message())) {
             ci.cancel();
             return;
         }

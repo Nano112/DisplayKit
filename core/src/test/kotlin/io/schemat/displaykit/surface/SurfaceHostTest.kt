@@ -241,7 +241,7 @@ class SurfaceHostTest {
     }
 
     @Test
-    fun unchangedHoverRepaintsOnlyThePointerNotTheLayers() {
+    fun unchangedHoverSendsNoMetadataOnceThePointerIsSettled() {
         val s = surface()
         s.layout { root -> root.addChild(WidgetNode("node", PxSize(10, 10))) }
         val player = FakePlayer()
@@ -255,13 +255,12 @@ class SurfaceHostTest {
         host.tick() // same pixel, same node: hover unchanged
         val metadataAfterSecondTick = sender.updateMetadataCount
 
-        // The only packet an unchanged-hover tick may cause is showPointer's
-        // own metadata update for the cursor entity -- never a full layer
-        // repaint. That is the ~140-packets/sec/viewer rule this task exists
-        // to protect.
+        // Position changes travel as teleports. Re-sending the pointer's
+        // identical display metadata every tick restarts client-side display
+        // state and visibly flickers on some clients.
         assertEquals(
-            1, metadataAfterSecondTick - metadataAfterFirstTick,
-            "an unchanged hover must update only the pointer entity, not repaint the layers"
+            0, metadataAfterSecondTick - metadataAfterFirstTick,
+            "an unchanged hover must not rewrite identical pointer or layer metadata"
         )
 
         SurfaceFocus.clear(player.uuid)
@@ -283,9 +282,83 @@ class SurfaceHostTest {
         host.showPointer(2, 2)
 
         assertEquals(1, sender.spawnCount - spawnBefore, "the second call must reuse the entity, not respawn it")
-        assertEquals(2, sender.updateMetadataCount - metadataBefore, "both calls must push a metadata update")
+        assertEquals(0, sender.updateMetadataCount - metadataBefore, "spawn already carries initial metadata; moving only needs a teleport")
+        assertEquals(1, sender.teleportedTo.size, "the reused pointer must move with one teleport")
 
         SurfaceFocus.clear(player.uuid)
+    }
+
+    @Test
+    fun unchangedRepaintSendsNothingAndChangedTextUpdatesOnlyItsLayer() {
+        val s = surface()
+        s.paint { label("before", 0, 0) }
+        val sender = RecordingPacketSender()
+        val host = SurfaceHost(platform(sender), FakePlayer(), s)
+        host.open()
+
+        val afterOpen = sender.updateMetadataCount
+        host.repaint()
+        assertEquals(afterOpen, sender.updateMetadataCount, "an identical repaint must be packet-free")
+
+        s.paint { label("after", 0, 0) }
+        host.repaint()
+        assertEquals(
+            afterOpen + 1,
+            sender.updateMetadataCount,
+            "only the text layer whose component changed should receive metadata"
+        )
+
+        host.close()
+    }
+
+    @Test
+    fun movingEntityElementsUseOneInterpolatedTeleportInsteadOfSnapping() {
+        val s = surface()
+        s.renderMode = RenderMode.ENTITIES
+        s.motionInterpolationTicks = 2
+        s.paint { label("marker", 10, 10) }
+        val sender = RecordingPacketSender()
+        val host = SurfaceHost(platform(sender), FakePlayer(), s)
+        host.open()
+
+        val entity = host.entities().single()
+        assertEquals(2, entity.teleportDuration)
+        assertEquals(2, entity.interpolationDuration)
+
+        s.paint { label("marker", 20, 10) }
+        host.repaint()
+
+        assertEquals(1, sender.teleportedTo.size, "one moved marker needs one smoothed teleport")
+        host.close()
+    }
+
+    @Test
+    fun changingViewportMembershipPreservesStablePrimitives() {
+        val s = surface()
+        s.renderMode = RenderMode.ENTITIES
+        s.motionInterpolationTicks = 2
+        s.paint {
+            identity("persistent-node") { label("persistent", 10, 10) }
+        }
+        val sender = RecordingPacketSender()
+        val host = SurfaceHost(platform(sender), FakePlayer(), s)
+        host.open()
+        val persistentId = host.entities().single().entityId
+        val spawnsAfterOpen = sender.spawnCount
+
+        s.paint {
+            identity("persistent-node") { label("persistent", 20, 10) }
+            identity("entering-node") { label("entering", 60, 10) }
+        }
+        host.repaint()
+
+        assertEquals(2, host.entities().size)
+        assertTrue(host.entities().any { it.entityId == persistentId }, "the moving node keeps its live entity id")
+        assertEquals(1, sender.spawnCount - spawnsAfterOpen, "only the entering node should spawn")
+        assertEquals(1, sender.teleportedTo.size, "the persistent node should glide to its new position")
+        assertTrue(sender.destroyedIds.isEmpty(), "no persistent layer should be destroyed")
+
+        host.close()
     }
 
     @Test

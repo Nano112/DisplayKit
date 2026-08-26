@@ -23,7 +23,6 @@ import io.schemat.displaykit.surface.terminal.TerminalCommands
 import io.schemat.displaykit.surface.terminal.TerminalModel
 import io.schemat.displaykit.surface.terminal.TerminalWidget
 import io.schemat.displaykit.ui.InteractionRouter
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import java.util.UUID
@@ -94,7 +93,8 @@ object TerminalWindow {
         val host: SurfaceHost,
         val player: ServerPlayer,
         val model: TerminalModel,
-        val widget: TerminalWidget
+        val widget: TerminalWidget,
+        val exclusivity: AutoCloseable
     )
 
     private val open = ConcurrentHashMap<UUID, Session>()
@@ -104,9 +104,6 @@ object TerminalWindow {
     private fun installHooksOnce() {
         if (hooksInstalled) return
         hooksInstalled = true
-        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
-            closeFor(handler.player.uuid)
-        }
         // See TerminalChatCapture's KDoc for why this indirection exists
         // instead of fabric depending on the showcase module directly.
         TerminalChatCapture.router = { uuid, message -> onChatLine(uuid, message) }
@@ -148,7 +145,8 @@ object TerminalWindow {
             titleBarHeight = TITLE_H,
             padding = PADDING
         )
-        val session = Session(host, player, model, widget)
+        val exclusivity = ShowcaseWindowGroup.claim(player.uuid) { closeFor(player.uuid) }
+        val session = Session(host, player, model, widget, exclusivity)
         open[player.uuid] = session
 
         repaintAndSync(session)
@@ -169,6 +167,7 @@ object TerminalWindow {
 
     fun closeFor(uuid: UUID) {
         val s = open.remove(uuid) ?: return
+        s.exclusivity.close()
         InteractionRouter.unregisterSurface(uuid, s.host)
         s.host.close()
         // Only once nobody has this window open: the warm-up budget is keyed

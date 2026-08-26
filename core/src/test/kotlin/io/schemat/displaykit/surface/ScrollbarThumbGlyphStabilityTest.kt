@@ -10,6 +10,7 @@ import io.schemat.displaykit.sprite.SpriteId
 import io.schemat.displaykit.surface.layout.CrossAxis
 import io.schemat.displaykit.surface.layout.FlexDirection
 import io.schemat.displaykit.surface.layout.FlexNode
+import io.schemat.displaykit.surface.layout.PxPadding
 import io.schemat.displaykit.surface.layout.PxSize
 import io.schemat.displaykit.surface.layout.ScrollNode
 import io.schemat.displaykit.surface.layout.WidgetNode
@@ -134,12 +135,18 @@ class ScrollbarThumbGlyphStabilityTest {
      * line (as it deliberately does in this test's tree, to exercise
      * exactly that edge).
      */
-    private fun prewarmScrollThumb(bar: WidgetNode, pane: ScrollNode) {
+    private fun prewarmScrollThumb(
+        bar: WidgetNode,
+        pane: ScrollNode,
+        additionalMaxScrolls: List<Int> = emptyList()
+    ) {
         val r = bar.rect()
         if (r.h <= 0) return
-        val thumbH = thumbHeightFor(r.h, pane.maxScroll())
-        val probeY = r.y + TextMetrics.FONT_LINE_HEIGHT_PX
-        NineSlicePainter.prewarm(thumbSprite, Rect(0, probeY, scrollW, thumbH))
+        val probeY = snapToLinePitch(r.y) + TextMetrics.FONT_LINE_HEIGHT_PX
+        for (maxScroll in (additionalMaxScrolls + pane.maxScroll()).distinct()) {
+            val thumbH = thumbHeightFor(r.h, maxScroll)
+            NineSlicePainter.prewarm(thumbSprite, Rect(0, probeY, scrollW, thumbH))
+        }
     }
 
     /**
@@ -156,12 +163,14 @@ class ScrollbarThumbGlyphStabilityTest {
     private fun buildTree(
         surface: Surface,
         sprites: List<SpriteEntry>,
-        snap: Boolean
+        snap: Boolean,
+        topOffset: Int = 0
     ): Pair<ScrollNode, WidgetNode> {
         lateinit var pane: ScrollNode
         lateinit var bar: WidgetNode
         surface.layout { root ->
             val body = FlexNode("body", FlexDirection.ROW)
+            body.padding = PxPadding(top = topOffset)
 
             pane = ScrollNode("grid")
             pane.stepPx = step
@@ -188,9 +197,8 @@ class ScrollbarThumbGlyphStabilityTest {
                 val thumbH = thumbHeightFor(r.h, max)
                 val thumbY = if (snap) {
                     val rawY = if (max == 0) 0 else (pane.scrollPx * (r.h - thumbH)) / max
-                    // Mirrors PickerWindow.kt's bar render lambda exactly.
-                    val snapped = (rawY / TextMetrics.FONT_LINE_HEIGHT_PX) * TextMetrics.FONT_LINE_HEIGHT_PX
-                    r.y + snapped.coerceIn(0, (r.h - thumbH).coerceAtLeast(0))
+                    // scrollThumb snaps the final absolute canvas Y.
+                    snapToLinePitch(r.y + rawY)
                 } else {
                     // The pre-fix arbitrary render.
                     if (max == 0) r.y else r.y + (pane.scrollPx * (r.h - thumbH)) / max
@@ -273,6 +281,44 @@ class ScrollbarThumbGlyphStabilityTest {
         assertEquals(max, pane.scrollPx, "dragging to the track's bottom must reach maxScroll")
         assertTrue(dragTo(bar, pane, r.y))
         assertEquals(0, pane.scrollPx, "dragging to the track's top must reach scrollPx 0")
+    }
+
+    @Test
+    fun nonAlignedTrackPrewarmsTheAbsoluteSnappedPhase() {
+        val sprites = (0 until 40).map(::entry)
+        val surface = Surface(220, 120, Vec3d.ZERO, targetWidthBlocks = 3f)
+        val (pane, bar) = buildTree(surface, sprites, snap = true, topOffset = 7)
+
+        assertEquals(7, bar.rect().y % TextMetrics.FONT_LINE_HEIGHT_PX)
+        prewarmScrollThumb(bar, pane)
+        surface.paintTree()
+        val baseline = slices.variantCount()
+
+        while (pane.scrollBy(1)) {
+            surface.paintTree()
+            assertEquals(baseline, slices.variantCount())
+        }
+    }
+
+    @Test
+    fun atlasSwitchPrewarmsEveryPossibleThumbHeight() {
+        val initial = (0 until 40).map(::entry)
+        val larger = (0 until 100).map(::entry)
+        val surface = Surface(220, 120, Vec3d.ZERO, targetWidthBlocks = 3f)
+        val (pane, bar) = buildTree(surface, initial, snap = true, topOffset = 7)
+        val largerMaxScroll = (larger.size / cols) * step - viewportH
+
+        prewarmScrollThumb(bar, pane, additionalMaxScrolls = listOf(largerMaxScroll))
+        surface.paintTree()
+        val baseline = slices.variantCount()
+
+        buildTree(surface, larger, snap = true, topOffset = 7)
+        surface.paintTree()
+        assertEquals(
+            baseline,
+            slices.variantCount(),
+            "switching to an atlas with a different row count must not mint a new thumb height"
+        )
     }
 
     /**

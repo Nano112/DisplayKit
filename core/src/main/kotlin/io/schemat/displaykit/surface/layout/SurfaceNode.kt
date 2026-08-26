@@ -3,6 +3,7 @@ package io.schemat.displaykit.surface.layout
 import io.schemat.displaykit.surface.EventResult
 import io.schemat.displaykit.surface.Rect
 import io.schemat.displaykit.surface.SurfaceEvent
+import io.schemat.displaykit.surface.SurfacePainter
 
 /**
  * A node in a surface's pixel-space layout tree.
@@ -34,6 +35,20 @@ interface SurfaceNode {
      */
     var onGrabMove: ((Int, Int) -> Unit)?
 
+    /** Called once when this node becomes the active grab target. */
+    var onGrabStart: (() -> Unit)?
+
+    /** Called once when this node stops being the active grab target. */
+    var onGrabEnd: (() -> Unit)?
+
+    /**
+     * Called after the complete tree has been measured and placed, before its
+     * first paint. Composite primitives use this to prepare renderer assets
+     * from their REAL rects instead of making application code reproduce
+     * layout arithmetic.
+     */
+    var onPrepare: (() -> Unit)?
+
     fun measure(c: PxConstraints): PxSize
     fun place(offset: PxOffset)
     fun addChild(child: SurfaceNode)
@@ -57,6 +72,9 @@ abstract class BaseSurfaceNode(override val id: String) : SurfaceNode {
     override var flexGrow: Int = 0
     override var onEvent: ((SurfaceEvent) -> EventResult)? = null
     override var onGrabMove: ((Int, Int) -> Unit)? = null
+    override var onGrabStart: (() -> Unit)? = null
+    override var onGrabEnd: (() -> Unit)? = null
+    override var onPrepare: (() -> Unit)? = null
 
     /**
      * Subclass hook: measure own content, already constrained.
@@ -124,4 +142,18 @@ abstract class BaseSurfaceNode(override val id: String) : SurfaceNode {
         }
         return this
     }
+}
+
+/** A layout node that contributes paint before its children are walked. */
+interface SurfacePaintNode {
+    fun paint(painter: SurfacePainter)
+}
+
+/**
+ * A node that exposes only the children currently visible through its viewport.
+ * Painting and hit-testing share this contract so clipped content cannot remain
+ * interactive after it leaves the viewport.
+ */
+interface ChildViewport {
+    fun visibleChildren(): List<SurfaceNode>
 }

@@ -111,6 +111,9 @@ object CalibrationWindow {
     /** How many rows of the fill/icon/label triple `/dk calib 99` draws. */
     private const val LAYERS_ROWS = 5
 
+    /** Rendered heights probed side by side, all asked for the same canvas y. */
+    private val HEIGHT_PROBES = listOf(8, 16, 24, 32)
+
     /**
      * Canvas pixels between triples. A whole number of text rows, so every
      * triple asks for the same phase and any DIFFERENCE between them is drift
@@ -141,7 +144,8 @@ object CalibrationWindow {
      */
     private const val VIEW_DISTANCE = 8.0
 
-    private val open = ConcurrentHashMap<UUID, SurfaceHost>()
+    private class Session(val host: SurfaceHost, val exclusivity: AutoCloseable)
+    private val open = ConcurrentHashMap<UUID, Session>()
 
     fun open(player: ServerPlayer, mode: RenderMode, targetIndex: Int) {
         closeFor(player.uuid)
@@ -163,7 +167,9 @@ object CalibrationWindow {
         surface.backingBlock = BlockStateRef.BLACK_CONCRETE
 
         val host = SurfaceHost(DisplayKit.platform, ref, surface)
-        open[player.uuid] = host
+        val exclusivity = ShowcaseWindowGroup.claim(player.uuid) { closeFor(player.uuid) }
+        val session = Session(host, exclusivity)
+        open[player.uuid] = session
 
         val layersMode = targetIndex == LAYERS_INDEX
         val id = TARGETS[targetIndex.coerceIn(TARGETS.indices)]
@@ -191,6 +197,22 @@ object CalibrationWindow {
                         }
                         label("MMMMMM", 120, y, MARK)
                     }
+
+                    // The SAME square sprite at the SAME canvas y, at four
+                    // different rendered heights.
+                    //
+                    // GlyphPlacement assumes a glyph's top lands at y for any
+                    // height -- ascent alone decides it. If that is wrong, a
+                    // 24px sprite and a 16px sprite asked for the same y come
+                    // out at different heights on screen, and EVERY widget
+                    // that mixes sizes is skewed by half their difference.
+                    // A tab frame measured 4.9px above a 16px marker drawn at
+                    // the identical y, which is what this settles.
+                    SpriteIndex.bundled.get(SpriteId("blocks", "block/white_concrete"))?.let { sq ->
+                        for ((i, h) in HEIGHT_PROBES.withIndex()) {
+                            iconFitted(sq, 200 + i * 40, topA, h, h, MARK)
+                        }
+                    }
                 } else if (entry != null) {
                     // ONE sprite per capture, drawn TWICE. Rendering the whole
                     // set at once could not be measured reliably: a sprite
@@ -212,7 +234,7 @@ object CalibrationWindow {
         } else {
             PackSync.withPackSync("calibration") { paint() }
             FabricPackIntegration.whenPackApplied(player.uuid) {
-                if (open[player.uuid] !== host) return@whenPackApplied
+                if (open[player.uuid] !== session) return@whenPackApplied
                 host.open()
                 InteractionRouter.registerSurface(player.uuid, host)
             }
@@ -227,9 +249,10 @@ object CalibrationWindow {
     }
 
     fun closeFor(uuid: UUID) {
-        val host = open.remove(uuid) ?: return
-        InteractionRouter.unregisterSurface(uuid, host)
-        host.close()
+        val session = open.remove(uuid) ?: return
+        session.exclusivity.close()
+        InteractionRouter.unregisterSurface(uuid, session.host)
+        session.host.close()
         if (open.isEmpty()) PackSync.forget("calibration")
     }
 }

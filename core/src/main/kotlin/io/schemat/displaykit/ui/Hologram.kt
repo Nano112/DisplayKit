@@ -257,11 +257,11 @@ class Hologram(private val platform: PlatformProvider) {
         private val GLOW_VALID = DkColor(255, 60, 220, 90)
         private val GLOW_INVALID = DkColor(255, 235, 60, 60)
 
-        /** Suggested marker colors matching hardwired's port color language. */
-        val SENSOR_MARKER = DkColor(255, 120, 190, 255)   // light blue: kernel reads
-        val ACTUATOR_MARKER = DkColor(255, 255, 160, 60)  // orange: kernel writes
+        /** Suggested input/output marker colors; applications may supply any color. */
+        val SENSOR_MARKER = DkColor(255, 120, 190, 255)   // light blue: input/read
+        val ACTUATOR_MARKER = DkColor(255, 255, 160, 60)  // orange: output/write
 
-        /** Optional perf counter sink (name, count) — e.g. hardwired's PerfMonitor. */
+        /** Optional application-owned performance counter sink (name, count). */
         @JvmStatic
         var perfCount: ((String, Int) -> Unit)? = null
     }

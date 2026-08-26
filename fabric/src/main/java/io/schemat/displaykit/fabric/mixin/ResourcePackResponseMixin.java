@@ -1,8 +1,10 @@
 package io.schemat.displaykit.fabric.mixin;
 
 import io.schemat.displaykit.fabric.pack.FabricPackIntegration;
+import io.schemat.displaykit.fabric.thread.ServerThreadDispatcher;
 import net.minecraft.network.protocol.common.ServerboundResourcePackPacket;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import org.spongepowered.asm.mixin.Mixin;
@@ -31,6 +33,9 @@ public class ResourcePackResponseMixin {
         if (!(((Object) this) instanceof ServerGamePacketListenerImpl listener)) return;
         ServerPlayer player = listener.player;
         if (player == null) return;
-        FabricPackIntegration.INSTANCE.onPackResponse(player.getUUID(), packet.action().name());
+        MinecraftServer server = player.level().getServer();
+        Runnable response = () -> FabricPackIntegration.INSTANCE.onPackResponse(
+                player.getUUID(), packet.id(), packet.action().name());
+        ServerThreadDispatcher.dispatch(server, response);
     }
 }

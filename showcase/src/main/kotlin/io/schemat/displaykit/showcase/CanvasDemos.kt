@@ -77,7 +77,7 @@ object CanvasDemos {
             text = canvas.toTextComponent()
             billboard = Billboard.CENTER
             // Alpha 100-149 and 200-249 are DkColor shader sentinels (glass /
-            // corner-radius, see DkColor.withGlass / withCornerRadius) -- 190
+            // Alpha controls ordinary vanilla text-background transparency -- 190
             // sits outside both. RGB is a dark, neutral graphite -- no green
             // cast -- so the varied line tints above read cleanly against it.
             backgroundColor = DkColor(190, 22, 23, 26)

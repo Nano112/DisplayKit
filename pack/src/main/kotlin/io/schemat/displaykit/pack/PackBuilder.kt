@@ -28,7 +28,11 @@ class PackBuilder(
      * @param content Raw bytes
      */
     fun addRaw(path: String, content: ByteArray): PackBuilder {
-        assets[path] = content
+        requireSafeArchivePath(path)
+        // Providers commonly reuse scratch buffers. Taking ownership of a
+        // copy here makes the staged pack an immutable snapshot instead of
+        // allowing a later caller mutation to silently change its contents.
+        assets[path] = content.copyOf()
         return this
     }
 
@@ -212,9 +216,12 @@ class PackBuilder(
             // Add pack.mcmeta
             addPackMeta(zos)
 
-            // Add all collected assets
-            for ((path, content) in assets) {
-                zos.putNextEntry(ZipEntry(path))
+            // Stable entry ordering and timestamps make identical inputs
+            // produce identical bytes and therefore an identical pack hash.
+            // That keeps immutable URLs cacheable and avoids redundant client
+            // downloads when a rebuild contains no semantic changes.
+            for ((path, content) in assets.toSortedMap()) {
+                zos.putNextEntry(deterministicEntry(path))
                 zos.write(content)
                 zos.closeEntry()
             }
@@ -232,7 +239,7 @@ class PackBuilder(
                 "min_format": 1,
                 "max_format": $format,
                 "supported_formats": {"min_inclusive": 1, "max_inclusive": $format},
-                "description": "${config.packDescription}"
+                "description": ${jsonString(config.packDescription)}
               }
             }
             """.trimIndent()
@@ -241,13 +248,13 @@ class PackBuilder(
             {
               "pack": {
                 "pack_format": $format,
-                "description": "${config.packDescription}"
+                "description": ${jsonString(config.packDescription)}
               }
             }
             """.trimIndent()
         }
 
-        zos.putNextEntry(ZipEntry("pack.mcmeta"))
+        zos.putNextEntry(deterministicEntry("pack.mcmeta"))
         zos.write(mcmeta.toByteArray(StandardCharsets.UTF_8))
         zos.closeEntry()
     }
@@ -270,6 +277,42 @@ class PackBuilder(
     fun imageCount(): Int = assets.keys.count { it.endsWith(".png") }
 
     companion object {
+        private const val DETERMINISTIC_ZIP_TIME_MILLIS = 0L
+
+        private fun deterministicEntry(path: String): ZipEntry =
+            ZipEntry(path).apply { time = DETERMINISTIC_ZIP_TIME_MILLIS }
+
+        private fun requireSafeArchivePath(path: String) {
+            require(path.isNotBlank()) { "pack asset path must not be blank" }
+            require(!path.startsWith('/')) { "pack asset path must be relative: $path" }
+            require('\\' !in path) { "pack asset path must use '/' separators: $path" }
+            require(path.split('/').none { it.isEmpty() || it == "." || it == ".." }) {
+                "pack asset path contains an unsafe segment: $path"
+            }
+        }
+
+        private fun jsonString(value: String): String = buildString(value.length + 2) {
+            append('"')
+            for (character in value) {
+                when (character) {
+                    '"' -> append("\\\"")
+                    '\\' -> append("\\\\")
+                    '\b' -> append("\\b")
+                    '\u000C' -> append("\\f")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> if (character.code < 0x20) {
+                        append("\\u")
+                        append(character.code.toString(16).padStart(4, '0'))
+                    } else {
+                        append(character)
+                    }
+                }
+            }
+            append('"')
+        }
+
         /**
          * Compute SHA-1 hash of pack data.
          */

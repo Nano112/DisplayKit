@@ -1,6 +1,7 @@
 package io.schemat.displaykit.fabric.input
 
 import io.schemat.displaykit.surface.SurfaceFocus
+import io.schemat.displaykit.fabric.thread.ServerThreadDispatcher
 import net.minecraft.server.level.ServerPlayer
 import java.util.UUID
 
@@ -27,9 +28,9 @@ import java.util.UUID
  * for exactly this. The immediate true/false Mixin needs is made purely from
  * that read; the actual routing — appending to the terminal, repainting,
  * sending packets — is real game-state mutation, so [router] is always
- * invoked from inside `player.level().server.execute { }`, never directly
- * from this thread. `player.server` is private; `player.level().server` is
- * the accessor already used for this elsewhere (see `HotbarMenu.kt`).
+ * invoked through [ServerThreadDispatcher], never directly from this thread.
+ * The dispatcher also handles the shutdown race where Minecraft may execute
+ * a nominally queued callback inline on Netty.
  */
 object TerminalChatCapture {
 
@@ -48,7 +49,7 @@ object TerminalChatCapture {
         if (!SurfaceFocus.isTextArmed(player.uuid)) return false
         val r = router ?: return false
         val uuid = player.uuid
-        player.level().server.execute { r(uuid, message) }
+        ServerThreadDispatcher.dispatch(player.level().server) { r(uuid, message) }
         return true
     }
 }

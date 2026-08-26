@@ -1,7 +1,19 @@
 package io.schemat.displaykit.fabric.hotbar
 
-import io.schemat.displaykit.ui.hotbar.HotbarHost
-import io.schemat.displaykit.ui.hotbar.HotbarSlot
+import io.schemat.displaykit.action.ActionIcon
+import io.schemat.displaykit.action.ActionInteraction
+import io.schemat.displaykit.action.ActionMenuChange
+import io.schemat.displaykit.action.ActionMenuListener
+import io.schemat.displaykit.action.ActionMenuSession
+import io.schemat.displaykit.action.ActionSpec
+import io.schemat.displaykit.action.ActionSource
+import io.schemat.displaykit.action.ActionTrigger
+import io.schemat.displaykit.fabric.thread.ServerThreadDispatcher
+import io.schemat.displaykit.ui.InteractionCandidate
+import io.schemat.displaykit.ui.InteractionContexts
+import io.schemat.displaykit.ui.InteractionInput
+import io.schemat.displaykit.ui.InteractionLayer
+import io.schemat.displaykit.ui.SemanticInteraction
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
@@ -36,16 +48,15 @@ import java.util.concurrent.ConcurrentHashMap
  * A menu state over the player's REAL inventory hotbar: while open, slots 0-8
  * are replaced with clickable button items (the player's actual items are
  * stashed and restored on close). This is the primary DisplayKit menu
- * mechanism — the floating [io.schemat.displaykit.ui.hotbar.VirtualHotbar]
- * strip is deprecated in its favor.
+ * mechanism. DisplayKit no longer ships a competing floating-hotbar renderer.
  *
  * ### Interactions
  * - **Right-click** (use item / use block / use entity) presses the selected
  *   button. **Left-click** on a block or entity also presses it. Left-click on
  *   AIR does not reach the server without a client mod — right-click is the
  *   primary activation and button labels should assume it.
- * - **Scrolling** (held-slot change) fires [HotbarSlot.onScrollTo] — use for
- *   live previews while browsing (e.g. placement holograms).
+ * - **Scrolling** (held-slot change) focuses the selected [ActionSpec], so its
+ *   semantic focus handler can drive live previews.
  * - Button items are inert and self-healing: they can't be dropped, moved, or
  *   kept — a per-tick reconciler re-imposes the menu row, purges tagged items
  *   from the rest of the inventory/cursor, and vacuums tagged item entities
@@ -62,7 +73,7 @@ import java.util.concurrent.ConcurrentHashMap
  * disconnect, death (before drops), and dimension change. The file is deleted
  * after every successful restore.
  */
-object HotbarMenu {
+internal object HotbarMenu {
 
     private val logger = LoggerFactory.getLogger("displaykit/hotbar-menu")
 
@@ -86,12 +97,21 @@ object HotbarMenu {
 
     fun isOpen(uuid: UUID): Boolean = sessions.containsKey(uuid)
 
-    fun hostOf(uuid: UUID): HotbarHost? = sessions[uuid]
+    /** Renderer-independent action state currently presented to this player. */
+    fun actionSession(uuid: UUID): ActionMenuSession? = sessions[uuid]?.actions
 
-    /** Open a menu for the player (closing any existing one first). */
-    fun open(player: ServerPlayer, rootSlots: List<HotbarSlot>, onClosed: (() -> Unit)? = null) {
+    /**
+     * Present a renderer-independent action session in the player's inventory
+     * toolbar. Closing either side closes the other and restores the stash.
+     */
+    fun open(
+        player: ServerPlayer,
+        actions: ActionMenuSession,
+        onClosed: (() -> Unit)? = null
+    ) {
+        require(!actions.isClosed) { "Cannot present a closed action session." }
         close(player)
-        val session = Session(player, rootSlots, onClosed, nonceCounter++)
+        val session = Session(player, actions, onClosed, nonceCounter++)
         sessions[player.uuid] = session
         session.stashAndShow()
     }
@@ -108,33 +128,50 @@ object HotbarMenu {
      */
     @JvmOverloads
     fun pressSelected(uuid: UUID, source: String = "arbiter") {
-        sessions[uuid]?.pressSelected(source)
+        val session = sessions[uuid] ?: return
+        InteractionContexts.forPlayer(uuid).arbitrate(
+            InteractionInput(SemanticInteraction.INVOKE, "hotbar:$source", "toolbar:invoke"),
+            listOf(InteractionCandidate(InteractionLayer.TOOLBAR, "inventory-toolbar") {
+                session.pressSelected(source)
+                true
+            }),
+        )
     }
 
     /**
-     * Move the selection highlight WITHOUT firing [HotbarSlot.onScrollTo] —
+     * Consume only an explicit toolbar navigation control (previous, next,
+     * back or exit). This keeps arbitration semantic: applications do not
+     * inspect inventory slots or renderer-specific cell kinds.
+     */
+    fun pressSelectedNavigation(uuid: UUID, source: String = "arbiter"): Boolean =
+        sessions[uuid]?.pressSelectedNavigation(source) == true
+
+    private fun dispatchPhysicalPress(
+        player: ServerPlayer,
+        physicalKey: String,
+        source: String,
+    ): Boolean {
+        val session = sessions[player.uuid] ?: return false
+        return InteractionContexts.forPlayer(player.uuid).dispatch(
+            InteractionInput(
+                SemanticInteraction.INVOKE,
+                source = source,
+                physicalKey = physicalKey,
+            ),
+            listOf(InteractionCandidate(InteractionLayer.TOOLBAR, "inventory-toolbar") {
+                session.pressSelected(source)
+                true
+            }),
+        ).consumed
+    }
+
+    /**
+     * Move the selection highlight WITHOUT firing the action's focus handler —
      * for arbiters that rebuild a page and manage their own selection state.
      */
     fun selectSlot(uuid: UUID, index: Int) {
         sessions[uuid]?.selectSilently(index.coerceIn(0, 8))
     }
-
-    /**
-     * What kind of cell is currently highlighted: "button", "prev", "next",
-     * "exit", or null (empty slot / no session). Arbiters use this to give
-     * NAVIGATION cells absolute priority over world clicks — Back/Exit must
-     * work no matter what the crosshair rests on.
-     */
-    fun selectedCellKind(uuid: UUID): String? = sessions[uuid]?.selectedCellKind()
-
-    /** The highlighted button's slot id, or null when a non-button is highlighted. */
-    fun selectedSlotId(uuid: UUID): String? = sessions[uuid]?.selectedSlotId()
-
-    /** Menu stack depth: 1 = root page; >1 = a submenu (editor, stepper, ...). */
-    fun stackDepth(uuid: UUID): Int = sessions[uuid]?.depth() ?: 0
-
-    /** The current page's id (null for the root or untagged pages). */
-    fun pageId(uuid: UUID): String? = sessions[uuid]?.currentPageId
 
     /**
      * Escape hatch: sneak-press pops to the root; a second sneak-press within
@@ -143,7 +180,7 @@ object HotbarMenu {
      */
     fun sneakReset(uuid: UUID) { sessions[uuid]?.sneakReset() }
 
-    /** Optional perf sinks (wired by the host mod, e.g. hardwired's PerfMonitor). */
+    /** Optional performance sinks supplied by the host application. */
     @JvmStatic var perfTime: ((String, Long) -> Unit)? = null
     @JvmStatic var perfCount: ((String, Long) -> Unit)? = null
 
@@ -155,13 +192,17 @@ object HotbarMenu {
 
         UseItemCallback.EVENT.register { player, _, hand ->
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
-                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
+                if (dispatchPhysicalPress(player, "click:right", "fabric:hotbar-use-item")) {
+                    return@register InteractionResult.SUCCESS
+                }
             }
             InteractionResult.PASS
         }
         UseBlockCallback.EVENT.register { player, _, hand, _ ->
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
-                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
+                if (dispatchPhysicalPress(player, "click:right", "fabric:hotbar-use-block")) {
+                    return@register InteractionResult.SUCCESS
+                }
             }
             InteractionResult.PASS
         }
@@ -173,13 +214,17 @@ object HotbarMenu {
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND &&
                 entity !is net.minecraft.world.entity.Interaction
             ) {
-                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
+                if (dispatchPhysicalPress(player, "click:right", "fabric:hotbar-use-entity")) {
+                    return@register InteractionResult.SUCCESS
+                }
             }
             InteractionResult.PASS
         }
         AttackBlockCallback.EVENT.register { player, _, hand, _, _ ->
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
-                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
+                if (dispatchPhysicalPress(player, "click:left", "fabric:hotbar-attack-block")) {
+                    return@register InteractionResult.SUCCESS
+                }
             }
             InteractionResult.PASS
         }
@@ -187,7 +232,9 @@ object HotbarMenu {
             if (player is ServerPlayer && hand == net.minecraft.world.InteractionHand.MAIN_HAND &&
                 entity !is net.minecraft.world.entity.Interaction
             ) {
-                sessions[player.uuid]?.let { it.pressSelected("event"); return@register InteractionResult.SUCCESS }
+                if (dispatchPhysicalPress(player, "click:left", "fabric:hotbar-attack-entity")) {
+                    return@register InteractionResult.SUCCESS
+                }
             }
             InteractionResult.PASS
         }
@@ -202,8 +249,11 @@ object HotbarMenu {
         // Disconnect restores in-memory but KEEPS the stash file: if player
         // data was already saved this tick (crash shutdown saves players
         // BEFORE the disconnect event fires), only join recovery can undo it.
-        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
-            sessions.remove(handler.player.uuid)?.restore(deleteFile = false)
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, server ->
+            val playerId = handler.player.uuid
+            ServerThreadDispatcher.dispatch(server) {
+                sessions.remove(playerId)?.restore(deleteFile = false)
+            }
         }
         // Server stopping: restore every open session NOW. Fabric fires this
         // at the head of MinecraftServer.stopServer, i.e. BEFORE the
@@ -240,11 +290,8 @@ object HotbarMenu {
     private const val SLOT_PREV = 6
     private const val SLOT_NEXT = 7
     private const val SLOT_EXIT = 8
-
-    private class Level(var slots: List<HotbarSlot>, var page: Int = 0, val pageId: String? = null)
-
     private sealed class Cell {
-        class Button(val slot: HotbarSlot) : Cell()
+        class Button(val action: ActionSpec) : Cell()
         object Prev : Cell()
         object Next : Cell()
         object Exit : Cell()
@@ -252,12 +299,11 @@ object HotbarMenu {
 
     private class Session(
         val player: ServerPlayer,
-        rootSlots: List<HotbarSlot>,
+        val actions: ActionMenuSession,
         val onClosed: (() -> Unit)?,
         val nonce: Int
-    ) : HotbarHost {
-
-        private val stack = ArrayDeque<Level>().apply { addLast(Level(rootSlots)) }
+    ) {
+        private var actionSubscription: AutoCloseable? = null
         private var stashed: List<ItemStack> = emptyList()
         private var stashedSelected = 0
         private var lastSelected = -1
@@ -267,55 +313,14 @@ object HotbarMenu {
         private var closed = false
         private var sweepCountdown = 0
 
-        // ── HotbarHost ──
-
-        override fun push(slots: List<HotbarSlot>) = push(slots, null)
-
-        override fun push(slots: List<HotbarSlot>, pageId: String?) {
-            // Dead-page watchdog: an empty page can never be interacted with
-            if (slots.isEmpty()) {
-                logger.warn("refused to push an EMPTY menu page (pageId={}) for {}", pageId, player.gameProfile.name)
-                return
-            }
-            stack.addLast(Level(slots, pageId = pageId))
-            // A page whose render throws (bad icon, encoder error) would leave
-            // the stack pointing at an invisible level — pop it back off
-            runCatching { render() }.onFailure {
-                logger.error("page render failed (pageId={}) — popping the broken page", pageId, it)
-                stack.removeLast()
-                runCatching { render() }.onFailure { _ -> HotbarMenu.close(player) }
-            }
+        private fun pop() {
+            if (actions.depth <= 1) { HotbarMenu.close(player); return }
+            actions.pop()
         }
 
-        override val currentPageId: String? get() = stack.lastOrNull()?.pageId
-
-        override fun pop() {
-            if (stack.size <= 1) { HotbarMenu.close(player); return }
-            stack.removeLast(); render()
+        private fun popToRoot() {
+            actions.popToRoot()
         }
-
-        override fun replaceCurrent(slots: List<HotbarSlot>) {
-            val level = stack.lastOrNull() ?: return
-            // Keep the HIGHLIGHTED BUTTON'S IDENTITY stable across the rebuild:
-            // when the new list shifts positions, re-align the held slot to the
-            // button the player had highlighted. Without this, page rebuilds
-            // (e.g. aim-driven filters) silently changed what a click would do
-            // and fought the player's own scrolling.
-            val heldId = selectedSlotId()
-            level.slots = slots
-            render()
-            if (heldId != null && selectedSlotId() != heldId) {
-                val idx = layout().indexOfFirst { (it as? Cell.Button)?.slot?.id == heldId }
-                if (idx >= 0) selectSilently(idx)
-            }
-        }
-
-        override fun popToRoot() {
-            while (stack.size > 1) stack.removeLast()
-            render()
-        }
-
-        override fun close() = HotbarMenu.close(player)
 
         // ── Open / restore ──
 
@@ -331,6 +336,20 @@ object HotbarMenu {
             stashedSelected = selectedSlot()
             lastSelected = stashedSelected
             writeStashFile(player, stashed, stashedSelected)
+            actionSubscription = actions.subscribe(ActionMenuListener { snapshot ->
+                when (snapshot.change) {
+                    ActionMenuChange.CLOSE -> HotbarMenu.close(player)
+                    ActionMenuChange.FOCUS -> Unit
+                    else -> runCatching { render() }.onFailure {
+                        logger.error(
+                            "action menu render failed (page={}) — closing safely",
+                            snapshot.currentPage.id,
+                            it
+                        )
+                        HotbarMenu.close(player)
+                    }
+                }
+            })
             render()
             // One-time discoverability for the escape hatch
             player.displayClientMessage(
@@ -350,6 +369,9 @@ object HotbarMenu {
         fun restore(deleteFile: Boolean = true) {
             if (closed) return
             closed = true
+            actionSubscription?.close()
+            actionSubscription = null
+            if (!actions.isClosed) actions.close()
             val inv = player.inventory
             for (i in 0..8) inv.setItem(i, if (i < stashed.size) stashed[i] else ItemStack.EMPTY)
             setSelectedSlot(player, stashedSelected)
@@ -361,18 +383,19 @@ object HotbarMenu {
         // ── Layout / rendering ──
 
         private fun layout(): Array<Cell?> {
-            val level = stack.last()
             val cells = arrayOfNulls<Cell>(9)
-            val content = level.slots
-            if (content.size <= 8) {
-                content.take(8).forEachIndexed { i, s -> cells[i] = Cell.Button(s) }
+            val visibleCount = actions.currentPage.visibleActions().size
+            if (visibleCount <= 8) {
+                actions.window(8).actions.forEachIndexed { i, action ->
+                    cells[i] = Cell.Button(action)
+                }
             } else {
-                val pages = (content.size + PAGE_SIZE_PAGED - 1) / PAGE_SIZE_PAGED
-                level.page = level.page.coerceIn(0, pages - 1)
-                content.drop(level.page * PAGE_SIZE_PAGED).take(PAGE_SIZE_PAGED)
-                    .forEachIndexed { i, s -> cells[i] = Cell.Button(s) }
-                cells[SLOT_PREV] = Cell.Prev
-                cells[SLOT_NEXT] = Cell.Next
+                val window = actions.window(PAGE_SIZE_PAGED)
+                window.actions.forEachIndexed { i, action ->
+                    cells[i] = Cell.Button(action)
+                }
+                if (window.hasPrevious) cells[SLOT_PREV] = Cell.Prev
+                if (window.hasNext) cells[SLOT_NEXT] = Cell.Next
             }
             cells[SLOT_EXIT] = Cell.Exit
             return cells
@@ -409,16 +432,18 @@ object HotbarMenu {
                 null -> ItemStack(Items.GRAY_STAINED_GLASS_PANE).also {
                     it.set(DataComponents.CUSTOM_NAME, Component.literal(" ").withStyle { s -> s.withItalic(false) })
                 }
-                is Cell.Button -> ItemStack(iconFor(cell.slot)).also {
-                    val name = Component.literal(cell.slot.label)
-                        .withStyle { s -> s.withItalic(false).withColor(if (cell.slot.enabled) 0xFFFFFF else 0x777777) }
+                is Cell.Button -> ItemStack(iconFor(cell.action)).also {
+                    val label = if (cell.action.busy) "${cell.action.label}…" else cell.action.label
+                    val name = Component.literal(label)
+                        .withStyle { s -> s.withItalic(false).withColor(if (cell.action.invokable) 0xFFFFFF else 0x777777) }
                     it.set(DataComponents.CUSTOM_NAME, name)
                 }
                 Cell.Prev -> ItemStack(Items.ARROW).also {
+                    val window = actions.window(PAGE_SIZE_PAGED)
                     it.set(
                         DataComponents.CUSTOM_NAME,
                         io.schemat.displaykit.fabric.text.Sprites.pageBackward()
-                            .append(Component.literal(" Prev (${stack.last().page + 1})"))
+                            .append(Component.literal(" Prev (${window.pageIndex + 1}/${window.pageCount})"))
                             .withStyle { s -> s.withItalic(false) }
                     )
                 }
@@ -430,11 +455,11 @@ object HotbarMenu {
                             .withStyle { s -> s.withItalic(false) }
                     )
                 }
-                Cell.Exit -> ItemStack(if (stack.size > 1) Items.RED_CONCRETE else Items.BARRIER).also {
+                Cell.Exit -> ItemStack(if (actions.depth > 1) Items.RED_CONCRETE else Items.BARRIER).also {
                     it.set(
                         DataComponents.CUSTOM_NAME,
                         io.schemat.displaykit.fabric.text.Sprites.cross()
-                            .append(Component.literal(if (stack.size > 1) " Back" else " Exit"))
+                            .append(Component.literal(if (actions.depth > 1) " Back" else " Exit"))
                             .withStyle { s -> s.withItalic(false) }
                     )
                 }
@@ -446,15 +471,23 @@ object HotbarMenu {
             return item
         }
 
-        private fun iconFor(slot: HotbarSlot): net.minecraft.world.item.Item {
-            val id = slot.icon.id.substringBefore('[')
-            val item = BuiltInRegistries.ITEM.getValue(Identifier.parse(id))
+        private fun iconFor(action: ActionSpec): net.minecraft.world.item.Item = iconFor(action.icon)
+
+        private fun iconFor(icon: ActionIcon): net.minecraft.world.item.Item = when (icon) {
+            ActionIcon.Default -> Items.STONE
+            is ActionIcon.Item -> registryItem(icon.item.itemId)
+            is ActionIcon.Block -> registryItem(icon.state.id.substringBefore('['))
+            is ActionIcon.Sprite -> iconFor(icon.fallback)
+            is ActionIcon.Text -> iconFor(icon.fallback)
+        }
+
+        private fun registryItem(id: String): net.minecraft.world.item.Item {
+            val item = runCatching { BuiltInRegistries.ITEM.getValue(Identifier.parse(id)) }
+                .getOrDefault(Items.AIR)
             return if (item === Items.AIR) Items.STONE else item
         }
 
         // ── Interaction ──
-
-        fun depth(): Int = stack.size
 
         fun sneakReset() {
             val tick = player.level().server.tickCount.toLong()
@@ -486,14 +519,37 @@ object HotbarMenu {
             logger.debug("press: slot={} kind={} source={}", selectedSlot(), selectedCellKind(), source)
             when (val cell = layout()[selectedSlot().coerceIn(0, 8)]) {
                 null -> {}
-                is Cell.Button -> if (cell.slot.enabled) runCatching { cell.slot.onSelect(this) }
+                is Cell.Button -> if (cell.action.invokable) runCatching {
+                    actions.invoke(
+                        cell.action.id,
+                        ActionInteraction(
+                            ActionSource.INVENTORY_TOOLBAR,
+                            ActionTrigger.SECONDARY_CLICK,
+                            player.uuid
+                        )
+                    )
+                }
                     .onFailure {
-                        logger.error("menu button ${cell.slot.id} failed (page=${currentPageId ?: "root"}) — recovering to root", it)
+                        logger.error("menu action ${cell.action.id} failed (page=${actions.currentPageId}) — recovering to root", it)
                         runCatching { popToRoot() }.onFailure { _ -> HotbarMenu.close(player) }
                     }
-                Cell.Prev -> { stack.last().page--; render() }
-                Cell.Next -> { stack.last().page++; render() }
+                Cell.Prev -> actions.previousPage(PAGE_SIZE_PAGED)
+                Cell.Next -> actions.nextPage(PAGE_SIZE_PAGED)
                 Cell.Exit -> pop()
+            }
+        }
+
+        fun pressSelectedNavigation(source: String): Boolean {
+            if (player.isShiftKeyDown) {
+                pressSelected(source)
+                return true
+            }
+            return when (layout()[selectedSlot().coerceIn(0, 8)]) {
+                Cell.Prev, Cell.Next, Cell.Exit -> {
+                    pressSelected(source)
+                    true
+                }
+                else -> false
             }
         }
 
@@ -511,8 +567,19 @@ object HotbarMenu {
             val sel = selectedSlot()
             if (sel != lastSelected) {
                 lastSelected = sel
-                (layout()[sel.coerceIn(0, 8)] as? Cell.Button)?.slot?.onScrollTo
-                    ?.let { runCatching { it(this) } }
+                val focusedId = (layout()[sel.coerceIn(0, 8)] as? Cell.Button)?.action?.id
+                runCatching {
+                    actions.focus(
+                        focusedId,
+                        ActionInteraction(
+                            ActionSource.INVENTORY_TOOLBAR,
+                            ActionTrigger.SCROLL_FOCUS,
+                            player.uuid
+                        )
+                    )
+                }.onFailure {
+                    logger.error("menu focus handler failed (action={})", focusedId, it)
+                }
             }
 
             // Self-heal + purge every few ticks, not every tick: render() is
@@ -563,9 +630,6 @@ object HotbarMenu {
             Cell.Next -> "next"
             Cell.Exit -> "exit"
         }
-
-        fun selectedSlotId(): String? =
-            (layout()[selectedSlot().coerceIn(0, 8)] as? Cell.Button)?.slot?.id
 
         fun selectSilently(index: Int) {
             lastSelected = index

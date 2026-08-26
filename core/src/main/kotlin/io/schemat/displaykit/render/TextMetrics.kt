@@ -44,6 +44,24 @@ object TextMetrics {
     const val FONT_LINE_HEIGHT_PX = 10
 
     /**
+     * How far below its requested canvas y a plain-text glyph actually lands,
+     * relative to a sprite asked for the same y. MEASURED, not derived.
+     *
+     * A sprite reaches an exact canvas y through a per-glyph ascent, and that
+     * is verified: probed at rendered heights 8, 16, 24 and 32, all four put
+     * their top on the same pixel. Plain text has no ascent of its own -- it
+     * sits on a row -- and a row's glyphs come out one full pitch lower than
+     * the sprite rows they are supposed to line up with.
+     *
+     * Measured against flat fills, which is the one primitive whose geometry
+     * could be confirmed independently: in a tab strip whose bars measure
+     * exactly 24.0 canvas px tall at exactly 30px pitch, a label asked for
+     * bar.y + 7 rendered its glyph top at bar.y + 16.8. Every window that put
+     * a label inside chrome has been a row out because of this.
+     */
+    const val TEXT_ROW_ANCHOR_OFFSET_PX = FONT_LINE_HEIGHT_PX
+
+    /**
      * [y] rounded to the nearest text ROW boundary.
      *
      * Plain text can only sit on a row: the composited canvas places it at
@@ -186,6 +204,25 @@ object TextMetrics {
     /** Widest line of [text], in text pixels. */
     fun textWidthPx(text: String): Int =
         text.split('\n').maxOfOrNull { line -> line.sumOf { charWidthPx(it) } } ?: 0
+
+    /** Fit one line to [maxWidthPx], appending an ASCII ellipsis when clipped. */
+    fun ellipsize(text: String, maxWidthPx: Int): String {
+        require(maxWidthPx >= 0) { "Text width cannot be negative." }
+        val line = text.substringBefore('\n')
+        if (textWidthPx(line) <= maxWidthPx) return line
+        val suffix = "..."
+        val suffixWidth = textWidthPx(suffix)
+        if (suffixWidth > maxWidthPx) return ""
+        var used = 0
+        var end = 0
+        while (end < line.length) {
+            val next = charWidthPx(line[end])
+            if (used + next + suffixWidth > maxWidthPx) break
+            used += next
+            end++
+        }
+        return line.substring(0, end) + suffix
+    }
 
     fun lineCount(text: String): Int = text.count { it == '\n' } + 1
 

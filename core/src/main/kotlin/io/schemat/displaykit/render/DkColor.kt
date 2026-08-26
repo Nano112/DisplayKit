@@ -10,26 +10,6 @@ data class DkColor(
 
     fun withAlpha(alpha: Int) = copy(alpha = alpha)
 
-    /**
-     * Encode rounded corners into the alpha channel.
-     * Alpha values 200-249 signal corner radius to our custom shaders.
-     * The radius (0-49) controls corner rounding intensity.
-     */
-    fun withCornerRadius(radius: Int = 20): DkColor {
-        val encodedAlpha = (200 + radius.coerceIn(0, 49))
-        return copy(alpha = encodedAlpha)
-    }
-
-    /**
-     * Encode glassmorphism effect into the alpha channel.
-     * Alpha values 100-149 signal glass effect to our custom shaders.
-     * The blur level (0-49) controls blur intensity.
-     */
-    fun withGlass(blurLevel: Int = 25): DkColor {
-        val encodedAlpha = (100 + blurLevel.coerceIn(0, 49))
-        return copy(alpha = encodedAlpha)
-    }
-
     companion object {
         val WHITE = DkColor(255, 255, 255, 255)
         val BLACK = DkColor(255, 0, 0, 0)

@@ -34,7 +34,7 @@ object ModelPackGenerator {
      * Generate resource pack assets for a Blockbench model.
      *
      * @param model The parsed Blockbench model
-     * @param namespace Resource pack namespace (e.g., "hardwired")
+     * @param namespace Resource pack namespace (for example, "example_ui")
      * @param baseItem The base item to use (e.g., "leather_horse_armor")
      * @param startingCustomModelData Starting CustomModelData value
      * @return Generated assets ready to add to a resource pack

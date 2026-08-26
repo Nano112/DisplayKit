@@ -1,5 +1,8 @@
 package io.schemat.displaykit.surface.terminal
 
+import io.schemat.displaykit.math.Vec3d
+import io.schemat.displaykit.render.VirtualTextDisplay
+import io.schemat.displaykit.surface.Surface
 import io.schemat.displaykit.surface.layout.BoxNode
 import io.schemat.displaykit.surface.layout.PxConstraints
 import io.schemat.displaykit.surface.layout.PxOffset
@@ -39,6 +42,48 @@ class TerminalWidgetTest {
         for (row in widget.pane.children) {
             assertEquals(12, row.rect().h, "row '${row.id}' is not uniform height")
         }
+    }
+
+    @Test
+    fun `title body and prompt remain inside the terminal bounds`() {
+        val widget = TerminalWidget(
+            TerminalModel(columns = 40),
+            contentWidth = width - 20,
+            rowHeightPx = 10,
+            titleBarHeight = 30,
+            padding = 10
+        )
+        val root = buildAndPlace(widget)
+        val prompt = root.find("terminal-prompt") ?: error("prompt not built")
+
+        assertTrue(prompt.rect().h > 0)
+        assertTrue(prompt.rect().y >= root.rect().y)
+        assertTrue(prompt.rect().bottom <= root.rect().bottom)
+    }
+
+    @Test
+    fun `prompt and visible history are emitted by the composed renderer`() {
+        val model = TerminalModel(columns = 40)
+        repeat(20) { model.append("line $it") }
+        val widget = TerminalWidget(
+            model,
+            contentWidth = width - 20,
+            rowHeightPx = 10,
+            titleBarHeight = 30,
+            padding = 10
+        )
+        val surface = Surface(width, height, Vec3d.ZERO, 2f)
+        surface.layout { root ->
+            widget.build(root, "Terminal", "type...", onClose = {})
+        }
+        widget.afterLayout()
+        surface.paintTree()
+
+        val emitted = surface.toEntities()
+            .filterIsInstance<VirtualTextDisplay>()
+            .joinToString("\n") { it.text.plain() }
+        assertTrue(emitted.contains("> type..."), "fixed prompt was not painted")
+        assertTrue(emitted.contains("line 19"), "bottom-pinned history was not painted")
     }
 
     @Test
@@ -98,4 +143,7 @@ class TerminalWidgetTest {
         buildAndPlace(widget)
         assertEquals(widget.pane.maxScroll(), widget.pane.scrollPx)
     }
+
+    private fun SurfaceNode.find(wanted: String): SurfaceNode? =
+        if (id == wanted) this else children.firstNotNullOfOrNull { it.find(wanted) }
 }

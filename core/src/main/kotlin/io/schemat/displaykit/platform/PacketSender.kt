@@ -5,6 +5,13 @@ import io.schemat.displaykit.render.VirtualEntity
 import java.util.UUID
 
 interface PacketSender {
+    /**
+     * Spawn [entity] with its complete initial metadata.
+     *
+     * Callers must not immediately follow this with [updateMetadata]: packet
+     * backends make the add packet and first metadata packet one lifecycle
+     * operation so the client never observes a half-configured display.
+     */
     fun spawnEntity(entity: VirtualEntity, viewerUUIDs: Collection<UUID>)
     fun updateMetadata(entity: VirtualEntity, viewerUUIDs: Collection<UUID>)
     fun teleportEntity(entity: VirtualEntity, viewerUUIDs: Collection<UUID>)

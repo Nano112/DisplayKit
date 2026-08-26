@@ -20,7 +20,7 @@ import net.minecraft.server.level.ServerPlayer
  */
 object TintDemo {
 
-    /** Matrix green, matching HardwiredTheme.PRIMARY. */
+    /** High-contrast green used to make tint behavior obvious. */
     private val PRIMARY = DkColor.fromRGB(0, 255, 136)
 
     fun register() {

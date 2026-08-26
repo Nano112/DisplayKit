@@ -110,6 +110,25 @@ class SpriteCanvasTest {
     }
 
     @Test
+    fun overlappingItemsRetainPainterOrderInsteadOfBeingResortedByX() {
+        val c = SpriteCanvas(64, 64)
+        val tile = entry("tile", w = 16, h = 16)
+        c.draw(tile, x = 0, y = 0)
+        c.draw(tile, x = 16, y = 0)
+        c.text("label", x = 4, y = 0)
+
+        val painted = c.toTextComponent().children
+            .filter { it.font != Spacing.FONT_ID }
+            .map { it.text }
+        assertEquals(3, painted.size)
+        assertEquals(
+            "label",
+            painted.last(),
+            "the label painted last must also be emitted last so it stays visible"
+        )
+    }
+
+    @Test
     fun gapBeforeAFreestandingSpriteEmitsALeadingAdvance() {
         // A sprite at x=40 with nothing before it needs a +40 advance first.
         val c = SpriteCanvas(64, 64)

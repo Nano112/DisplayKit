@@ -4,7 +4,23 @@ plugins {
 }
 
 group = "io.schemat.displaykit"
-version = "0.1.0"
+version = providers.gradleProperty("displaykitVersion").orElse("0.1.0").get()
+
+val fabricProjectPath = if (rootProject.findProject(":libs:displaykit:fabric") != null) {
+    ":libs:displaykit:fabric"
+} else {
+    ":fabric"
+}
+val coreProjectPath = if (rootProject.findProject(":libs:displaykit:core") != null) {
+    ":libs:displaykit:core"
+} else {
+    ":core"
+}
+val packProjectPath = if (rootProject.findProject(":libs:displaykit:pack") != null) {
+    ":libs:displaykit:pack"
+} else {
+    ":pack"
+}
 
 base {
     archivesName.set("DisplayKit-Showcase-mc${libs.versions.minecraft.get()}")
@@ -22,9 +38,9 @@ dependencies {
     modImplementation(libs.fabric.language.kotlin)
 
     // namedElements gives dev (named-namespace) jars from Loom subprojects
-    implementation(project(path = ":libs:displaykit:fabric", configuration = "namedElements"))
-    implementation(project(":libs:displaykit:core"))
-    implementation(project(":libs:displaykit:pack"))
+    implementation(project(path = fabricProjectPath, configuration = "namedElements"))
+    implementation(project(coreProjectPath))
+    implementation(project(packProjectPath))
 }
 
 loom {
@@ -45,7 +61,7 @@ loom {
             // quiet but fatal here: the pack never serves, so every sprite
             // glyph renders as a missing-glyph box.
             vmArg("-Ddisplaykit.pack.port=8099")
-            vmArg("-Ddisplaykit.debug.layers=true")
+            vmArg("-Ddisplaykit.debug.tabRuler=" + (findProperty("dk.tabRuler") ?: "false"))
         }
     }
 }

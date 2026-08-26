@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
  * val model = ModelManager.loadModel("golem", bbmodelJsonString)
  *
  * // 2. Generate resource pack assets (do this once at startup)
- * val assets = ModelManager.generatePackAssets("hardwired")
+ * val assets = ModelManager.generatePackAssets("example_ui")
  *
  * // 3. Spawn instances in the world
  * val instance = ModelManager.spawnModel(
@@ -103,7 +103,7 @@ object ModelManager {
     /**
      * Generate resource pack assets for all loaded models.
      *
-     * @param namespace The resource pack namespace (e.g., "hardwired")
+     * @param namespace The resource pack namespace (for example, "example_ui")
      * @param baseItem The item to use for CustomModelData (e.g., "leather_horse_armor")
      * @return Combined generated assets
      */

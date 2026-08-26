@@ -40,9 +40,33 @@ import kotlin.math.sin
  * functions over these calls, not a privileged API.
  */
 interface SurfacePainter {
-    fun frame(entry: SpriteEntry, rect: Rect, tint: DkColor? = null)
+    /**
+     * Give every primitive painted by [block] a stable composition identity.
+     * Layout traversal supplies widget ids automatically; custom painters can
+     * use this when their primitives need to survive a changing layer count.
+     */
+    fun identity(key: String, block: SurfacePainter.() -> Unit)
+
+    fun frame(
+        entry: SpriteEntry,
+        rect: Rect,
+        tint: DkColor? = null,
+        depthOffset: Float = 0f
+    )
     fun fill(color: DkColor, rect: Rect)
     fun icon(entry: SpriteEntry, x: Int, y: Int, tint: DkColor? = null)
+
+    /**
+     * Paint a sprite as a flush coating on the current chrome face.
+     * Composited mode emits it into the face's own physical display layer.
+     */
+    fun faceIcon(
+        entry: SpriteEntry,
+        x: Int,
+        y: Int,
+        tint: DkColor? = null,
+        depthOffset: Float = 0f
+    )
 
     /**
      * Draw [entry] scaled to fit inside a [boxW] x [boxH] box at ([x], [y]),
@@ -64,7 +88,35 @@ interface SurfacePainter {
         boxH: Int,
         tint: DkColor? = null
     ): Pair<Int, Int>
+
+    /**
+     * Fit a sprite like [iconFitted], but paint it into the current chrome
+     * plane. This is for textured backgrounds that must remain behind later
+     * fills and controls according to painter order.
+     */
+    fun chromeIconFitted(
+        entry: SpriteEntry,
+        x: Int,
+        y: Int,
+        boxW: Int,
+        boxH: Int,
+        tint: DkColor? = null
+    ): Pair<Int, Int>
     fun label(text: String, x: Int, y: Int, color: DkColor? = null)
+
+    /**
+     * Paint text as part of the current chrome face rather than as a new
+     * raised surface layer. Composited mode emits it into the face's physical
+     * display and compensates Minecraft's plain-text row anchor. Entity mode
+     * uses only a sub-millimetre render bias.
+     */
+    fun faceLabel(
+        text: String,
+        x: Int,
+        y: Int,
+        color: DkColor? = null,
+        depthOffset: Float = 0f
+    )
 
     /**
      * Draw a real block filling [rect], standing [thickness] blocks proud of
@@ -76,10 +128,28 @@ interface SurfacePainter {
      * lever, a physical-looking readout -- not for coloured rectangles, which
      * [fill] does far more cheaply.
      *
-     * Only realised under [RenderMode.ENTITIES]; a composited surface is a
-     * flat canvas by definition and skips it.
+     * Flat sprites and labels are composited when a pack is available, but
+     * the block itself remains a block display in either render mode. This
+     * makes it possible to put dense sprite artwork on a genuinely solid
+     * control without forcing the entire surface into entity-per-glyph mode.
      */
     fun blockPanel(block: BlockStateRef, rect: Rect, thickness: Float = 0.0625f)
+
+    /**
+     * Draw a real block whose front face sits on this layer and whose volume
+     * extends behind it.
+     *
+     * This is the solid backing for a sprite-faced control. Unlike
+     * [blockPanel], its thickness is local to the control and therefore does
+     * not push unrelated, later-painted surface layers toward the viewer.
+     */
+    fun blockBacking(block: BlockStateRef, rect: Rect, thickness: Float = 0.0625f)
+
+    /**
+     * Draw a local solid extrusion from the current surface plane toward the
+     * viewer without advancing unrelated elements in the depth allocator.
+     */
+    fun blockExtrusion(block: BlockStateRef, rect: Rect, thickness: Float = 0.0625f)
 
     fun slot(x: Int, y: Int, item: ItemRef? = null)
     fun region(id: String, rect: Rect, onClick: () -> Unit)
@@ -136,10 +206,35 @@ class Surface(
          * per kind, and the total thickness is what eventually reads as an air
          * gap when the panel is viewed from an angle.
          *
-         * 1cm per layer keeps a seven-layer window inside 6cm, invisible
-         * against a panel metres wide.
+         * 1cm per ordinary layer leaves enough headroom for unrelated
+         * overlapping controls. A laminated control uses the dedicated face
+         * APIs instead of consuming these global layer steps.
          */
         const val LAYER_Z_STEP = 0.01f
+
+        /**
+         * Render-only bias for artwork bonded to a solid face.
+         *
+         * This is deliberately microscopic: enough to give Minecraft's depth
+         * buffer a deterministic winner, but two orders of magnitude smaller
+         * than an ordinary UI layer so it cannot read as a detached sheet at
+         * a grazing angle.
+         */
+        internal const val FACE_COATING_Z_BIAS = 0.0001f
+
+        /**
+         * Canvas-layer namespace for a face coating.
+         *
+         * A coating must be a separate text display because overlapping
+         * glyph quads inside one display z-fight. It must *not*, however,
+         * consume a normal [LAYER_Z_STEP]. Encoding its owning chrome layer
+         * here lets [toEntitiesComposited] give it the same allocation key
+         * plus only [FACE_COATING_Z_BIAS].
+         */
+        private const val FACE_LAYER_BASE = 1_000_000
+
+        /** Local separation for entity quads that actually overlap. */
+        internal const val ENTITY_OVERLAY_Z_BIAS = 0.0002f
 
         /**
          * Depth layers, back to front. Each becomes its own text display,
@@ -236,6 +331,21 @@ class Surface(
      */
     var renderMode: RenderMode = RenderMode.AUTO
 
+    /**
+     * Client-side smoothing applied when a painted entity changes transform or
+     * position between repaints. Two ticks bridges the server's 20 Hz update
+     * cadence without making direct manipulation feel delayed.
+     *
+     * Composited glyphs whose coordinates change *inside* one text component
+     * cannot interpolate; moving canvas widgets should paint their moving
+     * parts as face entities so this policy can move the entities themselves.
+     */
+    var motionInterpolationTicks: Int = 2
+        set(value) {
+            require(value in 0..59) { "motion interpolation must be between 0 and 59 ticks" }
+            field = value
+        }
+
     /** [renderMode] with [RenderMode.AUTO] resolved against [SliceGlyphSource.installed]. */
     internal fun effectiveRenderMode(): RenderMode = RenderMode.resolve(renderMode)
 
@@ -246,9 +356,8 @@ class Surface(
      * One field and zero extra entities, versus a second stretched entity
      * that would cost an entity and need its own sizing.
      *
-     * [DkColor]'s first parameter is alpha; 100-149 and 200-249 are reserved
-     * shader sentinels ([DkColor.withGlass] / [DkColor.withCornerRadius]) —
-     * pick a value outside both bands.
+     * [DkColor]'s first parameter is alpha, so lower values make the backdrop
+     * more transparent in the same way as any vanilla text-display background.
      */
     var backdrop: DkColor? = null
 
@@ -397,11 +506,19 @@ class Surface(
     private val slots = mutableListOf<Pair<Rect, ItemRef>>()
 
     /**
-     * What [Painter] recorded this paint, for [RenderMode.ENTITIES]. Empty
-     * (and untouched) under [RenderMode.COMPOSITED], which paints into
-     * [canvas] instead -- see [toEntitiesFlat].
+     * What [Painter] recorded as independent entities this paint. Entity mode
+     * records every primitive here; composited mode may also record primitives
+     * that cannot be represented losslessly by a canvas glyph (for example a
+     * fill thinner than its source sprite) -- see [toEntitiesFlat].
      */
     private val elements = mutableListOf<EntityElement>()
+    private var paintIdentity: String? = null
+    private var paintIdentityOrdinal: Int = 0
+
+    private fun recordElement(element: EntityElement) {
+        element.reconcileKey = paintIdentity?.let { "$it/${paintIdentityOrdinal++}" }
+        elements += element
+    }
 
     /**
      * Test seam: the sprite rects [RenderMode.ENTITIES] recorded from the
@@ -425,6 +542,15 @@ class Surface(
 
     internal fun paintedSpriteRectsForTest(): List<Rect> =
         elements.filterIsInstance<EntityElement.SpriteEl>().map { it.rect }
+
+    internal fun paintedLabelYsForTest(): List<Int> =
+        elements.filterIsInstance<EntityElement.LabelEl>().map { it.y }
+
+    internal fun paintedLabelXsForTest(): List<Int> =
+        elements.filterIsInstance<EntityElement.LabelEl>().map { it.x }
+
+    internal fun paintedLabelDepthsForTest(): List<Double> =
+        elements.filterIsInstance<EntityElement.LabelEl>().map { it.depthKey }
 
     fun canvasItemCount(): Int = canvas.itemCount()
     fun canvasItemPositions(): List<Pair<Int, Int>> = canvas.itemPositions()
@@ -459,22 +585,45 @@ class Surface(
     fun layout(build: (SurfaceNode) -> Unit) {
         val r = BoxNode("surface-root")
         build(r)
+        root = r
+        measureTree()
+    }
+
+    /**
+     * Re-measure and place the retained tree against the canvas.
+     *
+     * This runs before every tree paint. Dynamic labels, visibility changes,
+     * and pages added to a keyed switch therefore participate in normal
+     * composition instead of requiring feature code to patch coordinates.
+     */
+    private fun measureTree() {
+        val r = root ?: return
         r.measure(PxConstraints.exactly(widthPx, heightPx))
         r.place(PxOffset.Zero)
-        root = r
+        // Preparation belongs to the composed primitives, not the window
+        // using them. It runs only for the glyph-backed renderer; entity mode
+        // has no generated glyph variants to prepare.
+        if (effectiveRenderMode() == RenderMode.COMPOSITED) {
+            fun prepare(node: SurfaceNode) {
+                node.onPrepare?.invoke()
+                node.children.forEach(::prepare)
+            }
+            prepare(r)
+        }
     }
 
     /** Paint every [WidgetNode] in the tree, in tree order (back to front). */
     fun paintTree() {
         val r = root ?: return
+        measureTree()
         paint {
             fun walk(node: SurfaceNode) {
-                if (node is WidgetNode) node.paint(this)
-                val kids = if (node is io.schemat.displaykit.surface.layout.ScrollNode) {
-                    node.visibleChildren()
-                } else {
-                    node.children
+                if (node is io.schemat.displaykit.surface.layout.SurfacePaintNode) {
+                    identity(node.id) { node.paint(this) }
                 }
+                val kids = if (node is io.schemat.displaykit.surface.layout.ChildViewport) {
+                    node.visibleChildren()
+                } else node.children
                 kids.forEach(::walk)
             }
             walk(r)
@@ -726,67 +875,151 @@ class Surface(
      * [SpriteCanvas.emittedRowCount] are canvas-level, not per-layer), so they
      * all resolve the same [entityOrigin] and stack exactly.
      */
-    fun toEntities(): List<VirtualEntity> = when (effectiveRenderMode()) {
-        RenderMode.COMPOSITED -> toEntitiesComposited()
-        RenderMode.ENTITIES, RenderMode.AUTO -> toEntitiesFlat()
+    fun toEntities(): List<VirtualEntity> {
+        val entities = when (effectiveRenderMode()) {
+            RenderMode.COMPOSITED -> toEntitiesComposited()
+            RenderMode.ENTITIES, RenderMode.AUTO -> toEntitiesFlat()
+        }
+        entities.forEach(::configureMotion)
+        return entities
     }
 
-    /** [RenderMode.COMPOSITED]: one text display per depth layer -- the original [toEntities] body. */
-    private fun toEntitiesComposited(): List<VirtualTextDisplay> {
-        val layers = canvas.layers()
-        if (layers.isEmpty()) return listOf(toEntity())
-        // Depth is the layer's ORDINAL, not its raw index. Layer numbers are
-        // sparse (elevation * KINDS_PER_ELEVATION + kind leaves gaps), and
-        // stepping by the raw value would pile up depth the UI never asked
-        // for, eventually opening a visible gap between front and back.
-        return layers.mapIndexed { ordinal, layer -> toEntity(layer, ordinal) }
+    private fun configureMotion(entity: VirtualEntity) {
+        entity.interpolationDuration = motionInterpolationTicks
+        entity.teleportDuration = motionInterpolationTicks
+        entity.startInterpolation = 0
     }
+
+    /**
+     * [RenderMode.COMPOSITED]: one text display per canvas layer, plus any
+     * explicitly requested block displays. One allocator orders both media,
+     * including the real thickness occupied by a block.
+     */
+    private fun toEntitiesComposited(): List<VirtualEntity> {
+        val layers = canvas.layers()
+        val extras = elements
+        if (layers.isEmpty() && extras.isEmpty()) return listOf(toEntity())
+
+        val depths = DepthAllocator.allocate(
+            layers.map { DepthLayer(canvasLayerAllocationKey(it), 0f) } +
+                extras.map { DepthLayer(it.depthKey, it.thickness) },
+            separation = LAYER_Z_STEP
+        )
+        val out = mutableListOf<Pair<Double, VirtualEntity>>()
+        layers.forEach { layer ->
+            val key = canvasLayerAllocationKey(layer)
+            val entity = toEntityAtDepth(
+                layer,
+                depths.getValue(key) + canvasLayerDepthOffset(layer)
+            ).also { it.reconcileKey = "canvas-layer/$layer" }
+            out += canvasLayerOrderKey(layer) to entity
+        }
+        extras.forEach { el ->
+            val depth = depths.getValue(el.depthKey)
+            val entity = when (el) {
+                is EntityElement.SpriteEl -> spriteEntity(el, depth + el.depthOffset)
+                is EntityElement.LabelEl -> labelEntity(el, depth + el.depthOffset)
+                is EntityElement.BlockEl -> blockEntity(el, depth)
+            }.also { it.reconcileKey = el.reconcileKey }
+            out += el.depthKey to entity
+        }
+        return out.sortedBy { it.first }.map { it.second }
+    }
+
+    /** The chrome plane a laminated face layer belongs to. */
+    private fun canvasLayerAllocationKey(layer: Int): Double =
+        if (layer >= FACE_LAYER_BASE) (layer - FACE_LAYER_BASE).toDouble()
+        else layer.toDouble()
+
+    /** Paint coatings after their chrome, but before the next ordinary kind. */
+    private fun canvasLayerOrderKey(layer: Int): Double =
+        canvasLayerAllocationKey(layer) + if (layer >= FACE_LAYER_BASE) 0.5 else 0.0
+
+    /** Physical separation is local to the coating, not a global layer step. */
+    private fun canvasLayerDepthOffset(layer: Int): Float =
+        if (layer >= FACE_LAYER_BASE) FACE_COATING_Z_BIAS else 0f
 
     /**
      * [RenderMode.ENTITIES]: one text display per painted [EntityElement]
      * instead of per depth layer -- see [RenderMode.ENTITIES]'s KDoc.
      *
-     * Ordered back-to-front by each element's `depthKey` (a stable sort, so
-     * two elements at the same key keep their paint order as the tiebreak --
-     * the same painter's-algorithm rule [Surface.KIND_CHROME] etc. already
-     * encode for [RenderMode.COMPOSITED]), then stepped by [LAYER_Z_STEP] per
-     * DISTINCT key -- not per element.
+     * Ordered back-to-front by each element's `depthKey`, but depth is
+     * allocated only through elements whose pixel bounds overlap. Disjoint
+     * labels and sprites remain exactly coplanar even when their kinds differ;
+     * an actual overlap advances only [ENTITY_OVERLAY_Z_BIAS].
      *
-     * Depth only has to separate elements that can actually overlap, and that
-     * is exactly what `depthKey` already encodes: two elements sharing a key
-     * are disjoint rects on the same conceptual layer (e.g. two grid-cell
-     * icons), and anything that DOES overlap another element -- an icon over
-     * a slot over chrome -- is on a different key by construction
-     * ([KIND_CHROME]/[KIND_SLOT]/[KIND_ICON]/[KIND_TEXT], plus
-     * [recordFrame]'s `+0.5`). Stepping by raw element ordinal instead of
-     * distinct-key rank was a real bug: a ~120-element page put 1.2 blocks of
-     * physical depth between its first and last element (`120 *
-     * LAYER_Z_STEP`), which reads as a window tilted into a wedge rather than
-     * a flat panel. Ranking by distinct key instead caps the SAME window's
-     * total depth at `(distinct key count) * LAYER_Z_STEP`, matching what
-     * [toEntitiesComposited] already does per whole layer regardless of how
-     * many glyphs live on it.
+     * A global key rank still made a title label, a tab label and a grid icon
+     * into parallel sheets despite never touching. The overlap graph is the
+     * missing constraint: only an icon over its own slot, text over its own
+     * face, or another genuinely intersecting pair needs depth ordering.
      */
     private fun toEntitiesFlat(): List<VirtualEntity> {
         val ordered = elements.sortedBy { it.depthKey }
-        // Delegated to the one authority that orders every medium, rather
-        // than ranking keys here. Identical output today -- every element on
-        // this path is a flat plane, so a thickness of zero reduces the
-        // allocator exactly to `rank * LAYER_Z_STEP` -- but it is the same
-        // arithmetic a block display's real volume will go through, so the
-        // two cannot drift into disagreeing about what is in front of what.
-        val depths = DepthAllocator.allocate(
-            ordered.map { DepthLayer(it.depthKey, it.thickness) },
-            separation = LAYER_Z_STEP
-        )
+        val depths = allocateLocalEntityDepths(ordered)
         return ordered.map { el ->
-            val depth = depths.getValue(el.depthKey)
-            when (el) {
-                is EntityElement.SpriteEl -> spriteEntity(el, depth)
-                is EntityElement.LabelEl -> labelEntity(el, depth)
+            val depth = depths.getValue(el)
+            val entity = when (el) {
+                is EntityElement.SpriteEl -> spriteEntity(el, depth + el.depthOffset)
+                is EntityElement.LabelEl -> labelEntity(el, depth + el.depthOffset)
                 is EntityElement.BlockEl -> blockEntity(el, depth)
             }
+            entity.reconcileKey = el.reconcileKey
+            entity
         }
+    }
+
+    /** Allocate depth through the local overlap graph, one conceptual key at a time. */
+    private fun allocateLocalEntityDepths(
+        ordered: List<EntityElement>
+    ): Map<EntityElement, Float> {
+        data class Placed(val element: EntityElement, val depth: Float)
+
+        val result = HashMap<EntityElement, Float>(ordered.size)
+        val placed = mutableListOf<Placed>()
+        for (group in ordered.groupBy { it.depthKey }.values) {
+            val groupDepths = group.associateWith { element ->
+                placed.asSequence()
+                    .filter { overlaps(elementBounds(it.element), elementBounds(element)) }
+                    .maxOfOrNull { renderedFront(it.element, it.depth) + ENTITY_OVERLAY_Z_BIAS }
+                    ?: 0f
+            }
+            groupDepths.forEach { (element, depth) ->
+                result[element] = depth
+                placed += Placed(element, depth)
+            }
+        }
+        return result
+    }
+
+    private fun elementBounds(element: EntityElement): Rect = when (element) {
+        is EntityElement.SpriteEl -> element.rect
+        is EntityElement.BlockEl -> element.rect
+        is EntityElement.LabelEl -> Rect(
+            element.x,
+            element.y,
+            TextMetrics.textWidthPx(element.text),
+            TextMetrics.lineCount(element.text) * TextMetrics.FONT_LINE_HEIGHT_PX
+        )
+    }
+
+    private fun overlaps(a: Rect, b: Rect): Boolean =
+        a.x < b.right && b.x < a.right && a.y < b.bottom && b.y < a.bottom
+
+    private fun renderedFront(element: EntityElement, depth: Float): Float = when (element) {
+        is EntityElement.BlockEl -> when {
+            element.behindLayer -> depth
+            // A local extrusion (for example a button body) deliberately
+            // does not reserve depth for unrelated content that happens to
+            // cross its rect. Its own face is placed with an explicit
+            // depthOffset. Only a true blockPanel advances later layers.
+            else -> depth + element.thickness
+        }
+        // Explicit offsets are local coatings (not structural thickness).
+        // A raised button face must not lift a later window-frame strip that
+        // merely crosses the same pixels, or that strip becomes a detached
+        // sheet at the button's full height.
+        is EntityElement.SpriteEl -> depth
+        is EntityElement.LabelEl -> depth
     }
 
     /**
@@ -876,9 +1109,9 @@ class Surface(
      * Unlike the sprite and label paths this is NOT a flat quad, which is the
      * entire point -- a block display is world-lit, carries a real material
      * and has genuine depth. [DepthAllocator] has already reserved
-     * [EntityElement.BlockEl.thickness] of space for it, so [depth] is the
-     * BACK face and the block grows forward from there into space nothing
-     * else was given.
+     * [EntityElement.BlockEl.thickness] of space for a proud panel. For a
+     * backing block, [depth] is instead its front face and the physical volume
+     * grows behind it without advancing unrelated layers.
      *
      * The block is scaled to the element's pixel rect on the panel's two
      * in-plane axes and to its real thickness on the third, so it lines up
@@ -886,7 +1119,15 @@ class Surface(
      */
     private fun blockEntity(el: EntityElement.BlockEl, depth: Float): VirtualBlockDisplay {
         val base = planePoint(el.rect.x, el.rect.y)
-        val unit = pixelScale
+        // pixelScale scales an 8px text glyph. A canvas pixel is only
+        // PIXEL_SIZE (1/8) of that unit; omitting this factor makes every
+        // block panel eight times wider and taller than its requested rect.
+        val unit = TextMetrics.PIXEL_SIZE * pixelScale
+        val blockDepth = if (el.behindLayer) {
+            depth - el.physicalThickness - FACE_COATING_Z_BIAS
+        } else {
+            depth
+        }
         return VirtualBlockDisplay().also { d ->
             d.blockState = el.block
             d.position = base
@@ -901,15 +1142,18 @@ class Surface(
                     .rotateY(Math.toRadians(yawDegrees.toDouble()).toFloat())
                     // Canvas +Y runs downward, so the block hangs down from
                     // its top-left corner, matching planePoint's convention.
-                    .translate(0f, -(unit * el.rect.h), depth)
-                    .scale(unit * el.rect.w, unit * el.rect.h, el.thickness)
+                    .translate(0f, -(unit * el.rect.h), blockDepth)
+                    .scale(unit * el.rect.w, unit * el.rect.h, el.physicalThickness)
             )
         }
     }
 
     @JvmOverloads
-    fun toEntity(layer: Int? = null, depthIndex: Int = 0): VirtualTextDisplay = VirtualTextDisplay().also { d ->
-        d.position = entityOrigin(depthIndex * LAYER_Z_STEP)
+    fun toEntity(layer: Int? = null, depthIndex: Int = 0): VirtualTextDisplay =
+        toEntityAtDepth(layer, depthIndex * LAYER_Z_STEP)
+
+    private fun toEntityAtDepth(layer: Int?, depth: Float): VirtualTextDisplay = VirtualTextDisplay().also { d ->
+        d.position = entityOrigin(depth)
         d.billboard = orientation
         // ONLY the bottom layer. A text display paints its background across
         // the whole measured block, so giving every layer one stacks N opaque
@@ -1008,8 +1252,25 @@ class Surface(
         val cx = px - entry.width / 2
         val cy = py - entry.height / 2
 
-        // One step in front of the frontmost content layer.
-        val depth = (canvas.layers().size) * LAYER_Z_STEP
+        // One step in front of the frontmost content layer. This must use the
+        // same mixed-media allocation as toEntities(): a block button can be
+        // thicker than several ordinary layer gaps, so counting canvas layers
+        // alone would leave the pointer embedded inside the button slab.
+        val blocks = elements.filterIsInstance<EntityElement.BlockEl>()
+        val depth = if (blocks.isEmpty()) {
+            // Preserve the original flat-surface placement exactly. In
+            // ENTITIES mode canvas.layers() is empty, which deliberately puts
+            // a pointer on the same plane as an ordinary standalone icon.
+            canvas.layers().size * LAYER_Z_STEP
+        } else {
+            val depthLayers = if (effectiveRenderMode() == RenderMode.COMPOSITED) {
+                canvas.layers().map { DepthLayer(it.toDouble(), 0f) } +
+                    blocks.map { DepthLayer(it.depthKey, it.thickness) }
+            } else {
+                elements.map { DepthLayer(it.depthKey, it.thickness) }
+            }
+            DepthAllocator.totalDepth(depthLayers, LAYER_Z_STEP) + LAYER_Z_STEP
+        }
 
         // ONE path, both render modes.
         //
@@ -1033,7 +1294,7 @@ class Surface(
                 entry, Rect(cx, cy, entry.width, entry.height), null, 0.0
             ),
             depth
-        )
+        ).also(::configureMotion)
     }
 
     private inner class Painter : SurfacePainter {
@@ -1055,6 +1316,26 @@ class Surface(
 
         private fun depth(kind: Int) = elevation * KINDS_PER_ELEVATION + kind
 
+        /**
+         * A second text display laminated onto this elevation's chrome.
+         * Keeping the ordinary chrome key encoded in the layer id lets both
+         * displays share identical canvas bounds and entity origins.
+         */
+        private fun faceLayer() = FACE_LAYER_BASE + depth(KIND_CHROME)
+
+        override fun identity(key: String, block: SurfacePainter.() -> Unit) {
+            val previousIdentity = paintIdentity
+            val previousOrdinal = paintIdentityOrdinal
+            paintIdentity = key
+            paintIdentityOrdinal = 0
+            try {
+                block()
+            } finally {
+                paintIdentity = previousIdentity
+                paintIdentityOrdinal = previousOrdinal
+            }
+        }
+
         override fun elevate(delta: Int, block: SurfacePainter.() -> Unit) {
             val previous = elevation
             elevation += delta
@@ -1065,9 +1346,9 @@ class Surface(
             }
         }
 
-        override fun frame(entry: SpriteEntry, rect: Rect, tint: DkColor?) {
-            if (mode == RenderMode.ENTITIES) {
-                recordFrame(entry, rect, tint, depth(KIND_CHROME).toDouble())
+        override fun frame(entry: SpriteEntry, rect: Rect, tint: DkColor?, depthOffset: Float) {
+            if (mode == RenderMode.ENTITIES || depthOffset != 0f) {
+                recordFrame(entry, rect, tint, depth(KIND_CHROME).toDouble(), depthOffset)
                 return
             }
             canvas.currentLayer = depth(KIND_CHROME)
@@ -1075,18 +1356,20 @@ class Surface(
         }
 
         override fun fill(color: DkColor, rect: Rect) {
-            if (mode == RenderMode.ENTITIES) {
-                val e = resolveSprite(FILL_SPRITE, "a colour fill") ?: return
+            val e = resolveSprite(FILL_SPRITE, "a colour fill") ?: return
+            if (mode == RenderMode.ENTITIES || rect.w < e.width || rect.h < e.height) {
                 // Stretched, not tiled: one entity for the whole rect. Tiling
                 // exists only to keep a bitmap glyph's own pixels crisp under
                 // the composited canvas; a fill sprite is uniform colour, so
                 // stretching it is visually identical and costs one entity
-                // instead of a grid of them.
-                elements += EntityElement.SpriteEl(e, rect, color, depth(KIND_CHROME).toDouble())
+                // instead of a grid of them. The same fallback is deliberately
+                // used for sub-glyph rectangles in composited mode. Thin
+                // dividers, progress fills and row highlights are valid UI;
+                // callers must never need to know the source glyph is 16 px.
+                recordElement(EntityElement.SpriteEl(e, rect, color, depth(KIND_CHROME).toDouble()))
                 return
             }
             canvas.currentLayer = depth(KIND_CHROME)
-            val e = resolveSprite(FILL_SPRITE, "a colour fill") ?: return
             // A fill lands wherever its rect does, and a glyph's ascent is
             // baked per y phase -- so a panel that moves two pixels mints a
             // new variant, rebuilds the pack, and costs every connected
@@ -1095,15 +1378,11 @@ class Surface(
             // to predict the y values its layout will produce. Idempotent
             // and a few map lookups; clicking a picker tab used to cost a
             // full pack rebuild for want of this.
-            SpriteGlyphs.warmAllPhases(e)
             require(e.width > 0 && e.height > 0) {
                 "Fill sprite $FILL_SPRITE has non-positive dimensions " +
                     "(${e.width}x${e.height})."
             }
-            require(rect.w >= e.width && rect.h >= e.height) {
-                "A fill rect must be at least ${e.width}x${e.height} " +
-                    "(asked for ${rect.w}x${rect.h}). Tiling needs one whole tile to fit."
-            }
+            SpriteGlyphs.warmAllPhases(e)
             for (y in tileSteps(rect.y, rect.bottom, e.height)) {
                 for (x in tileSteps(rect.x, rect.right, e.width)) {
                     canvas.draw(e, x, y, color)
@@ -1128,7 +1407,7 @@ class Surface(
             val w = entry.scaledWidth(h)
             val (rx, ry) = SpriteFit.origin(entry, x, y, boxW, boxH)
             if (mode == RenderMode.ENTITIES) {
-                elements += EntityElement.SpriteEl(entry, Rect(rx, ry, w, h), tint, depth(KIND_ICON).toDouble())
+                recordElement(EntityElement.SpriteEl(entry, Rect(rx, ry, w, h), tint, depth(KIND_ICON).toDouble()))
                 return w to h
             }
             canvas.currentLayer = depth(KIND_ICON)
@@ -1136,39 +1415,115 @@ class Surface(
             return w to h
         }
 
+        override fun chromeIconFitted(
+            entry: SpriteEntry,
+            x: Int,
+            y: Int,
+            boxW: Int,
+            boxH: Int,
+            tint: DkColor?
+        ): Pair<Int, Int> {
+            val h = SpriteFit.height(entry, boxW, boxH)
+            val w = entry.scaledWidth(h)
+            val (rx, ry) = SpriteFit.origin(entry, x, y, boxW, boxH)
+            if (mode == RenderMode.ENTITIES) {
+                recordElement(EntityElement.SpriteEl(
+                    entry,
+                    Rect(rx, ry, w, h),
+                    tint,
+                    depth(KIND_CHROME).toDouble()
+                ))
+                return w to h
+            }
+            canvas.currentLayer = depth(KIND_CHROME)
+            canvas.draw(entry, rx, ry, tint, renderHeight = h)
+            return w to h
+        }
+
         override fun icon(entry: SpriteEntry, x: Int, y: Int, tint: DkColor?) {
             if (mode == RenderMode.ENTITIES) {
-                elements += EntityElement.SpriteEl(entry, Rect(x, y, entry.width, entry.height), tint, depth(KIND_ICON).toDouble())
+                recordElement(EntityElement.SpriteEl(entry, Rect(x, y, entry.width, entry.height), tint, depth(KIND_ICON).toDouble()))
                 return
             }
             canvas.currentLayer = depth(KIND_ICON)
             canvas.draw(entry, x, y, tint)
         }
 
+        override fun faceIcon(entry: SpriteEntry, x: Int, y: Int, tint: DkColor?, depthOffset: Float) {
+            if (mode == RenderMode.COMPOSITED && depthOffset == 0f) {
+                canvas.currentLayer = faceLayer()
+                canvas.draw(entry, x, y, tint)
+                return
+            }
+            recordElement(EntityElement.SpriteEl(
+                entry,
+                Rect(x, y, entry.width, entry.height),
+                tint,
+                depth(KIND_CHROME).toDouble(),
+                depthOffset = depthOffset + FACE_COATING_Z_BIAS
+            ))
+        }
+
         override fun label(text: String, x: Int, y: Int, color: DkColor?) {
             if (mode == RenderMode.ENTITIES) {
-                elements += EntityElement.LabelEl(text, x, y, color, depth(KIND_TEXT).toDouble())
+                recordElement(EntityElement.LabelEl(text, x, y, color, depth(KIND_TEXT).toDouble()))
                 return
             }
             canvas.currentLayer = depth(KIND_TEXT)
             canvas.text(text, x, y, color)
         }
 
+        override fun faceLabel(text: String, x: Int, y: Int, color: DkColor?, depthOffset: Float) {
+            if (mode == RenderMode.COMPOSITED && depthOffset == 0f) {
+                canvas.currentLayer = faceLayer()
+                canvas.text(
+                    text,
+                    x,
+                    y - TextMetrics.TEXT_ROW_ANCHOR_OFFSET_PX,
+                    color
+                )
+                return
+            }
+            recordElement(EntityElement.LabelEl(
+                text, x, y, color, depth(KIND_CHROME).toDouble(),
+                depthOffset = depthOffset + FACE_COATING_Z_BIAS
+            ))
+        }
+
         override fun blockPanel(block: BlockStateRef, rect: Rect, thickness: Float) {
-            // A composited surface is one flat canvas; a solid block has
-            // nowhere to stand in it. Skipped rather than approximated, so a
-            // caller who asked for real volume never silently gets a flat
-            // rectangle pretending to be one -- use fill() for that.
-            if (mode != RenderMode.ENTITIES) return
-            elements += EntityElement.BlockEl(
-                block, rect, thickness, depth(KIND_CHROME).toDouble()
-            )
+            require(thickness > 0f) {
+                "A block panel must have positive thickness (got $thickness). Use fill() for a flat rectangle."
+            }
+            recordElement(EntityElement.BlockEl(
+                block, rect, thickness, behindLayer = false, reserveThickness = true,
+                depthKey = depth(KIND_CHROME).toDouble()
+            ))
+        }
+
+        override fun blockBacking(block: BlockStateRef, rect: Rect, thickness: Float) {
+            require(thickness > 0f) {
+                "A block backing must have positive thickness (got $thickness). Use fill() for a flat rectangle."
+            }
+            recordElement(EntityElement.BlockEl(
+                block, rect, thickness, behindLayer = true, reserveThickness = false,
+                depthKey = depth(KIND_CHROME).toDouble()
+            ))
+        }
+
+        override fun blockExtrusion(block: BlockStateRef, rect: Rect, thickness: Float) {
+            require(thickness > 0f) {
+                "A block extrusion must have positive thickness (got $thickness)."
+            }
+            recordElement(EntityElement.BlockEl(
+                block, rect, thickness, behindLayer = false, reserveThickness = false,
+                depthKey = depth(KIND_CHROME).toDouble()
+            ))
         }
 
         override fun slot(x: Int, y: Int, item: ItemRef?) {
             val e = resolveSprite(SLOT_SPRITE, "a slot") ?: return
             if (mode == RenderMode.ENTITIES) {
-                elements += EntityElement.SpriteEl(e, Rect(x, y, e.width, e.height), null, depth(KIND_SLOT).toDouble())
+                recordElement(EntityElement.SpriteEl(e, Rect(x, y, e.width, e.height), null, depth(KIND_SLOT).toDouble()))
             } else {
                 canvas.currentLayer = depth(KIND_SLOT)
                 canvas.draw(e, x, y)
@@ -1203,9 +1558,9 @@ class Surface(
      *    on the target rect's corner. The rest of that native-size copy --
      *    the part that is really centre/edge art, not corner art -- spills
      *    INWARD, over the window's interior.
-     * 2. A tinted fill sprite is drawn IN FRONT of the corners (`baseKey +
-     *    0.5`, strictly between this frame's own KIND_CHROME depth and the
-     *    next KIND above it), inset by the nine-slice borders on all four
+     * 2. A tinted fill sprite is drawn microscopically IN FRONT of the
+     *    corners while retaining the same conceptual depth key, inset by the
+     *    nine-slice borders on all four
      *    sides PLUS flat border strips between the corners. Between them
      *    they cover exactly the area the corners spilled over, hiding it.
      *
@@ -1235,10 +1590,16 @@ class Surface(
      * other, the same minimum [NineSliceLayout] imposes on the composited
      * path).
      */
-    private fun recordFrame(entry: SpriteEntry, rect: Rect, tint: DkColor?, baseKey: Double) {
+    private fun recordFrame(
+        entry: SpriteEntry,
+        rect: Rect,
+        tint: DkColor?,
+        baseKey: Double,
+        depthOffset: Float = 0f
+    ) {
         val slice = entry.nineSlice
         if (slice == null || rect.w < entry.width || rect.h < entry.height) {
-            elements += EntityElement.SpriteEl(entry, rect, tint, baseKey)
+            recordElement(EntityElement.SpriteEl(entry, rect, tint, baseKey, depthOffset))
             return
         }
         // At exactly native size there is nothing to stretch, so slicing is
@@ -1249,29 +1610,30 @@ class Surface(
         // fill painted an opaque slab over a frame vanilla leaves hollow --
         // the selected tab came out a solid white box with its label buried.
         if (rect.w == entry.width && rect.h == entry.height) {
-            elements += EntityElement.SpriteEl(entry, rect, tint, baseKey)
+            recordElement(EntityElement.SpriteEl(entry, rect, tint, baseKey, depthOffset))
             return
         }
         val l = slice.left; val t = slice.top; val r = slice.right; val b = slice.bottom
 
         // Corners: native size, anchored so their spill runs inward, never
         // outside the rect.
-        elements += EntityElement.SpriteEl(entry, Rect(rect.x, rect.y, entry.width, entry.height), tint, baseKey)
-        elements += EntityElement.SpriteEl(
-            entry, Rect(rect.right - entry.width, rect.y, entry.width, entry.height), tint, baseKey
-        )
-        elements += EntityElement.SpriteEl(
-            entry, Rect(rect.x, rect.bottom - entry.height, entry.width, entry.height), tint, baseKey
-        )
-        elements += EntityElement.SpriteEl(
-            entry, Rect(rect.right - entry.width, rect.bottom - entry.height, entry.width, entry.height), tint, baseKey
-        )
+        recordElement(EntityElement.SpriteEl(entry, Rect(rect.x, rect.y, entry.width, entry.height), tint, baseKey, depthOffset))
+        recordElement(EntityElement.SpriteEl(
+            entry, Rect(rect.right - entry.width, rect.y, entry.width, entry.height), tint, baseKey, depthOffset
+        ))
+        recordElement(EntityElement.SpriteEl(
+            entry, Rect(rect.x, rect.bottom - entry.height, entry.width, entry.height), tint, baseKey, depthOffset
+        ))
+        recordElement(EntityElement.SpriteEl(
+            entry, Rect(rect.right - entry.width, rect.bottom - entry.height, entry.width, entry.height), tint, baseKey, depthOffset
+        ))
 
-        // Background + edge strips occlude the inward spill. One depth step
-        // in FRONT of the corners (still behind the next KIND up), or the
-        // occlusion is a coin flip instead of a guarantee -- see this
-        // function's own KDoc.
-        val fillKey = baseKey + 0.5
+        // Background + edge strips occlude the inward spill. They are a local
+        // coating, not a structural layer: assigning baseKey + 0.5 made the
+        // composited allocator spend a full LAYER_Z_STEP and put a stretched
+        // button's fill in front of its own label. Keep the conceptual key
+        // and express only the microscopic ordering this assembly needs.
+        val fillDepthOffset = depthOffset + ENTITY_OVERLAY_Z_BIAS
         val fill = resolveSprite(FILL_SPRITE, "a frame background") ?: return
         // A caller-supplied tint always wins; otherwise fall back to the real
         // frame's own average colour so the flat fill reads as the same
@@ -1289,15 +1651,15 @@ class Surface(
         val innerW = rect.w - l - r
         val innerH = rect.h - t - b
         if (innerW > 0 && innerH > 0) {
-            elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y + t, innerW, innerH), fillTint, fillKey)
+            recordElement(EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y + t, innerW, innerH), fillTint, baseKey, fillDepthOffset))
         }
-        if (innerW > 0 && t > 0) elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y, innerW, t), fillTint, fillKey)
+        if (innerW > 0 && t > 0) recordElement(EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.y, innerW, t), fillTint, baseKey, fillDepthOffset))
         if (innerW > 0 && b > 0) {
-            elements += EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.bottom - b, innerW, b), fillTint, fillKey)
+            recordElement(EntityElement.SpriteEl(fill, Rect(rect.x + l, rect.bottom - b, innerW, b), fillTint, baseKey, fillDepthOffset))
         }
-        if (innerH > 0 && l > 0) elements += EntityElement.SpriteEl(fill, Rect(rect.x, rect.y + t, l, innerH), fillTint, fillKey)
+        if (innerH > 0 && l > 0) recordElement(EntityElement.SpriteEl(fill, Rect(rect.x, rect.y + t, l, innerH), fillTint, baseKey, fillDepthOffset))
         if (innerH > 0 && r > 0) {
-            elements += EntityElement.SpriteEl(fill, Rect(rect.right - r, rect.y + t, r, innerH), fillTint, fillKey)
+            recordElement(EntityElement.SpriteEl(fill, Rect(rect.right - r, rect.y + t, r, innerH), fillTint, baseKey, fillDepthOffset))
         }
     }
 }
@@ -1315,6 +1677,7 @@ class Surface(
  *   otherwise share one integer kind.
  */
 private sealed class EntityElement(val depthKey: Double) {
+    var reconcileKey: String? = null
     /**
      * Depth this element physically occupies, in blocks.
      *
@@ -1328,7 +1691,8 @@ private sealed class EntityElement(val depthKey: Double) {
         val entry: SpriteEntry,
         val rect: Rect,
         val tint: DkColor?,
-        depthKey: Double
+        depthKey: Double,
+        val depthOffset: Float = 0f
     ) : EntityElement(depthKey)
 
     class LabelEl(
@@ -1336,7 +1700,8 @@ private sealed class EntityElement(val depthKey: Double) {
         val x: Int,
         val y: Int,
         val color: DkColor?,
-        depthKey: Double
+        depthKey: Double,
+        val depthOffset: Float = 0f
     ) : EntityElement(depthKey)
 
     /**
@@ -1351,12 +1716,16 @@ private sealed class EntityElement(val depthKey: Double) {
     class BlockEl(
         val block: BlockStateRef,
         val rect: Rect,
-        override val thickness: Float,
+        val physicalThickness: Float,
+        val behindLayer: Boolean,
+        val reserveThickness: Boolean,
         depthKey: Double
     ) : EntityElement(depthKey) {
+        override val thickness: Float = if (reserveThickness) physicalThickness else 0f
+
         init {
-            require(thickness > 0f) {
-                "a block element must have real depth, got $thickness -- " +
+            require(physicalThickness > 0f) {
+                "a block element must have real depth, got $physicalThickness -- " +
                     "use a sprite fill for a flat rectangle"
             }
         }

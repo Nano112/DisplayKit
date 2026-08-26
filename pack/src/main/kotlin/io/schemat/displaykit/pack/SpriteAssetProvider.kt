@@ -429,9 +429,6 @@ object SpriteAssetProvider : AssetProvider {
 object ChatBubbleConfig {
     enum class TailPosition {
         BOTTOM_LEFT,
-        BOTTOM_RIGHT,
-        TOP_LEFT,
-        TOP_RIGHT,
         NONE
     }
 }

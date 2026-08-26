@@ -3,6 +3,7 @@ package io.schemat.displaykit.fabric.input
 import io.schemat.displaykit.surface.ScrollWrap
 import io.schemat.displaykit.surface.SurfaceFocus
 import io.schemat.displaykit.ui.InteractionRouter
+import io.schemat.displaykit.fabric.thread.ServerThreadDispatcher
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket
 import net.minecraft.server.level.ServerPlayer
 import java.util.UUID
@@ -21,16 +22,15 @@ import java.util.concurrent.ConcurrentHashMap
  * [SurfaceFocus.isScrollArmed] there is safe -- its backing fields are
  * volatile precisely for this. But scrolling a node, repainting and sending
  * entity metadata are all game-state mutations, so that work is hopped onto
- * the server thread via [ServerPlayer.getServer]`.execute`. The cancel
+ * the server thread via [ServerThreadDispatcher]. The cancel
  * decision itself can't wait for that hop to finish -- Mixin needs an
  * immediate true/false -- so it is made purely from [SurfaceFocus.isScrollArmed]:
  * if the pointer is over a scrollable, the wheel belongs to the surface, and
  * we cancel and snap the client back regardless of whether a node ends up
  * consuming the notch.
  *
- * `ServerPlayer.server` is private (compile-checked, not just undocumented);
- * `player.level().server` is the accessor already used elsewhere in this
- * codebase (see `HotbarMenu.kt`), so that's what's used here too.
+ * The dispatcher also rejects the shutdown race where Minecraft can otherwise
+ * execute a nominally queued callback inline on the packet thread.
  */
 object HotbarScrollCapture {
 
@@ -58,7 +58,7 @@ object HotbarScrollCapture {
         // held-slot packet is sent from inside the same block, after the
         // scroll resolves, for consistency (connection.send itself is safe
         // to call from any thread and just queues the packet either way).
-        player.level().server.execute {
+        ServerThreadDispatcher.dispatch(player.level().server) {
             InteractionRouter.getSurfaces(id).any { it.handleScroll(delta) }
             player.connection.send(ClientboundSetHeldSlotPacket(anchor))
         }
@@ -73,5 +73,10 @@ object HotbarScrollCapture {
 
     fun forget(playerId: UUID) {
         heldSlot.remove(playerId)
+    }
+
+    /** Drop every remembered slot during owner-thread server teardown. */
+    fun clear() {
+        heldSlot.clear()
     }
 }

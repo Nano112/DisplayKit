@@ -1,46 +1,29 @@
-> **Update:** the floating `VirtualHotbar` strip described below is
-> **deprecated**. Use `io.schemat.displaykit.fabric.hotbar.HotbarMenu` — a menu
-> state over the player's REAL inventory hotbar: slots 1-9 become clickable
-> button items (originals stashed to disk and restored on close/death/
-> disconnect/crash-rejoin). Right-click presses the selected button; scrolling
-> fires `HotbarSlot.onScrollTo` for live previews; button items are inert and
-> self-healing. Slot 9 is always Exit/Back; >8 entries paginate with arrows at
-> slots 7/8. `HotbarSlot`/`HotbarHost` are shared between both hosts, so menus
-> written against `HotbarHost` run on either.
+# DisplayKit: inventory toolbar and holograms
 
-# DisplayKit: VirtualHotbar & Hologram
+## Inventory toolbar
 
-Two primitives for tool-driven building UX (added for hardwired's place/move/
-edit tools; both are generic library features).
-
-## VirtualHotbar (`io.schemat.displaykit.ui.hotbar`)
-
-A server-driven, hotbar-like menu strip pinned to the player's view: a row of
-icon buttons ~2.5 blocks ahead and below eye height, following the camera
-(with reposition hysteresis) and auto-facing the player.
+Use semantic `ActionPage`/`ActionSpec` state with
+`InventoryToolbarRenderer`. The renderer temporarily presents actions in the
+player's real inventory hotbar, persists and restores displaced items, uses
+vanilla item sprites, supports scroll focus and right-click activation, and
+owns Back/Exit plus paging.
 
 ```kotlin
-val hotbar = VirtualHotbar(platform, playerRef, listOf(
-    HotbarSlot("place", "Place", BlockStateRef.LIME_CONCRETE) { hb ->
-        hb.push(placeablesSubmenu)         // submenus stack; back slot appears
-    },
-    HotbarSlot("edit", "Edit", BlockStateRef.CYAN_CONCRETE) { openEditor() },
-    HotbarSlot("locked", "???", enabled = false),
-))
-hotbar.show()      // hide() / destroy(); auto-hides after idleTimeoutTicks
+val actions = ActionMenuSession(ActionPage("tools", listOf(
+    ActionSpec.submenu("place", "Place") { placeActions },
+    ActionSpec("edit", "Edit", onInvoke = ActionHandler { openEditor() }),
+    ActionSpec("locked", "???", enabled = false),
+)))
+InventoryToolbarRenderer.present(player, actions)
 ```
 
-- **Selection = look + right-click.** The slot nearest the crosshair
-  highlights (standard hover); right-click selects. Selection is deliberately
-  NOT driven by the real held-item slot: scrolling would swap the item the
-  player is holding — which fights held-tool workflows (keep holding the
-  Place tool while browsing) — and capturing scroll server-side would need
-  another packet mixin. Back is an explicit `←` slot (stack depth > 1).
-- **Pagination**: content beyond `maxVisible` (default 9) gets `◀`/`▶` edge
-  slots with a `page/pages` label; positions stay stable across pages.
-  Windowing math lives in `HotbarLayout` (pure, unit-tested).
-- **Icons** are block states; item icons can be added later via
-  `VirtualItemDisplay` if needed.
+Application navigation lives entirely in the action session; the inventory
+toolbar is only one renderer for that state.
+
+When a world tool and toolbar share the same physical click, submit both as
+`InteractionCandidate`s to the player's `InteractionContext`. Use
+`activateSelectedNavigation` as the toolbar candidate; application code should
+never inspect inventory slots or renderer cell kinds to infer intent.
 
 ## Hologram (`io.schemat.displaykit.ui.Hologram`)
 

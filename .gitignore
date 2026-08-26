@@ -1,0 +1,12 @@
+.gradle/
+.kotlin/
+build/
+**/build/
+**/.gradle/
+**/run/
+**/run-server/
+.idea/
+.vscode/
+*.iml
+*.hprof
+.DS_Store

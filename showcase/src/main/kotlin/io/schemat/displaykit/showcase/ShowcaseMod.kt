@@ -2,12 +2,16 @@ package io.schemat.displaykit.showcase
 
 import com.mojang.brigadier.arguments.StringArgumentType
 import io.schemat.displaykit.fabric.FabricDisplayKit
+import io.schemat.displaykit.fabric.input.TerminalChatCapture
+import io.schemat.displaykit.fabric.thread.ServerThreadDispatcher
 import io.schemat.displaykit.fabric.text.Chat
 import io.schemat.displaykit.sprite.SpriteEntry
 import io.schemat.displaykit.sprite.SpriteIndex
 import io.schemat.displaykit.surface.RenderMode
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import com.mojang.brigadier.arguments.IntegerArgumentType
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
@@ -21,8 +25,8 @@ import org.slf4j.LoggerFactory
  *
  * DisplayKit is already a loadable mod but registers no commands, so nothing
  * in it is reachable without a consumer. This module is that consumer. It
- * lives outside the library so `hardwired` and `blockbrains` do not inherit a
- * `/dk` command tree they never asked for.
+ * lives outside the library so consumers do not inherit a `/dk` command tree
+ * they never asked for.
  */
 object ShowcaseMod : ModInitializer {
 
@@ -44,6 +48,18 @@ object ShowcaseMod : ModInitializer {
         FabricDisplayKit.enableResourcePack = true
 
         Demos.registerAll()
+
+        // One lifecycle boundary owns every showcase session. Individual
+        // demos stay focused on composition and cannot forget disconnect or
+        // shutdown cleanup when a new window type is added.
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, server ->
+            val playerId = handler.player.uuid
+            ServerThreadDispatcher.dispatch(server) { closePlayerSessions(playerId) }
+        }
+        ServerLifecycleEvents.SERVER_STOPPING.register { server ->
+            server.playerList.players.map { it.uuid }.forEach(::closePlayerSessions)
+            TerminalChatCapture.router = null
+        }
 
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             dispatcher.register(
@@ -185,6 +201,37 @@ object ShowcaseMod : ModInitializer {
                             }
                     )
                     .then(
+                        Commands.literal("map")
+                            .executes { ctx -> openCanvas(ctx.source, CanvasWindows.Kind.MAP) }
+                    )
+                    .then(
+                        Commands.literal("skills")
+                            .executes { ctx -> openCanvas(ctx.source, CanvasWindows.Kind.SKILLS) }
+                    )
+                    .then(
+                        Commands.literal("tabs")
+                            .executes { ctx -> openCanvas(ctx.source, CanvasWindows.Kind.TABS) }
+                    )
+                    .then(
+                        Commands.literal("closecanvas")
+                            .executes { ctx ->
+                                ctx.source.player?.let { CanvasWindows.closeFor(it.uuid) }
+                                1
+                            }
+                    )
+                    .then(
+                        Commands.literal("aimcanvas")
+                            .then(
+                                Commands.argument("node", StringArgumentType.word())
+                                    .executes { ctx ->
+                                        aimAtCanvasNode(
+                                            ctx.source,
+                                            StringArgumentType.getString(ctx, "node")
+                                        )
+                                    }
+                            )
+                    )
+                    .then(
                         // Measurement target, not a demo. Renders the same
                         // sprite pattern in either mode so the two captures
                         // can be diffed -- see CalibrationWindow's KDoc for
@@ -220,6 +267,44 @@ object ShowcaseMod : ModInitializer {
                             .executes { ctx -> openTerminal(ctx.source) }
                     )
                     .then(
+                        Commands.literal("toolbar")
+                            .executes { ctx ->
+                                val player = ctx.source.player ?: return@executes 0
+                                openWindow(player, "toolbar") { ToolbarDemo.open(player) }
+                            }
+                    )
+                    .then(
+                        Commands.literal("toolbarsurface")
+                            .executes { ctx ->
+                                val player = ctx.source.player ?: return@executes 0
+                                openWindow(player, "surface toolbar") { ToolbarDemo.openSurface(player) }
+                            }
+                    )
+                    .then(
+                        Commands.literal("properties")
+                            .executes { ctx ->
+                                val player = ctx.source.player ?: return@executes 0
+                                openWindow(player, "properties") { PropertySheetDemo.open(player) }
+                            }
+                    )
+                    .then(
+                        Commands.literal("closeproperties")
+                            .executes { ctx ->
+                                ctx.source.player?.let { PropertySheetDemo.closeFor(it.uuid) }
+                                1
+                            }
+                    )
+                    .then(
+                        Commands.literal("closetoolbar")
+                            .executes { ctx ->
+                                ctx.source.player?.let {
+                                    ToolbarDemo.closeFor(it.uuid)
+                                    ToolbarDemo.closeSurfaceFor(it.uuid)
+                                }
+                                1
+                            }
+                    )
+                    .then(
                         Commands.literal("closeterminal")
                             .executes { ctx ->
                                 ctx.source.player?.let { TerminalWindow.closeFor(it.uuid) }
@@ -232,6 +317,16 @@ object ShowcaseMod : ModInitializer {
         logger.info("DisplayKit Showcase initialized ({} demos)", demos.size)
     }
 
+    private fun closePlayerSessions(playerId: java.util.UUID) {
+        PickerWindow.closeFor(playerId)
+        TerminalWindow.closeFor(playerId)
+        CanvasWindows.closeFor(playerId)
+        CalibrationWindow.closeFor(playerId)
+        PropertySheetDemo.closeFor(playerId)
+        ToolbarDemo.closeFor(playerId)
+        ToolbarDemo.closeSurfaceFor(playerId)
+    }
+
     private fun openPicker(source: CommandSourceStack, renderMode: RenderMode): Int {
         val p = source.player
         if (p == null) {
@@ -239,6 +334,37 @@ object ShowcaseMod : ModInitializer {
             return 0
         }
         return openWindow(p, "picker") { PickerWindow.open(p, renderMode) }
+    }
+
+    private fun openCanvas(source: CommandSourceStack, kind: CanvasWindows.Kind): Int {
+        val player = source.player ?: run {
+            source.sendFailure(Component.literal("Canvas window requires a player"))
+            return 0
+        }
+        return openWindow(player, kind.name.lowercase()) {
+            when (kind) {
+                CanvasWindows.Kind.MAP -> CanvasWindows.openMap(player)
+                CanvasWindows.Kind.SKILLS -> CanvasWindows.openSkills(player)
+                CanvasWindows.Kind.TABS -> CanvasWindows.openTabs(player)
+            }
+        }
+    }
+
+    private fun aimAtCanvasNode(source: CommandSourceStack, nodeId: String): Int {
+        val player = source.player ?: return 0
+        val result = CanvasWindows.aimAt(player.uuid, nodeId) ?: run {
+            source.sendFailure(Component.literal("No visible canvas node '$nodeId'"))
+            return 0
+        }
+        logger.info(
+            "aimcanvas {} -> yaw {} pitch {}, ray lands on {}",
+            nodeId, result.yaw, result.pitch, result.landedOn ?: "NOTHING"
+        )
+        source.sendSuccess(
+            { Component.literal("aimed at $nodeId, ray lands on ${result.landedOn ?: "NOTHING"}") },
+            false
+        )
+        return if (result.landedOn != null) 1 else 0
     }
 
 

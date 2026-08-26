@@ -84,13 +84,17 @@ object SurfaceFocus {
     fun grab(player: UUID, node: SurfaceNode): Boolean {
         if (node.onGrabMove == null) return false
         entry(player).grabbed = node
+        node.onGrabStart?.invoke()
         return true
     }
 
     fun grabbed(player: UUID): SurfaceNode? = entries[player]?.grabbed
 
     fun release(player: UUID) {
-        entries[player]?.grabbed = null
+        entries[player]?.let { entry ->
+            entry.grabbed?.onGrabEnd?.invoke()
+            entry.grabbed = null
+        }
     }
 
     /** Drop all state — surface closed, or the player disconnected. */
@@ -128,7 +132,7 @@ object SurfaceFocus {
     }
 
     fun clear(player: UUID) {
-        entries.remove(player)
+        entries.remove(player)?.grabbed?.onGrabEnd?.invoke()
         // After removal, so a listener that inspects focus sees it already
         // gone rather than a half-torn-down state. A throwing listener must
         // not strand the others or abort the caller's teardown.

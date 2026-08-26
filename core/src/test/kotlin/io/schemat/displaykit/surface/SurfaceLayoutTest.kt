@@ -70,6 +70,20 @@ class SurfaceLayoutTest {
     }
 
     @Test
+    fun paintTreeRemeasuresDynamicContentBeforePainting() {
+        val s = surface()
+        val leaf = WidgetNode("dynamic", PxSize(10, 10))
+        s.layout { root -> root.addChild(leaf) }
+        assertEquals(10, leaf.rect().w)
+
+        leaf.intrinsic = PxSize(70, 20)
+        s.paintTree()
+
+        assertEquals(70, leaf.rect().w)
+        assertEquals(20, leaf.rect().h)
+    }
+
+    @Test
     fun aZeroWidthWidgetInAStretchColumnIsNonZeroAfterLayout() {
         // Guards the PickerWindow crash: a WidgetNode with a zero-intrinsic
         // width, meant to span its COLUMN parent's full width, must actually

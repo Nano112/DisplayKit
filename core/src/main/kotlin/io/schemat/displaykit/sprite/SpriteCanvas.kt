@@ -261,12 +261,13 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
      * gap they represent — and [buildChildren] joins them with a single
      * `"\n"` child between each pair.
      *
-     * Within a row, items are sorted by `x` alone (stable — ties keep
-     * insertion order) and strung along a cursor that resets to `0` at the
-     * start of every row. The gap between the cursor and each item's `x` is
-     * closed with a [Spacing] advance, which is allowed to go negative: a
-     * glyph's advance exceeds its drawn width by 1, so touching or
-     * overlapping sprites correct the cursor backward.
+     * Within a row, items retain PAINT order and are strung along a cursor
+     * that resets to `0` at the start of every row. The gap between the cursor
+     * and each item's absolute `x` is closed with a [Spacing] advance, which
+     * is allowed to go negative. Keeping paint order is load-bearing for
+     * coplanar composition: a label painted after a tiled background must be
+     * emitted after every tile even when its x lies between them, otherwise a
+     * later tile covers the label inside the same text display.
      */
     /**
      * Pad every emitted row out to [widthPx], and emit at least
@@ -336,9 +337,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
 
     private fun rawMaxRowAdvance(): Int =
         items.groupBy { it.row }.values.maxOfOrNull { row ->
-            var cursor = 0
-            for (item in row.sortedBy { it.x }) cursor = item.x + item.advanceWidth
-            cursor
+            row.maxOfOrNull { it.x + it.advanceWidth } ?: 0
         } ?: 0
 
     /**
@@ -378,7 +377,7 @@ class SpriteCanvas(val widthPx: Int, val heightPx: Int) {
         for (row in 0..lastRow) {
             val children = mutableListOf<TextComponent>()
             var cursorX = 0
-            for (item in byRow[row].orEmpty().sortedBy { it.x }) {
+            for (item in byRow[row].orEmpty()) {
                 val gap = item.x - cursorX
                 if (gap != 0) {
                     children += TextComponent(text = Spacing.advance(gap), font = Spacing.FONT_ID)

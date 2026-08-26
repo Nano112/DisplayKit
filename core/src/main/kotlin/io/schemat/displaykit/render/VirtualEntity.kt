@@ -14,6 +14,12 @@ abstract class VirtualEntity(
     val entityId: Int = EntityIdAllocator.next(),
     val entityType: EntityType
 ) {
+    /**
+     * Stable composition identity used by hosts to reconcile a repaint.
+     * It is deliberately renderer-only and is never encoded into a packet.
+     */
+    var reconcileKey: String? = null
+
     var position: Vec3d = Vec3d.ZERO
         set(value) { field = value; dirty = true }
 

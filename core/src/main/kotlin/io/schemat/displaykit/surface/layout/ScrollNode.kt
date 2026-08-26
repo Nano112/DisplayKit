@@ -20,7 +20,7 @@ import io.schemat.displaykit.surface.SurfaceNodeMarker
  * SurfaceNodeMarker.TextCapturing`) without arming that marker for every
  * scroll pane in the codebase -- see `io.schemat.displaykit.surface.terminal`.
  */
-open class ScrollNode(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.Scrollable {
+open class ScrollNode(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.Scrollable, ChildViewport {
 
     /** Current scroll offset in pixels from the top of the content. */
     var scrollPx: Int = 0
@@ -59,6 +59,9 @@ open class ScrollNode(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.Scrol
         // the case for the uniform rows a scrolling list is built from.
         val step = stepPx.coerceAtLeast(1)
         viewportH = inner.maxH - (inner.maxH % step)
+        // A retained list can shrink while open. Never leave its old offset
+        // beyond the new extent, which would paint an apparently empty page.
+        scrollPx = scrollPx.coerceAtMost(maxScroll())
         return c.constrain(PxSize(inner.maxW + padding.horizontal, inner.maxH + padding.vertical))
     }
 
@@ -114,7 +117,7 @@ open class ScrollNode(id: String) : BaseSurfaceNode(id), SurfaceNodeMarker.Scrol
     }
 
     /** Children wholly inside the viewport — the only ones safe to paint. */
-    fun visibleChildren(): List<SurfaceNode> {
+    override fun visibleChildren(): List<SurfaceNode> {
         val top = rect().y + padding.top
         val bottom = top + viewportH
         return _children.filter { c ->

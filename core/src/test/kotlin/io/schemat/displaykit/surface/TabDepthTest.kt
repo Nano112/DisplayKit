@@ -1,6 +1,7 @@
 package io.schemat.displaykit.surface
 
 import io.schemat.displaykit.math.Vec3d
+import io.schemat.displaykit.render.TextMetrics
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -8,16 +9,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * A hollow tab's ground and its frame must not share a depth plane.
+ * A tab is a button-sprite face with a label in front of it.
  *
- * Vanilla's selected-tab sprites have a transparent centre, so a
- * free-floating one needs a ground painted behind it. Painted at the SAME
- * elevation and kind as the frame, the two get an identical depth key from
- * `elevation * KINDS_PER_ELEVATION + kind`, land coplanar, and z-fight --
- * which is what shipped and what was reported as shimmer on the tab strip.
+ * The old `gui/widget/tab` art was open-bottomed and vertically asymmetric.
+ * The replacement uses purpose-made button art and can optionally put a real
+ * block-display slab behind it. What must still hold is one face plane with
+ * the label strictly in front.
  *
- * A screenshot cannot prove this either way: a depth tie renders however the
- * driver feels like on any given frame, so a clean still says nothing. The
+ * A screenshot cannot prove depth either way -- a tie renders however the
+ * driver feels like on a given frame, so a clean still says nothing. The
  * depth values are the evidence.
  */
 class TabDepthTest {
@@ -31,56 +31,62 @@ class TabDepthTest {
 
     private fun depthsOf(selected: Boolean): List<Double> {
         val s = surface()
-        s.paint { tab("t", Rect(0, 0, 130, 30), "items", selected = selected) {} }
+        s.paint { tab("t", Rect(0, 0, 200, 20), "items", selected = selected) {} }
         // Distinct Z offsets across the emitted entities, in order.
         return s.toEntities().map { it.position.z }.distinct().sorted()
     }
 
     @Test
-    fun aHollowTabsGroundSitsStrictlyBehindItsFrame() {
-        // Named layers, not a plane count. Counting fails here: a hollow
-        // nine-slice skips the substitute fills a solid one emits, so adding
-        // a ground leaves the TOTAL unchanged while the ground and frame are
-        // still coplanar -- which is precisely the bug.
-        val rect = Rect(0, 0, 130, 30)
+    fun aTabPaintsOneBodyPlaneWithItsLabelInFront() {
+        val rect = Rect(0, 0, 200, 20)
         val s = surface()
         s.paint { tab("t", rect, "items", selected = true) {} }
         val painted = s.paintedSpriteDepthsForTest()
 
-        // The ground is the only sprite covering the whole rect; the frame's
-        // corners are drawn at the sprite's own native size.
-        val ground = painted.filter { it.first == rect }
-        val frame = painted.filter { it.first != rect }
+        val bodies = painted.map { it.second }.distinct()
+        assertEquals(
+            1, bodies.size,
+            "a tab must paint exactly ONE body plane; two coplanar fills " +
+                "z-fight and two separated ones parallax apart: $painted"
+        )
 
-        assertTrue(ground.isNotEmpty(), "no full-rect ground was painted: $painted")
-        assertTrue(frame.isNotEmpty(), "no frame pieces were painted: $painted")
+        val planes = s.toEntities().map { it.position.z }.distinct()
         assertTrue(
-            ground.maxOf { it.second } < frame.minOf { it.second },
-            "the ground must sit strictly BEHIND every frame piece, else they " +
-                "share a plane and z-fight -- ground=${ground.map { it.second }} " +
-                "frame=${frame.map { it.second }}"
+            planes.size >= 2,
+            "the label must sit on a separate plane in FRONT of the body: $planes"
         )
     }
 
     @Test
-    fun anOpaqueTabNeedsNoGroundAndStaysCheap() {
-        // The unselected sprite is solid, so no ground is painted and nothing
-        // extra is spent. Guards against blanketing every tab with a fill.
+    fun aTabsLabelIsAskedForTheCentredTextRow() {
+        val rect = Rect(0, 30, 200, 20)
+        val box = tabBox(rect)
+        val centred = TextMetrics.rowAlignedY(box.y + (box.h - TextMetrics.FONT_LINE_HEIGHT_PX) / 2)
+
+        val s = surface()
+        s.paint { tab("t", rect, "items", selected = false) {} }
+        val labelY = s.paintedLabelYsForTest()
+
+        assertTrue(labelY.isNotEmpty(), "the tab painted no label at all")
+        assertEquals(
+            centred, labelY.first(),
+            "the label must use the row at the geometric centre"
+        )
+    }
+
+    @Test
+    fun normalAndSelectedFacesStayEquallyLayered() {
         val sel = depthsOf(selected = true)
         val plain = depthsOf(selected = false)
-        assertTrue(
-            plain.size <= sel.size,
-            "an opaque tab must not emit more planes than a hollow one " +
-                "(opaque=$plain hollow=$sel)"
-        )
+        assertEquals(plain.size, sel.size, "state changes must not add depth planes")
     }
 
     @Test
     fun theLabelIsInFrontOfBothOfThem() {
-        // Painter's order: ground, frame, then text on top. If the label
-        // shared the frame's plane it would flicker against it.
+        // Painter's order: face, then text on top. If the label shared the
+        // face's plane it would flicker against it.
         val s = surface()
-        s.paint { tab("t", Rect(0, 0, 130, 30), "items", selected = true) {} }
+        s.paint { tab("t", Rect(0, 0, 200, 20), "items", selected = true) {} }
         val zs = s.toEntities().map { it.position.z }
         assertEquals(
             zs.maxOrNull(), zs.last(),

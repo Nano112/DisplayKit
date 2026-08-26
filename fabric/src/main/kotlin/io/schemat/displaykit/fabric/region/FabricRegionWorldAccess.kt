@@ -9,11 +9,16 @@ import io.schemat.displaykit.render.BlockStateRef
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.NbtIo
+import net.minecraft.nbt.NbtAccounter
+import net.minecraft.util.ProblemReporter
+import net.minecraft.world.level.storage.TagValueInput
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
+import java.io.DataInputStream
 import java.io.DataOutputStream
 
 /**
@@ -224,16 +229,26 @@ class FabricRegionWorldAccess(private val level: ServerLevel) {
         }
     }
 
-    /**
-     * Restore NBT data to a block entity.
-     * Note: Block entity restoration is simplified for now - complex block entities
-     * may not restore all their data.
-     */
-    @Suppress("UNUSED_PARAMETER")
     private fun restoreBlockEntityNbt(pos: BlockPos, nbtData: ByteArray) {
-        // TODO: Implement proper NBT restoration for 1.21.4+ API
-        // The current Minecraft version uses ValueInput instead of CompoundTag
-        // For now, block entities will use their default state after placement
+        val blockEntity = level.getBlockEntity(pos) ?: return
+        try {
+            val tag = DataInputStream(ByteArrayInputStream(nbtData)).use { input ->
+                NbtIo.readCompressed(input, NbtAccounter.unlimitedHeap())
+            }
+            // Full metadata includes the captured coordinates. Rebase them so
+            // block entities that validate their saved position see the new
+            // destination rather than the source region.
+            tag.putInt("x", pos.x)
+            tag.putInt("y", pos.y)
+            tag.putInt("z", pos.z)
+            blockEntity.loadWithComponents(
+                TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), tag)
+            )
+            blockEntity.setChanged()
+            level.sendBlockUpdated(pos, level.getBlockState(pos), level.getBlockState(pos), 3)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Unable to restore block entity NBT at $pos", e)
+        }
     }
 
     companion object {
