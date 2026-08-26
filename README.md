@@ -33,6 +33,11 @@ depth, input routing, packet diffs, resource-pack readiness, and teardown.
 
 ## Installation
 
+Ready-to-run server jars are attached to
+[GitHub Releases](https://github.com/Nano112/DisplayKit/releases). Use the
+`DisplayKit-Fabric-mc<version>-<displaykit-version>.jar` asset for one-file
+deployment; it nests `core` and `pack`.
+
 The Fabric artifact is a standalone mod jar with `core` and `pack` nested for
 deployment. Its Maven metadata also exposes those modules transitively so
 consumer source code can import the complete API:

@@ -39,8 +39,10 @@ checkout, publish the artifacts locally before building a consumer:
 ./gradlew publishToMavenLocal
 ```
 
-For server deployment without a source dependency, build and copy the remapped
-Fabric jar from `fabric/build/libs` into the server's `mods`
+For server deployment without a source dependency, download the matching
+`DisplayKit-Fabric` jar from
+[GitHub Releases](https://github.com/Nano112/DisplayKit/releases), or build and
+copy the remapped jar from `fabric/build/libs` into the server's `mods`
 directory. The Fabric jar nests the `core` and `pack` modules.
 
 ## Server initialization
