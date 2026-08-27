@@ -24,7 +24,7 @@ import io.schemat.displaykit.surface.layout.PxSize
 import io.schemat.displaykit.surface.layout.WidgetNode
 import java.util.UUID
 
-data class ActionMenuViewStyle(
+data class ActionMenuViewStyle @JvmOverloads constructor(
     val width: Int = BlockButton.widthFor(BlockButton.MIN_WIDTH),
     val pageSize: Int = 6,
     val gap: Int = 2,
