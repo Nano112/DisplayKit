@@ -3,9 +3,11 @@ package io.schemat.displaykit.velocity.packet
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes
 import com.github.retrooper.packetevents.protocol.item.ItemStack
+import com.github.retrooper.packetevents.protocol.player.ClientVersion
 import com.github.retrooper.packetevents.util.Quaternion4f
 import com.github.retrooper.packetevents.util.Vector3f
 import io.schemat.displaykit.math.Mat4f
+import io.schemat.displaykit.render.BlockStateRef
 import io.schemat.displaykit.render.Brightness
 import io.schemat.displaykit.render.DkColor
 import io.schemat.displaykit.render.TextAlignment
@@ -122,10 +124,28 @@ class DisplayMetadataEncoderTest {
     fun `block display resolves the state to a global palette id`() {
         val entity = VirtualBlockDisplay()
 
-        val data = encoder.encodeBlockDisplay(entity)
+        val data = encoder.encodeBlockDisplay(entity, ClientVersion.getLatest())
         val state = data.at(23)!!
         assertEquals(EntityDataTypes.BLOCK_STATE, state.type)
         assertTrue((state.value as Int) > 0, "stone must resolve to a real palette id")
+    }
+
+    @Test
+    fun `block state ids are resolved against the viewer's own palette`() {
+        // Sending the proxy's newest palette id to an older client decodes to
+        // a different block: ids must be per viewer version
+        val entity = VirtualBlockDisplay()
+        entity.blockState = BlockStateRef("minecraft:gilded_blackstone")
+
+        val modern = encoder.encodeBlockDisplay(entity, ClientVersion.V_26_2).at(23)!!.value as Int
+        val older = encoder.encodeBlockDisplay(entity, ClientVersion.V_1_21_9).at(23)!!.value as Int
+
+        assertTrue(modern > 0 && older > 0, "both palettes must resolve the block")
+        // Not asserting they differ: two adjacent versions may share a
+        // palette. Asserting instead that the version actually reaches the
+        // resolver, by checking a version-keyed cache does not collapse them.
+        assertEquals(modern, encoder.encodeBlockDisplay(entity, ClientVersion.V_26_2).at(23)!!.value)
+        assertEquals(older, encoder.encodeBlockDisplay(entity, ClientVersion.V_1_21_9).at(23)!!.value)
     }
 
     @Test

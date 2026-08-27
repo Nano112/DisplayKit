@@ -7,6 +7,8 @@ import com.github.retrooper.packetevents.protocol.entity.data.EntityData
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes
 import com.github.retrooper.packetevents.protocol.item.ItemStack
 import com.github.retrooper.packetevents.protocol.item.type.ItemTypes
+import com.github.retrooper.packetevents.protocol.player.ClientVersion
+import com.github.retrooper.packetevents.protocol.player.User
 import com.github.retrooper.packetevents.util.Quaternion4f
 import com.github.retrooper.packetevents.util.Vector3f
 import io.schemat.displaykit.render.Billboard
@@ -47,8 +49,11 @@ import io.schemat.displaykit.velocity.text.AdventureText
  */
 class DisplayMetadataEncoder(private val blockStates: VelocityBlockStateResolver) {
 
-    fun encode(entity: VirtualEntity): List<EntityData<*>> = when (entity) {
-        is VirtualBlockDisplay -> encodeBlockDisplay(entity)
+    fun encode(entity: VirtualEntity, viewer: User): List<EntityData<*>> =
+        encode(entity, viewer.clientVersion ?: ClientVersion.getLatest())
+
+    fun encode(entity: VirtualEntity, version: ClientVersion): List<EntityData<*>> = when (entity) {
+        is VirtualBlockDisplay -> encodeBlockDisplay(entity, version)
         is VirtualTextDisplay -> encodeTextDisplay(entity)
         is VirtualItemDisplay -> encodeItemDisplay(entity)
         else -> encodeShared(entity)
@@ -69,9 +74,11 @@ class DisplayMetadataEncoder(private val blockStates: VelocityBlockStateResolver
         return entries
     }
 
-    fun encodeBlockDisplay(entity: VirtualBlockDisplay): List<EntityData<*>> {
+    fun encodeBlockDisplay(entity: VirtualBlockDisplay, version: ClientVersion): List<EntityData<*>> {
         val entries = encodeShared(entity)
-        entries.add(EntityData(ID_BLOCK_STATE, EntityDataTypes.BLOCK_STATE, blockStates.resolve(entity.blockState)))
+        entries.add(
+            EntityData(ID_BLOCK_STATE, EntityDataTypes.BLOCK_STATE, blockStates.resolve(entity.blockState, version))
+        )
         return entries
     }
 

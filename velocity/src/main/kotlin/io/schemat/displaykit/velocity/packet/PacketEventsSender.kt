@@ -2,10 +2,11 @@ package io.schemat.displaykit.velocity.packet
 
 import com.github.retrooper.packetevents.PacketEventsAPI
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes
+import com.github.retrooper.packetevents.protocol.entity.data.EntityData
+import com.github.retrooper.packetevents.protocol.player.ClientVersion
 import com.github.retrooper.packetevents.protocol.player.User
 import com.github.retrooper.packetevents.util.Vector3d
 import com.github.retrooper.packetevents.wrapper.PacketWrapper
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerBundle
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityRelativeMove
@@ -29,10 +30,12 @@ import java.util.UUID
  * certainly has its own send listeners and feeding them synthetic entities
  * would be a trap.
  *
- * Spawn and first metadata travel inside one bundle, honouring the
- * PacketSender contract that spawnEntity is a single lifecycle operation:
- * the client applies bundled packets in one tick, so a display can never be
- * seen half-configured.
+ * No bundle delimiters, deliberately. On a proxy every write is its own
+ * event-loop task, so the forwarded backend's own 1.19.4+ bundle delimiters
+ * could interleave between ours and invert the client's bundle phase, which
+ * corrupts batching for everything after it. Sequential sends risk at most
+ * one frame of a half-configured display, and the metadata follows the spawn
+ * immediately on the same channel.
  */
 class PacketEventsSender(
     private val proxy: ProxyServer,
@@ -45,12 +48,11 @@ class PacketEventsSender(
         val users = resolveViewers(viewerUUIDs)
         if (users.isEmpty()) return
 
-        val metadata = encoder.encode(entity)
+        val byVersion = HashMap<ClientVersion, List<EntityData<*>>>()
         for (user in users) {
-            user.sendPacketSilently(WrapperPlayServerBundle())
+            val metadata = byVersion.getOrPut(versionOf(user)) { encoder.encode(entity, user) }
             user.sendPacketSilently(spawnWrapper(entity))
             user.sendPacketSilently(WrapperPlayServerEntityMetadata(entity.entityId, metadata))
-            user.sendPacketSilently(WrapperPlayServerBundle())
         }
         entity.markClean()
     }
@@ -59,8 +61,11 @@ class PacketEventsSender(
         val users = resolveViewers(viewerUUIDs)
         if (users.isEmpty()) return
 
-        val metadata = encoder.encode(entity)
-        sendToAll(users, WrapperPlayServerEntityMetadata(entity.entityId, metadata))
+        val byVersion = HashMap<ClientVersion, List<EntityData<*>>>()
+        for (user in users) {
+            val metadata = byVersion.getOrPut(versionOf(user)) { encoder.encode(entity, user) }
+            user.sendPacketSilently(WrapperPlayServerEntityMetadata(entity.entityId, metadata))
+        }
         entity.markClean()
     }
 
@@ -88,13 +93,17 @@ class PacketEventsSender(
         val users = resolveViewers(viewerUUIDs)
         if (users.isEmpty() || entities.isEmpty()) return
 
-        val payload = entities.map { entity -> entity.entityId to encoder.encode(entity) }
+        // Metadata only varies by protocol version, not by viewer, so a
+        // shared surface encodes once per distinct version rather than once
+        // per player
+        val byVersion = HashMap<ClientVersion, List<Pair<Int, List<EntityData<*>>>>>()
         for (user in users) {
-            user.sendPacketSilently(WrapperPlayServerBundle())
+            val payload = byVersion.getOrPut(versionOf(user)) {
+                entities.map { entity -> entity.entityId to encoder.encode(entity, user) }
+            }
             for ((entityId, metadata) in payload) {
                 user.sendPacketSilently(WrapperPlayServerEntityMetadata(entityId, metadata))
             }
-            user.sendPacketSilently(WrapperPlayServerBundle())
         }
         entities.forEach(VirtualEntity::markClean)
     }
@@ -105,11 +114,9 @@ class PacketEventsSender(
 
         val payload = entities.map { entity -> entity.entityId to encoder.encodeTransformOnly(entity) }
         for (user in users) {
-            user.sendPacketSilently(WrapperPlayServerBundle())
             for ((entityId, metadata) in payload) {
                 user.sendPacketSilently(WrapperPlayServerEntityMetadata(entityId, metadata))
             }
-            user.sendPacketSilently(WrapperPlayServerBundle())
         }
     }
 
@@ -171,6 +178,11 @@ class PacketEventsSender(
                 ?.takeIf(viewerFilter)
                 ?.let { player -> packetEvents.playerManager.getUser(player) }
         }
+
+    // A user whose version is not known yet is treated as current: the
+    // encoder falls back the same way, so both agree on one cache slot
+    private fun versionOf(user: User): ClientVersion =
+        user.clientVersion ?: ClientVersion.getLatest()
 
     private fun sendToAll(users: List<User>, wrapper: PacketWrapper<*>) {
         for (user in users) {
