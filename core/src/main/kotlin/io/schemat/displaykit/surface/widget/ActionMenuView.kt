@@ -20,6 +20,7 @@ import io.schemat.displaykit.surface.PointerButton
 import io.schemat.displaykit.surface.blockButton
 import io.schemat.displaykit.surface.layout.FlexDirection
 import io.schemat.displaykit.surface.layout.FlexNode
+import io.schemat.displaykit.surface.layout.PxConstraints
 import io.schemat.displaykit.surface.layout.PxSize
 import io.schemat.displaykit.surface.layout.WidgetNode
 import java.util.UUID
@@ -204,15 +205,27 @@ class ActionMenuView(
 
     private enum class Navigation { PREVIOUS, NEXT, BACK }
 
+    private fun navigationVisible(navigation: Navigation): Boolean {
+        val window = actions.window(style.pageSize)
+        return when (navigation) {
+            Navigation.PREVIOUS -> window.hasPrevious
+            Navigation.NEXT -> window.hasNext
+            Navigation.BACK -> style.showBackNavigation
+        }
+    }
+
     private fun navigationNode(nodeId: String, navigation: Navigation): WidgetNode {
-        val node = WidgetNode(nodeId, PxSize(style.width, BlockButton.HEIGHT)) { painter, rect ->
+        // A navigation button that cannot be shown must not reserve its row.
+        // Painting nothing into a full-height slot leaves a gap the size of a
+        // button, so a menu with a single page used to sit above the void
+        // where Previous and Next would have been.
+        val node = object : WidgetNode(nodeId, PxSize(style.width, BlockButton.HEIGHT)) {
+            override fun measureSelf(c: PxConstraints): PxSize =
+                if (navigationVisible(navigation)) super.measureSelf(c) else PxSize.Zero
+        }
+        node.render = render@{ painter, rect ->
+            if (!navigationVisible(navigation)) return@render
             val window = actions.window(style.pageSize)
-            val visible = when (navigation) {
-                Navigation.PREVIOUS -> window.hasPrevious
-                Navigation.NEXT -> window.hasNext
-                Navigation.BACK -> style.showBackNavigation
-            }
-            if (!visible) return@WidgetNode
             val labels = style.labels()
             val label = when (navigation) {
                 Navigation.PREVIOUS -> "${labels.previous} (${window.pageIndex + 1}/${window.pageCount})"
