@@ -24,9 +24,29 @@ import io.schemat.displaykit.surface.layout.PxSize
 import io.schemat.displaykit.surface.layout.WidgetNode
 import java.util.UUID
 
+/**
+ * Text for the menu's own navigation buttons.
+ *
+ * The toolkit has no idea which language its viewer reads, so these default
+ * to English and a consumer that does know hands over translated ones. The
+ * paging labels are the bare word: the renderer appends the page numbers.
+ */
+data class ActionMenuLabels @JvmOverloads constructor(
+    val back: String = "Back",
+    val close: String = "Close",
+    val previous: String = "Previous",
+    val next: String = "Next",
+)
+
 data class ActionMenuViewStyle @JvmOverloads constructor(
     val width: Int = BlockButton.widthFor(BlockButton.MIN_WIDTH),
     val pageSize: Int = 6,
+    /**
+     * Read on every repaint rather than captured, so a consumer whose viewer
+     * changes language mid-menu can return new text without rebuilding the
+     * surface. Must not block: this is called from painting.
+     */
+    val labels: () -> ActionMenuLabels = { DEFAULT_LABELS },
     val gap: Int = 2,
     val buttonBase: BlockStateRef = BlockStateRef("minecraft:polished_blackstone"),
     val selectedBase: BlockStateRef = BlockStateRef("minecraft:gilded_blackstone"),
@@ -43,6 +63,10 @@ data class ActionMenuViewStyle @JvmOverloads constructor(
         require(pageSize > 0) { "Action menu pageSize must be positive." }
         require(gap >= 0) { "Action menu gap cannot be negative." }
         require(baseThickness > 0f) { "Action menu button thickness must be positive." }
+    }
+
+    private companion object {
+        val DEFAULT_LABELS = ActionMenuLabels()
     }
 }
 
@@ -189,10 +213,11 @@ class ActionMenuView(
                 Navigation.BACK -> style.showBackNavigation
             }
             if (!visible) return@WidgetNode
+            val labels = style.labels()
             val label = when (navigation) {
-                Navigation.PREVIOUS -> "Previous (${window.pageIndex + 1}/${window.pageCount})"
-                Navigation.NEXT -> "Next (${window.pageIndex + 1}/${window.pageCount})"
-                Navigation.BACK -> if (actions.depth > 1) "Back" else "Close"
+                Navigation.PREVIOUS -> "${labels.previous} (${window.pageIndex + 1}/${window.pageCount})"
+                Navigation.NEXT -> "${labels.next} (${window.pageIndex + 1}/${window.pageCount})"
+                Navigation.BACK -> if (actions.depth > 1) labels.back else labels.close
             }
             painter.blockButton(
                 id = nodeId,
