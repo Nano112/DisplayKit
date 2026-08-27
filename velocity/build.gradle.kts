@@ -1,3 +1,5 @@
+import org.gradle.api.attributes.java.TargetJvmVersion
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     `java-library`
@@ -50,7 +52,16 @@ dependencies {
     // that already ships PacketEvents. Compiling against the vanilla
     // coordinates keeps the module consumer-agnostic; a consumer that
     // relocates PacketEvents when shading rewrites these references too.
-    compileOnly(libs.velocity.api)
+    //
+    // Velocity 4 publishes metadata declaring Java 25, while this module
+    // emits Java 21 bytecode like the rest of the repo. Compiling 21 against
+    // the 25 API is fine for a compileOnly dependency, every real host runs
+    // the proxy's own Java 25 anyway, so the variant check is relaxed for it.
+    compileOnly(libs.velocity.api) {
+        attributes {
+            attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+        }
+    }
     compileOnly(libs.packetevents.velocity)
 
     testImplementation(kotlin("test"))
@@ -61,7 +72,11 @@ dependencies {
     testImplementation("com.github.retrooper:packetevents-netty-common:${libs.versions.packetevents.get()}")
     testImplementation("io.netty:netty-buffer:4.1.115.Final")
     testImplementation("net.kyori:adventure-nbt:5.2.0")
-    testImplementation(libs.velocity.api)
+    testImplementation(libs.velocity.api) {
+        attributes {
+            attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+        }
+    }
 }
 
 java {
