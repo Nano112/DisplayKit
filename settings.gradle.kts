@@ -16,5 +16,6 @@ rootProject.name = "displaykit"
 
 include(":core")
 include(":pack")
+include(":velocity")
 include(":fabric")
 include(":showcase")
