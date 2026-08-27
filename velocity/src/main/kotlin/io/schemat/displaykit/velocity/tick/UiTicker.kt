@@ -36,7 +36,20 @@ class UiTicker(
         task = uiThread.executor.scheduleAtFixedRate(::tick, TICK_MILLIS, TICK_MILLIS, TimeUnit.MILLISECONDS)
     }
 
+    /**
+     * Nothing may escape: scheduleAtFixedRate cancels a repeating task
+     * permanently on the first uncaught throwable, so one bad surface would
+     * silently stop animations and hover for the whole proxy until restart.
+     */
     private fun tick() {
+        try {
+            tickOnce()
+        } catch (t: Throwable) {
+            logger.warning("DisplayKit tick failed, the loop continues: ${t.message}")
+        }
+    }
+
+    private fun tickOnce() {
         try {
             AnimationTicker.tick()
         } catch (e: Exception) {
@@ -49,7 +62,7 @@ class UiTicker(
             for (host in hosts) {
                 try {
                     host.tick()
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     // One bad surface must not stop the tick for everyone else
                     if (loggedFailures.add(host)) {
                         logger.warning(

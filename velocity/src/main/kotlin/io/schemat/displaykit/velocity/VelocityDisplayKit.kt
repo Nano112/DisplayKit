@@ -5,6 +5,7 @@ import com.velocitypowered.api.proxy.Player
 import com.velocitypowered.api.proxy.ProxyServer
 import io.schemat.displaykit.DisplayKit
 import io.schemat.displaykit.animation.AnimationTicker
+import io.schemat.displaykit.surface.SliceGlyphSource
 import io.schemat.displaykit.surface.SurfaceFocus
 import io.schemat.displaykit.ui.InteractionRouter
 import io.schemat.displaykit.velocity.input.HotbarScrollRestore
@@ -18,6 +19,7 @@ import io.schemat.displaykit.velocity.scheduler.VelocityDkScheduler
 import io.schemat.displaykit.velocity.state.VelocityBlockStateResolver
 import io.schemat.displaykit.velocity.thread.UiOwnerThread
 import io.schemat.displaykit.velocity.tick.UiTicker
+import com.github.retrooper.packetevents.event.PacketListenerCommon
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerHeldItemChange
 import java.util.UUID
 import java.util.logging.Logger
@@ -52,6 +54,8 @@ class VelocityDisplayKit private constructor(
     val positions: PlayerPositionCache,
     val versionGate: VersionGate,
     private val ticker: UiTicker,
+    private val inputListener: PacketListenerCommon,
+    private val scroll: HotbarScrollRestore,
 ) {
 
     fun playerRef(player: Player): VelocityPlayerRef =
@@ -87,7 +91,30 @@ class VelocityDisplayKit private constructor(
                 )
             }
 
+            // A half-initialised platform is worse than none: each step
+            // registers its undo so a failure anywhere leaves no global
+            // installed, and a consumer that degrades gracefully or retries
+            // starts from a clean slate.
+            val rollback = ArrayDeque<() -> Unit>()
+            try {
+                val created = build(config, rollback)
+                instance = created
+                return created
+            } catch (t: Throwable) {
+                while (rollback.isNotEmpty()) {
+                    runCatching { rollback.removeLast().invoke() }
+                }
+                instance = null
+                throw t
+            }
+        }
+
+        private fun build(
+            config: VelocityDisplayKitConfig,
+            rollback: ArrayDeque<() -> Unit>,
+        ): VelocityDisplayKit {
             val uiThread = UiOwnerThread()
+            rollback.addLast { uiThread.close() }
             val positions = PlayerPositionCache()
             val scheduler = VelocityDkScheduler(uiThread)
             val encoder = DisplayMetadataEncoder(VelocityBlockStateResolver(config.logger))
@@ -107,6 +134,10 @@ class VelocityDisplayKit private constructor(
                 textInput = VelocityTextInputStub(config.logger),
             )
             DisplayKit.init(platform)
+            rollback.addLast {
+                DisplayKit.shutdown()
+                SliceGlyphSource.installed = null
+            }
 
             val scroll = HotbarScrollRestore(
                 dispatchToUiThread = { task -> uiThread.dispatch(task) },
@@ -120,22 +151,21 @@ class VelocityDisplayKit private constructor(
 
             SurfaceFocus.onFocusCleared { playerId -> scroll.release(playerId) }
 
-            config.packetEvents.eventManager.registerListener(
-                InputPacketListener(
-                    positions = positions,
-                    scroll = scroll,
-                    dispatchToUiThread = { task -> uiThread.dispatch(task) },
-                    onPlayerRemoved = { },
-                )
+            val listener = InputPacketListener(
+                positions = positions,
+                scroll = scroll,
+                dispatchToUiThread = { task -> uiThread.dispatch(task) },
+                onPlayerRemoved = { },
             )
+            config.packetEvents.eventManager.registerListener(listener)
+            rollback.addLast { config.packetEvents.eventManager.unregisterListener(listener) }
 
             val ticker = UiTicker(config.proxy, uiThread, config.logger)
             ticker.start()
+            rollback.addLast { ticker.close() }
 
-            val created = VelocityDisplayKit(config, uiThread, positions, versionGate, ticker)
-            instance = created
             config.logger.info("DisplayKit Velocity platform initialised (pack-free, ENTITIES render mode)")
-            return created
+            return VelocityDisplayKit(config, uiThread, positions, versionGate, ticker, listener, scroll)
         }
 
         /** Tears down in the reverse order of init. */
@@ -145,12 +175,18 @@ class VelocityDisplayKit private constructor(
             instance = null
 
             current.ticker.close()
+            // Unregister before tearing the thread down: the listener
+            // dispatches onto it, and a packet arriving mid-shutdown would
+            // otherwise queue work that can never run
+            runCatching { current.config.packetEvents.eventManager.unregisterListener(current.inputListener) }
             current.uiThread.dispatch {
                 AnimationTicker.clear()
                 InteractionRouter.closeAll()
             }
             current.positions.clear()
+            current.scroll.clear()
             current.uiThread.close()
+            SliceGlyphSource.installed = null
             DisplayKit.shutdown()
             current.config.logger.info("DisplayKit Velocity platform shut down")
         }
