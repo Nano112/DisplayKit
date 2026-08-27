@@ -81,9 +81,10 @@ own packet entities should draw ids from the same allocator.
 
 ## Known limitations
 
-- Digging packets swallowed while targeting a surface get no ghost-block
-  resync (the proxy has no world state to resync from); surfaces float in
-  front of the player, so the exposure is small.
+- Digging and placement packets swallowed while targeting a surface are
+  acknowledged by the proxy itself, which rolls the client's prediction back
+  without any world state. Clients older than 1.19 send no sequence id and
+  have no prediction to roll back, so nothing is owed them.
 - Players riding vehicles stop sending movement packets, so hover tracking
   degrades until they dismount.
 - Sneak-only eye height is modelled; swimming and gliding poses are not.

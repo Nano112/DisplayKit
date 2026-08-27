@@ -11,8 +11,11 @@ import com.github.retrooper.packetevents.protocol.teleport.RelativeFlag
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientEntityAction
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientHeldItemChange
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerBlockPlacement
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerFlying
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientUseItem
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerAcknowledgeBlockChanges
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerHeldItemChange
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerPositionAndLook
 import io.schemat.displaykit.surface.SurfaceFocus
@@ -35,10 +38,11 @@ import java.util.UUID
  * while another thread decides, so it cancels when the player is *targeting*
  * an interactive region and lets the dispatch settle afterwards.
  *
- * Digging is swallowed while targeting, and unlike Fabric there is no ghost
- * block resync: the proxy has no world state to resync from. Surfaces float
- * in front of the player, so the window where a real block sits behind one
- * is small; a misprediction heals on the next server-driven block update.
+ * Swallowed digging and placement carry a sequence id from 1.19 on, and the
+ * client keeps its optimistic prediction until the server acknowledges that
+ * sequence. Since the backend never sees the packet, this listener sends the
+ * acknowledgement itself; without it a cancelled dig leaves a ghost hole and
+ * a cancelled placement a ghost block, both until a chunk reload.
  */
 class InputPacketListener(
     private val positions: PlayerPositionCache,
@@ -87,11 +91,24 @@ class InputPacketListener(
                 event.markForReEncode(false)
             }
 
-            PacketType.Play.Client.USE_ITEM,
-            PacketType.Play.Client.PLAYER_BLOCK_PLACEMENT,
-            -> {
+            PacketType.Play.Client.USE_ITEM -> {
                 if (InteractionRouter.isTargetingInteractive(playerId)) {
+                    // Read the sequence before cancelling: both right-click
+                    // packets carry one from 1.19 on
+                    val sequence = WrapperPlayClientUseItem(event).sequence
                     event.isCancelled = true
+                    acknowledge(event, sequence)
+                    dispatchToUiThread(Runnable { InteractionRouter.onRightClick(playerId) })
+                } else {
+                    event.markForReEncode(false)
+                }
+            }
+
+            PacketType.Play.Client.PLAYER_BLOCK_PLACEMENT -> {
+                if (InteractionRouter.isTargetingInteractive(playerId)) {
+                    val sequence = WrapperPlayClientPlayerBlockPlacement(event).sequence
+                    event.isCancelled = true
+                    acknowledge(event, sequence)
                     dispatchToUiThread(Runnable { InteractionRouter.onRightClick(playerId) })
                 } else {
                     event.markForReEncode(false)
@@ -128,6 +145,7 @@ class InputPacketListener(
                         InteractionRouter.wasLeftClickConsumed(playerId))
                 ) {
                     event.isCancelled = true
+                    acknowledge(event, wrapper.sequence)
                 } else {
                     event.markForReEncode(false)
                 }
@@ -182,6 +200,21 @@ class InputPacketListener(
                 scroll.trackSlot(playerId, wrapper.slot)
                 event.markForReEncode(false)
             }
+        }
+    }
+
+    /**
+     * Confirms a swallowed block interaction so the client rolls its
+     * prediction back. Harmless on pre-1.19 clients, whose packets carry no
+     * sequence: zero means there is nothing outstanding to acknowledge.
+     */
+    private fun acknowledge(event: PacketReceiveEvent, sequence: Int) {
+        if (sequence <= 0) return
+        try {
+            event.user.sendPacketSilently(WrapperPlayServerAcknowledgeBlockChanges(sequence))
+        } catch (_: Exception) {
+            // A client that cannot take the ack is one whose prediction will
+            // heal on the next block update instead
         }
     }
 
