@@ -33,7 +33,15 @@ enum class SurfaceCloseReason {
     OWNER_OFFLINE,
     OUT_OF_RANGE,
     TIMEOUT,
-    ANCHOR_MISSING
+    ANCHOR_MISSING,
+
+    /**
+     * The host was torn down from outside the session, which is what
+     * [io.schemat.displaykit.ui.InteractionRouter.cleanupPlayer] does when it
+     * drops a player's context: a disconnect, or a world change that already
+     * destroyed the entities client-side.
+     */
+    HOST_DISCARDED
 }
 
 /**
@@ -87,6 +95,7 @@ class WorldSurfaceSession(
 
     init {
         host.lifecycleTick = ::beforeHostTick
+        host.onHostClosed = { close(SurfaceCloseReason.HOST_DISCARDED) }
     }
 
     /**
@@ -147,6 +156,9 @@ class WorldSurfaceSession(
         state = State.CLOSED
         closeReason = reason
         host.lifecycleTick = null
+        // Detached before host.close() so the hook cannot re-enter this
+        // method through the very call that ends it
+        host.onHostClosed = null
         stateBindings.toList().asReversed().forEach { it.close() }
         if (wasOpen) InteractionRouter.unregisterSurface(owner.uuid, host)
         host.close()
@@ -207,6 +219,7 @@ class WorldSurfaceSession(
         state = State.CLOSED
         closeReason = reason
         host.lifecycleTick = null
+        host.onHostClosed = null
         onClosed(reason)
     }
 }
