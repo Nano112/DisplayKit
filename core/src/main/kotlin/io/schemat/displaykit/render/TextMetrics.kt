@@ -185,17 +185,35 @@ object TextMetrics {
         c == 'f' || c == 'k' -> 5
         c == '@' || c == '~' -> 7
         c.code < 128 -> 6
-        // Non-ASCII does not come from ascii.png at all -- the client falls
-        // back to the unifont providers, whose glyphs are up to 16px wide.
-        // Guessing 6 here under-estimates badly (an em-dash in a window title
-        // was enough to push a padded row past lineWidth and wrap the whole
-        // surface, which shifts every row below it).
+        // Latin supplements, Greek and Cyrillic ship in the default font's
+        // own nonlatin_european sheet, at the same advance as ascii.png.
+        // Measuring them as unifont made a Russian line come out around two
+        // and a half times its drawn width, which wrapped a two-line
+        // description after thirteen characters and ellipsized the rest.
+        isDefaultFontEuropean(c) -> 6
+        // Everything past here really does fall back to the unifont
+        // providers, whose glyphs are up to 16px wide. Guessing 6 there
+        // under-estimates badly (an em-dash in a window title was enough to
+        // push a padded row past lineWidth and wrap the whole surface, which
+        // shifts every row below it).
         //
         // Over-estimating is the safe direction: SpriteCanvas closes the gap
         // to the next item with a spacing advance that is allowed to go
         // negative, so positioning still lands exactly, and a row that
         // measures SHORTER than predicted can never overflow.
         else -> UNICODE_FALLBACK_WIDTH_PX
+    }
+
+    /**
+     * Whether [c] is drawn from the default font rather than a unifont
+     * fallback: Latin-1 Supplement through Latin Extended-B, Greek, and
+     * Cyrillic including its supplement.
+     */
+    private fun isDefaultFontEuropean(c: Char): Boolean = when (c.code) {
+        in 0x00A0..0x024F -> true
+        in 0x0370..0x03FF -> true
+        in 0x0400..0x052F -> true
+        else -> false
     }
 
     /** Upper bound on a unifont glyph's advance, in text pixels. */
