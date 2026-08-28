@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "io.schemat.displaykit"
-version = providers.gradleProperty("displaykitVersion").orElse("0.1.0").get()
+version = providers.gradleProperty("displaykitVersion").orElse("0.2.0").get()
 
 val displayKitRootDir = rootProject.file("libs/displaykit")
     .takeIf { it.resolve("LICENSE").isFile }
