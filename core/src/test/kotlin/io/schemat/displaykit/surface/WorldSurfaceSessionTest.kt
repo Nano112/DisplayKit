@@ -110,6 +110,52 @@ class WorldSurfaceSessionTest {
     }
 
     @Test
+    fun routerCleanupClosesTheSessionBehindTheHost() {
+        // cleanupPlayer closes hosts directly, so a consumer that registered
+        // onClosed would otherwise never learn its surface was destroyed and
+        // would keep treating a dead session as live
+        val sender = RecordingSender()
+        val player = FakePlayer()
+        val reasons = mutableListOf<SurfaceCloseReason>()
+        val session = WorldSurfaceSession(
+            platform(sender), player, surface(),
+            SurfaceAnchor.fixed(Vec3d(0.5, 70.5, 0.0), 0f),
+            SurfaceLifecyclePolicy(maxDistance = 10.0, timeoutTicks = 100),
+            onClosed = { reason -> reasons += reason }
+        )
+
+        assertTrue(session.open())
+        val liveIds = session.host.entities().map { it.entityId }.toSet()
+
+        InteractionRouter.cleanupPlayer(player.uuid)
+
+        assertEquals(listOf(SurfaceCloseReason.HOST_DISCARDED), reasons)
+        assertFalse(session.isOpen)
+        assertEquals(SurfaceCloseReason.HOST_DISCARDED, session.closeReason)
+        // Exactly once: the hook re-enters host.close(), which must not
+        // destroy the same entities a second time
+        assertEquals(liveIds.toList().sorted(), sender.destroyed.sorted())
+    }
+
+    @Test
+    fun closingASessionStillReportsItsOwnReasonNotTheHostHook() {
+        val sender = RecordingSender()
+        val player = FakePlayer()
+        val reasons = mutableListOf<SurfaceCloseReason>()
+        val session = WorldSurfaceSession(
+            platform(sender), player, surface(),
+            SurfaceAnchor.fixed(Vec3d(0.5, 70.5, 0.0), 0f),
+            SurfaceLifecyclePolicy(maxDistance = 10.0, timeoutTicks = 100),
+            onClosed = { reason -> reasons += reason }
+        )
+
+        assertTrue(session.open())
+        session.close()
+
+        assertEquals(listOf(SurfaceCloseReason.MANUAL), reasons)
+    }
+
+    @Test
     fun dynamicAnchorMovesExistingEntitiesWithoutRespawningThem() {
         val sender = RecordingSender()
         val player = FakePlayer()

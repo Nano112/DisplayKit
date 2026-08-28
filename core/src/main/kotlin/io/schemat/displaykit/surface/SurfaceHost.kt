@@ -29,6 +29,17 @@ class SurfaceHost(
      */
     internal var lifecycleTick: (() -> Boolean)? = null
 
+    /**
+     * Session-owned teardown hook, invoked at the top of [close].
+     *
+     * [io.schemat.displaykit.ui.InteractionRouter.cleanupPlayer] closes hosts
+     * directly when it drops a player's context, which bypasses the owning
+     * session entirely. Without this hook a session would keep reporting
+     * itself open after its surface had been destroyed, and the onClosed
+     * callback a consumer registered would never run.
+     */
+    internal var onHostClosed: (() -> Unit)? = null
+
     private var layers: List<VirtualEntity> = emptyList()
     private var backing: VirtualBlockDisplay? = null
     private var pointer: VirtualTextDisplay? = null
@@ -357,6 +368,9 @@ class SurfaceHost(
      * left.
      */
     fun close() {
+        // Before the early return below: a host closed before it ever painted
+        // still has a session that needs to hear about it
+        onHostClosed?.invoke()
         val ids = layers.map { it.entityId } +
             listOfNotNull(backing?.entityId, pointer?.entityId)
         if (ids.isEmpty()) return

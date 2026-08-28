@@ -29,6 +29,7 @@ depth, input routing, packet diffs, resource-pack readiness, and teardown.
 | `core` | Platform-neutral models, state, layout, surfaces, widgets, actions, overlays |
 | `pack` | Generated sprite/font assets and deterministic pack building |
 | `fabric` | Minecraft/Fabric packets, input, pack lifecycle, HUD and toolbar renderers |
+| `velocity` | Packet-only proxy platform on PacketEvents, for surfaces driven from a Velocity plugin ([details](velocity/README.md)) |
 | `showcase` | Executable examples and visual inspection commands |
 
 ## Installation
